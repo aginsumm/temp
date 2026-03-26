@@ -1,15 +1,150 @@
+import { defineConfig } from "tailwindcss";
+
 export default {
   content: ["./index.html", "./src/**/*.{js,jsx,ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        primary: {
-          50: "#f0f9ff",
-          100: "#e0f2fe",
-          500: "#0ea5e9",
-          600: "#0284c7",
-          700: "#0369a1",
+        wood: {
+          deep: "#5d4037",
+          medium: "#8d6e63",
+          light: "#d7ccc8",
+          cream: "#faf9f6",
         },
+        primary: {
+          deep: "#8b4513",
+          medium: "#a0522d",
+          light: "#d2b48c",
+          cream: "#faf9f6",
+        },
+        blue: {
+          deep: "#1e3a8a",
+          primary: "#3b82f6",
+          light: "#93c5fd",
+          sky: "#dbeafe",
+        },
+        gold: {
+          primary: "#daa520",
+          light: "#f4e5b2",
+          dark: "#aa8c2c",
+        },
+        slate: {
+          gray: "#708090",
+        },
+        indian: {
+          red: "#cd5c5c",
+        },
+        dark: {
+          slate: "#2f4f4f",
+        },
+        entity: {
+          inheritor: "#8B5CF6",
+          technique: "#10B981",
+          work: "#F59E0B",
+          pattern: "#EF4444",
+          region: "#06B6D4",
+          period: "#6366F1",
+          material: "#84CC16",
+        },
+      },
+      fontFamily: {
+        heading: ['"Noto Serif SC"', '"Source Han Serif SC"', '"Songti SC"', "serif"],
+        body: ['"Noto Sans SC"', '"PingFang SC"', '"Microsoft YaHei"', "sans-serif"],
+        mono: ['"Fira Code"', '"SF Mono"', "Monaco", '"Courier New"', "monospace"],
+      },
+      fontSize: {
+        xs: "12px",
+        sm: "14px",
+        base: "16px",
+        lg: "18px",
+        xl: "22px",
+        "2xl": "28px",
+        "3xl": "36px",
+        "4xl": "48px",
+      },
+      spacing: {
+        xxs: "4px",
+        xs: "8px",
+        sm: "12px",
+        md: "16px",
+        lg: "24px",
+        xl: "32px",
+        "2xl": "48px",
+        "3xl": "64px",
+      },
+      boxShadow: {
+        sm: "0 2px 8px rgba(0, 0, 0, 0.08)",
+        md: "0 4px 16px rgba(0, 0, 0, 0.12)",
+        lg: "0 8px 24px rgba(0, 0, 0, 0.16)",
+        xl: "0 12px 32px rgba(0, 0, 0, 0.20)",
+        "2xl": "0 16px 48px rgba(0, 0, 0, 0.24)",
+        inner: "inset 0 2px 4px rgba(0, 0, 0, 0.06)",
+        "glow-gold": "0 0 20px rgba(218, 165, 32, 0.3)",
+        "glow-blue": "0 0 30px rgba(59, 130, 246, 0.5)",
+        node: "0 4px 12px rgba(59, 130, 246, 0.3)",
+        "node-hover": "0 8px 24px rgba(59, 130, 246, 0.5)",
+        bubble: "0 4px 12px rgba(139, 69, 19, 0.15)",
+      },
+      borderRadius: {
+        sm: "4px",
+        md: "8px",
+        lg: "12px",
+        xl: "16px",
+        "2xl": "20px",
+        "3xl": "24px",
+      },
+      animation: {
+        "fade-in": "fadeIn 0.3s ease-out",
+        "slide-in": "slideIn 0.3s ease-out",
+        "slide-up": "slideUp 0.3s ease-out",
+        "scale-in": "scaleIn 0.2s ease-out",
+        "bounce-in": "bounceIn 0.3s ease-out",
+        "node-enter": "nodeEnter 0.5s ease-out",
+        "draw-line": "drawLine 1s ease-out forwards",
+      },
+      keyframes: {
+        fadeIn: {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" },
+        },
+        slideIn: {
+          "0%": { opacity: "0", transform: "translateX(-20px)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
+        slideUp: {
+          "0%": { opacity: "0", transform: "translateY(20px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        scaleIn: {
+          "0%": { opacity: "0", transform: "scale(0.9)" },
+          "100%": { opacity: "1", transform: "scale(1)" },
+        },
+        bounceIn: {
+          "0%": { opacity: "0", transform: "scale(0.3)" },
+          "50%": { transform: "scale(1.05)" },
+          "70%": { transform: "scale(0.9)" },
+          "100%": { opacity: "1", transform: "scale(1)" },
+        },
+        nodeEnter: {
+          "0%": { opacity: "0", transform: "scale(0)" },
+          "70%": { transform: "scale(1.1)" },
+          "100%": { opacity: "1", transform: "scale(1)" },
+        },
+        drawLine: {
+          "0%": { strokeDashoffset: "1000" },
+          "100%": { strokeDashoffset: "0" },
+        },
+      },
+      transitionDuration: {
+        fast: "150ms",
+        normal: "300ms",
+        slow: "500ms",
+      },
+      transitionTimingFunction: {
+        "ease-in": "cubic-bezier(0.4, 0, 1, 1)",
+        "ease-out": "cubic-bezier(0, 0, 0.2, 1)",
+        "ease-in-out": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "ease-bounce": "cubic-bezier(0.34, 1.56, 0.64, 1)",
       },
     },
   },
