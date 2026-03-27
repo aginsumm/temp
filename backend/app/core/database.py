@@ -1,30 +1,22 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
-import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 DATABASE_URL = settings.DATABASE_URL
 
-if DATABASE_URL.startswith("postgresql"):
-    try:
-        engine = create_async_engine(
-            DATABASE_URL,
-            echo=settings.DEBUG,
-            future=True,
-        )
-    except Exception:
-        SQLITE_URL = "sqlite+aiosqlite:///./heritage.db"
-        engine = create_async_engine(
-            SQLITE_URL,
-            echo=settings.DEBUG,
-            future=True,
-        )
-else:
+try:
     engine = create_async_engine(
         DATABASE_URL,
         echo=settings.DEBUG,
         future=True,
     )
+    logger.info(f"数据库连接成功: {DATABASE_URL.split('://')[0]}")
+except Exception as e:
+    logger.error(f"数据库连接失败: {e}")
+    raise
 
 AsyncSessionLocal = async_sessionmaker(
     engine,
@@ -54,3 +46,11 @@ async def get_db():
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    from app.utils.init_sample_data import init_sample_data
+    async with AsyncSessionLocal() as session:
+        try:
+            await init_sample_data(session)
+            logger.info("示例数据初始化成功")
+        except Exception as e:
+            logger.warning(f"初始化示例数据失败: {e}")

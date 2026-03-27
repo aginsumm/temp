@@ -21,8 +21,18 @@ const mockKnowledgeBase = {
 
 武汉木雕的代表作品包括黄鹤楼木雕、楚文化主题木雕等，融合了楚文化的浪漫主义风格和现代审美。`,
     entities: [
-      { id: '1', name: '武汉木雕', type: 'technique', description: '湖北省武汉市传统工艺美术，融合楚文化特色' },
-      { id: '2', name: '浮雕技法', type: 'technique', description: '武汉木雕核心技法之一，分为浅浮雕和深浮雕' },
+      {
+        id: '1',
+        name: '武汉木雕',
+        type: 'technique',
+        description: '湖北省武汉市传统工艺美术，融合楚文化特色',
+      },
+      {
+        id: '2',
+        name: '浮雕技法',
+        type: 'technique',
+        description: '武汉木雕核心技法之一，分为浅浮雕和深浮雕',
+      },
       { id: '3', name: '透雕技法', type: 'technique', description: '镂空雕刻技术，工艺难度较高' },
     ],
     relatedKeywords: ['楚文化', '黄鹤楼', '传统工艺', '非物质文化遗产'],
@@ -52,7 +62,12 @@ const mockKnowledgeBase = {
 
 汉绣的代表作品有《黄鹤楼》、《百鸟朝凤》、《龙凤呈祥》等，体现了楚文化的浪漫主义精神。`,
     entities: [
-      { id: '1', name: '汉绣', type: 'technique', description: '湖北传统刺绣艺术，中国五大名绣之一' },
+      {
+        id: '1',
+        name: '汉绣',
+        type: 'technique',
+        description: '湖北传统刺绣艺术，中国五大名绣之一',
+      },
       { id: '2', name: '垫绣', type: 'technique', description: '汉绣独有针法，形成浮雕效果' },
       { id: '3', name: '荆沙地区', type: 'region', description: '汉绣主要流行区域' },
     ],
@@ -129,7 +144,12 @@ const mockKnowledgeBase = {
 **现代传承**
 楚文化元素在现代设计中广泛应用，如武汉的城市形象、文创产品、非遗传承等，展现了传统文化的当代价值。`,
     entities: [
-      { id: '1', name: '楚文化', type: 'pattern', description: '中国古代区域文化，以湖北湖南为中心' },
+      {
+        id: '1',
+        name: '楚文化',
+        type: 'pattern',
+        description: '中国古代区域文化，以湖北湖南为中心',
+      },
       { id: '2', name: '楚辞', type: 'work', description: '楚文化代表文学，浪漫主义典范' },
       { id: '3', name: '凤鸟图腾', type: 'pattern', description: '楚文化核心符号，楚人崇凤' },
       { id: '4', name: '漆器', type: 'work', description: '楚文化代表工艺，技艺精湛' },
@@ -177,9 +197,19 @@ const mockKnowledgeBase = {
 **湖北非遗代表**
 湖北省拥有丰富的非遗资源，如汉绣、武汉木雕、黄梅戏、武当武术等，都在积极进行保护传承工作。`,
     entities: [
-      { id: '1', name: '非物质文化遗产', type: 'pattern', description: '传统文化表现形式，需要保护传承' },
+      {
+        id: '1',
+        name: '非物质文化遗产',
+        type: 'pattern',
+        description: '传统文化表现形式，需要保护传承',
+      },
       { id: '2', name: '传承人', type: 'inheritor', description: '非遗技艺的持有者和传承者' },
-      { id: '3', name: '生产性保护', type: 'technique', description: '将传统技艺与现代生活结合的保护方式' },
+      {
+        id: '3',
+        name: '生产性保护',
+        type: 'technique',
+        description: '将传统技艺与现代生活结合的保护方式',
+      },
     ],
     relatedKeywords: ['传承人', '立法保护', '数字化', '文创产品', '教育传播'],
   },
@@ -317,21 +347,10 @@ const smartResponses = {
   },
 };
 
-const keywordMappings = {
-  技法: ['技法', '技术', '方法', '技巧', '工艺'],
-  历史: ['历史', '由来', '起源', '发展', '演变'],
-  特点: ['特点', '特色', '特征', '风格', '风格特点'],
-  代表: ['代表', '代表作', '著名', '知名', '经典'],
-  传承: ['传承', '继承', '传人', '继承人'],
-  保护: ['保护', '保存', '维护', '传承保护'],
-  体验: ['体验', '参观', '游览', '观看', '欣赏'],
-  学习: ['学习', '学会', '入门', '教程', '怎么学'],
-};
-
 function findBestMatch(question) {
   const normalizedQuestion = question.toLowerCase().trim();
 
-  for (const [key, data] of Object.entries(mockKnowledgeBase)) {
+  for (const [, data] of Object.entries(mockKnowledgeBase)) {
     for (const keyword of data.keywords) {
       if (normalizedQuestion.includes(keyword.toLowerCase())) {
         return {
@@ -361,7 +380,7 @@ function findBestMatch(question) {
     }
   }
 
-  for (const [key, data] of Object.entries(mockKnowledgeBase)) {
+  for (const [, data] of Object.entries(mockKnowledgeBase)) {
     for (const keyword of data.keywords) {
       const similarity = calculateSimilarity(normalizedQuestion, keyword.toLowerCase());
       if (similarity > 0.6) {
@@ -377,7 +396,10 @@ function findBestMatch(question) {
   return {
     matched: false,
     data: {
-      answer: smartResponses.unknown.responses[Math.floor(Math.random() * smartResponses.unknown.responses.length)],
+      answer:
+        smartResponses.unknown.responses[
+          Math.floor(Math.random() * smartResponses.unknown.responses.length)
+        ],
       entities: [],
       relatedKeywords: ['非遗文化', '传统技艺', '楚文化'],
     },

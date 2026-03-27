@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import MainLayout from "./layouts/MainLayout";
 import ChatPage from "./pages/Chat";
 import Homepage from "./pages/Homepage";
+import KnowledgePage from "./pages/Knowledge";
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
           <Route index element={<Homepage />} />
           <Route path="chat" element={<ChatPage />} />
           <Route path="chat/:sessionId" element={<ChatPage />} />
+          <Route path="knowledge" element={<KnowledgePage />} />
         </Route>
       </Routes>
     </BrowserRouter>

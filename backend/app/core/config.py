@@ -8,14 +8,14 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
     
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/heritage_db"
-    REDIS_URL: str = "redis://localhost:6379/0"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./heritage.db"
+    REDIS_URL: Optional[str] = None
     
-    NEO4J_URI: str = "bolt://localhost:7687"
-    NEO4J_USER: str = "neo4j"
-    NEO4J_PASSWORD: str = "password"
+    NEO4J_URI: Optional[str] = None
+    NEO4J_USER: Optional[str] = None
+    NEO4J_PASSWORD: Optional[str] = None
     
-    MILVUS_HOST: str = "localhost"
+    MILVUS_HOST: Optional[str] = None
     MILVUS_PORT: int = 19530
     
     JWT_SECRET_KEY: str = "your-secret-key-change-in-production"

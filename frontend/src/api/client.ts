@@ -71,4 +71,40 @@ export const checkApiConnection = async (): Promise<boolean> => {
   }
 };
 
+let healthCheckInterval: NodeJS.Timeout | null = null;
+let isReconnecting = false;
+
+export const startHealthCheck = (interval = 30000) => {
+  stopHealthCheck();
+  
+  healthCheckInterval = setInterval(async () => {
+    const isConnected = await checkApiConnection();
+    
+    if (!isConnected && !isReconnecting) {
+      isReconnecting = true;
+      console.log('Attempting to reconnect...');
+      
+      const reconnected = await checkApiConnection();
+      if (reconnected) {
+        console.log('Reconnected successfully');
+        isReconnecting = false;
+      }
+    }
+  }, interval);
+};
+
+export const stopHealthCheck = () => {
+  if (healthCheckInterval) {
+    clearInterval(healthCheckInterval);
+    healthCheckInterval = null;
+  }
+};
+
+export const forceReconnect = async (): Promise<boolean> => {
+  isReconnecting = true;
+  const reconnected = await checkApiConnection();
+  isReconnecting = false;
+  return reconnected;
+};
+
 export default apiClient;

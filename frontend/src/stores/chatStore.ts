@@ -1,14 +1,18 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Session, Message } from '../types/chat';
+import { networkStatusService, type ConnectionMode } from '../services/networkStatus';
 
 interface ChatState {
   sessions: Session[];
   currentSessionId: string | null;
   messages: Message[];
+  messagesBySession: Record<string, Message[]>;
   isLoading: boolean;
   isStreaming: boolean;
   error: string | null;
+  networkMode: ConnectionMode;
+  pendingSyncCount: number;
 
   createSession: (userId?: string) => Session;
   deleteSession: (id: string) => void;
@@ -26,17 +30,27 @@ interface ChatState {
 
   setSessions: (sessions: Session[]) => void;
   setMessages: (messages: Message[]) => void;
+  setMessagesForSession: (sessionId: string, messages: Message[]) => void;
+
+  setNetworkMode: (mode: ConnectionMode) => void;
+  setPendingSyncCount: (count: number) => void;
+
+  getSessionMessages: (sessionId: string) => Message[];
+  clearError: () => void;
 }
 
 export const useChatStore = create<ChatState>()(
   persist(
-    (set, _get) => ({
+    (set, get) => ({
       sessions: [],
       currentSessionId: null,
       messages: [],
+      messagesBySession: {},
       isLoading: false,
       isStreaming: false,
       error: null,
+      networkMode: 'checking',
+      pendingSyncCount: 0,
 
       createSession: (userId = 'default') => {
         const newSession: Session = {
@@ -52,6 +66,10 @@ export const useChatStore = create<ChatState>()(
           sessions: [newSession, ...state.sessions],
           currentSessionId: newSession.id,
           messages: [],
+          messagesBySession: {
+            ...state.messagesBySession,
+            [newSession.id]: [],
+          },
         }));
         return newSession;
       },
@@ -65,16 +83,26 @@ export const useChatStore = create<ChatState>()(
                 ? newSessions[0].id
                 : null
               : state.currentSessionId;
+
+          const newMessagesBySession = { ...state.messagesBySession };
+          delete newMessagesBySession[id];
+
           return {
             sessions: newSessions,
             currentSessionId: newCurrentId,
             messages: state.currentSessionId === id ? [] : state.messages,
+            messagesBySession: newMessagesBySession,
           };
         });
       },
 
       switchSession: (id) => {
-        set({ currentSessionId: id });
+        const state = get();
+        const sessionMessages = state.messagesBySession[id] || [];
+        set({
+          currentSessionId: id,
+          messages: sessionMessages,
+        });
       },
 
       updateSessionTitle: (id, title) => {
@@ -92,20 +120,40 @@ export const useChatStore = create<ChatState>()(
       },
 
       addMessage: (message) => {
-        set((state) => ({
-          messages: [...state.messages, message],
-          sessions: state.sessions.map((s) =>
-            s.id === message.sessionId
-              ? { ...s, messageCount: s.messageCount + 1, updatedAt: new Date() }
-              : s
-          ),
-        }));
+        set((state) => {
+          const sessionId = message.sessionId;
+          const currentMessages = state.messagesBySession[sessionId] || [];
+
+          return {
+            messages: [...state.messages, message],
+            messagesBySession: {
+              ...state.messagesBySession,
+              [sessionId]: [...currentMessages, message],
+            },
+            sessions: state.sessions.map((s) =>
+              s.id === sessionId
+                ? { ...s, messageCount: s.messageCount + 1, updatedAt: new Date() }
+                : s
+            ),
+          };
+        });
       },
 
       updateMessage: (id, updates) => {
-        set((state) => ({
-          messages: state.messages.map((m) => (m.id === id ? { ...m, ...updates } : m)),
-        }));
+        set((state) => {
+          const currentSessionId = state.currentSessionId;
+          if (!currentSessionId) return state;
+
+          return {
+            messages: state.messages.map((m) => (m.id === id ? { ...m, ...updates } : m)),
+            messagesBySession: {
+              ...state.messagesBySession,
+              [currentSessionId]: (state.messagesBySession[currentSessionId] || []).map((m) =>
+                m.id === id ? { ...m, ...updates } : m
+              ),
+            },
+          };
+        });
       },
 
       clearMessages: () => {
@@ -129,7 +177,38 @@ export const useChatStore = create<ChatState>()(
       },
 
       setMessages: (messages) => {
-        set({ messages });
+        const currentSessionId = get().currentSessionId;
+        set((state) => ({
+          messages,
+          messagesBySession: currentSessionId
+            ? { ...state.messagesBySession, [currentSessionId]: messages }
+            : state.messagesBySession,
+        }));
+      },
+
+      setMessagesForSession: (sessionId, messages) => {
+        set((state) => ({
+          messagesBySession: {
+            ...state.messagesBySession,
+            [sessionId]: messages,
+          },
+        }));
+      },
+
+      setNetworkMode: (mode) => {
+        set({ networkMode: mode });
+      },
+
+      setPendingSyncCount: (count) => {
+        set({ pendingSyncCount: count });
+      },
+
+      getSessionMessages: (sessionId) => {
+        return get().messagesBySession[sessionId] || [];
+      },
+
+      clearError: () => {
+        set({ error: null });
       },
     }),
     {
@@ -137,7 +216,12 @@ export const useChatStore = create<ChatState>()(
       partialize: (state) => ({
         sessions: state.sessions,
         currentSessionId: state.currentSessionId,
+        messagesBySession: state.messagesBySession,
       }),
     }
   )
 );
+
+networkStatusService.subscribe((status) => {
+  useChatStore.getState().setNetworkMode(status.mode);
+});

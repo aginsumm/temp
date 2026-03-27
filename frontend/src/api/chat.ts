@@ -21,15 +21,14 @@ export const chatApi = {
       return response.data;
     } catch (error) {
       console.warn('API unavailable, using intelligent mock response');
-      return generateMockResponse(request.content);
+      return generateMockResponse(request.content) as ChatResponse;
     }
   },
 
   sendMessageStream: async (
     request: ChatRequest,
     onChunk: (chunk: string) => void,
-    onComplete: (response: ChatResponse) => void,
-    onError: (error: Error) => void
+    onComplete: (response: ChatResponse) => void
   ): Promise<void> => {
     try {
       const response = await fetch(`${apiClient.defaults.baseURL}/api/v1/chat/stream`, {
@@ -47,12 +46,13 @@ export const chatApi = {
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
-      let fullContent = '';
       let lastResponse: ChatResponse | null = null;
 
       if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
+        let done = false;
+        while (!done) {
+          const { done: readerDone, value } = await reader.read();
+          done = readerDone;
           if (done) break;
 
           const chunk = decoder.decode(value, { stream: true });
@@ -63,7 +63,6 @@ export const chatApi = {
               try {
                 const data = JSON.parse(line.slice(6));
                 if (data.type === 'content') {
-                  fullContent += data.content;
                   onChunk(data.content);
                 } else if (data.type === 'complete') {
                   lastResponse = data.response;
@@ -100,7 +99,7 @@ export const chatApi = {
           }
         } else {
           clearInterval(interval);
-          onComplete(mockResponse);
+          onComplete(mockResponse as ChatResponse);
         }
       }, 20);
     }

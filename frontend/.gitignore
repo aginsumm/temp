@@ -29,6 +29,18 @@ output/
 coverage/
 *.local
 
+# TypeScript 编译缓存
+*.tsbuildinfo
+.tsbuildinfo
+
+# 测试覆盖率
+.nyc_output/
+
+# 打包器缓存
+.cache/
+.parcel-cache/
+.vite/
+
 # 日志
 logs/
 *.log
@@ -36,3 +48,19 @@ logs/
 # 系统文件
 Thumbs.db
 Desktop.ini
+
+# 敏感文件（证书、密钥等）
+*.pem
+*.key
+*.crt
+
+# 临时文件
+*.temp
+*.tmp
+temp/
+tmp/
+
+# 操作系统生成的文件
+.Spotlight-V100
+.Trashes
+ehthumbs.db
