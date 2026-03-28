@@ -1,8 +1,20 @@
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import MainLayout from "./layouts/MainLayout";
+import ChatPage from "./pages/Chat";
+import Homepage from "./pages/Homepage";
+import KnowledgePage from "./pages/Knowledge";
+
 export default function App() {
   return (
-    <div className="bg-primary-100 min-h-screen p-8">
-      <h1 className="text-primary-700 text-4xl font-bold">地方志&非遗文化数字生命互动引擎</h1>
-      <p className="mt-4 text-lg">前端开发环境已成功配置</p>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<MainLayout />}>
+          <Route index element={<Homepage />} />
+          <Route path="chat" element={<ChatPage />} />
+          <Route path="chat/:sessionId" element={<ChatPage />} />
+          <Route path="knowledge" element={<KnowledgePage />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }
