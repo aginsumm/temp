@@ -5,7 +5,7 @@ import uvicorn
 
 from app.core.config import settings
 from app.core.database import init_db
-from app.api.v1 import chat, knowledge, favorite
+from app.api.v1 import chat, knowledge, favorite, user  # 添加用户路由
 from app.models import chat as chat_models
 from app.models import knowledge as knowledge_models
 
@@ -25,7 +25,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,6 +34,7 @@ app.add_middleware(
 app.include_router(chat.router, tags=["chat"])
 app.include_router(knowledge.router, tags=["knowledge"])
 app.include_router(favorite.router, tags=["favorites"])
+app.include_router(user.router, prefix="/api/v1", tags=["user"])  # 注册用户路由
 
 
 @app.get("/")

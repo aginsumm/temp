@@ -5,6 +5,7 @@ from typing import Optional, List
 from app.core.database import get_db
 from app.services.knowledge_service import KnowledgeService
 from app.schemas.knowledge import (
+    Entity,
     EntityCreate,
     EntityUpdate,
     RelationshipCreate,
