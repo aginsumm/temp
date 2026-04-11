@@ -1,25 +1,25 @@
 import { Link } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import {
   MessageSquare,
   Network,
   Layers,
   ArrowRight,
-  Sparkles,
   BookOpen,
   Users,
   Award,
   ChevronDown,
   Play,
   Star,
-  Heart,
   Globe,
   Zap,
   Shield,
   TrendingUp,
-  MousePointer2,
+  Image as ImageIcon,
 } from 'lucide-react';
+import HeritageImages from '../../assets/heritage-images';
+import '../../styles/heritage.css';
 
 const floatingElements = [
   { icon: '🎭', delay: 0, x: '10%', y: '20%' },
@@ -33,38 +33,41 @@ const floatingElements = [
 const features = [
   {
     icon: MessageSquare,
-    title: '智能问答',
-    description: '基于大语言模型的智能对话系统，为您提供专业的非遗知识解答',
+    title: '非遗智能问答',
+    description: '基于大语言模型的智能对话系统，为您提供专业的非遗知识解答与创意辅助',
     link: '/chat',
-    gradient: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)',
-    bgGlow: 'rgba(245, 158, 11, 0.2)',
+    gradient: 'linear-gradient(135deg, #c41e3a 0%, #8b0000 100%)',
+    bgGlow: 'rgba(196, 30, 58, 0.25)',
     stats: '10万+ 问答',
+    badge: 'AI驱动',
   },
   {
     icon: Network,
-    title: '知识图谱',
-    description: '可视化展示非遗知识网络，探索文化传承的脉络与关联',
+    title: '非遗知识图谱',
+    description: '可视化展示非遗知识网络，探索文化传承的脉络与关联关系',
     link: '/knowledge',
-    gradient: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
-    bgGlow: 'rgba(59, 130, 246, 0.2)',
+    gradient: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+    bgGlow: 'rgba(59, 130, 246, 0.25)',
     stats: '5000+ 节点',
+    badge: '可视化',
   },
   {
-    icon: Layers,
-    title: '元素提取',
-    description: '智能识别和提取非遗元素，助力文化研究与传承',
+    icon: ImageIcon,
+    title: '非遗文创生成',
+    description: '智能识别和提取非遗元素，助力文化研究与文创产品设计',
     link: '/extract',
-    gradient: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
-    bgGlow: 'rgba(139, 92, 246, 0.2)',
+    gradient: 'linear-gradient(135deg, #daa520 0%, #b8860b 100%)',
+    bgGlow: 'rgba(218, 165, 32, 0.25)',
     stats: '100+ 类型',
+    badge: 'AIGC',
   },
 ];
 
 const stats = [
-  { icon: BookOpen, value: '1000+', label: '非遗项目', trend: '+12%' },
-  { icon: Users, value: '500+', label: '传承人', trend: '+8%' },
-  { icon: Award, value: '100+', label: '技艺分类', trend: '+5%' },
-  { icon: Globe, value: '50+', label: '文化区域', trend: '+3%' },
+  { icon: BookOpen, value: '1000+', label: '非遗项目', trend: '+12%', color: '#c41e3a' },
+  { icon: Users, value: '500+', label: '传承人', trend: '+8%', color: '#1e3a8a' },
+  { icon: Award, value: '100+', label: '技艺分类', trend: '+5%', color: '#daa520' },
+  { icon: Globe, value: '50+', label: '文化区域', trend: '+3%', color: '#228b22' },
 ];
 
 const highlights = [
@@ -72,310 +75,580 @@ const highlights = [
     icon: Zap,
     title: '极速响应',
     description: '毫秒级智能响应',
+    gradient: 'linear-gradient(135deg, #f59e0b, #ea580c)',
   },
   {
     icon: Shield,
     title: '权威数据',
     description: '官方认证信息源',
+    gradient: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
   },
   {
     icon: TrendingUp,
     title: '持续更新',
     description: '实时扩充知识库',
+    gradient: 'linear-gradient(135deg, #10b981, #059669)',
   },
 ];
 
-const testimonials = [
-  {
-    content: '这个平台让我对非遗文化有了全新的认识，AI助手的解答非常专业！',
-    author: '文化研究者',
-    avatar: '👨‍🔬',
-  },
-  {
-    content: '知识图谱的可视化效果太棒了，可以清晰地看到文化传承的脉络。',
-    author: '高校教师',
-    avatar: '👩‍🏫',
-  },
-  {
-    content: '作为一个非遗爱好者，这个平台满足了我对传统文化的所有好奇心。',
-    author: '文化爱好者',
-    avatar: '🎨',
-  },
-];
+const heritageGallery = HeritageImages();
 
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.1, delayChildren: 0.2 },
+    transition: { staggerChildren: 0.15, delayChildren: 0.3 },
   },
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 30 },
+  hidden: { opacity: 0, y: 30, scale: 0.95 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: { type: 'spring', stiffness: 100, damping: 15 },
+    scale: 1,
+    transition: { type: 'spring', stiffness: 100, damping: 20, duration: 0.6 },
   },
 };
 
 export default function Homepage() {
-  const [currentTestimonial, setCurrentTestimonial] = useState(0);
-
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTestimonial((prev) => (prev + 1) % testimonials.length);
-    }, 4000);
-    return () => clearInterval(interval);
+    const handleScroll = () => {
+      // 滚动监听逻辑（如需要可在此添加）
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   return (
-    <div
-      className="min-h-[calc(100vh-64px)] overflow-hidden"
-      style={{ background: 'var(--color-background)' }}
-    >
-      <section className="relative min-h-[90vh] flex items-center justify-center py-20 px-4 overflow-hidden">
-        <div className="absolute inset-0">
+    <div className="min-h-[calc(100vh-64px)] overflow-hidden">
+      {/* Hero Section - 非遗建筑背景 */}
+      <section className="relative min-h-[95vh] flex items-center justify-center py-20 px-4 overflow-hidden hero-heritage-bg">
+        {/* 古建筑轮廓剪影 */}
+        <div className="building-silhouette" />
+
+        {/* 古风云纹装饰 */}
+        <div className="cloud-pattern" style={{ top: '10%', left: '5%' }} />
+        <div className="cloud-pattern" style={{ top: '60%', right: '8%', animationDelay: '-5s' }} />
+        <div
+          className="cloud-pattern"
+          style={{ bottom: '20%', left: '15%', animationDelay: '-10s' }}
+        />
+
+        {/* 金色粒子特效 */}
+        {[...Array(12)].map((_, i) => (
+          <div
+            key={i}
+            className="golden-particle"
+            style={{
+              left: `${10 + i * 7.5}%`,
+              top: `${15 + ((i * 13) % 70)}%`,
+              animationDelay: `${i * 0.7}s`,
+              width: `${3 + Math.random() * 4}px`,
+              height: `${3 + Math.random() * 4}px`,
+            }}
+          />
+        ))}
+
+        {/* 动态光晕效果 */}
+        <div className="absolute inset-0 pointer-events-none">
           <motion.div
             animate={{
-              scale: [1, 1.2, 1],
-              opacity: [0.3, 0.5, 0.3],
+              scale: [1, 1.3, 1],
+              opacity: [0.15, 0.35, 0.15],
+              x: [0, 50, 0],
+              y: [0, -30, 0],
             }}
-            transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full blur-3xl"
-            style={{ background: 'var(--gradient-primary)', opacity: 0.3 }}
+            transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+            className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full"
+            style={{ background: 'radial-gradient(circle, rgba(218,165,32,0.4), transparent 70%)' }}
           />
           <motion.div
             animate={{
               scale: [1.2, 1, 1.2],
-              opacity: [0.3, 0.5, 0.3],
+              opacity: [0.15, 0.3, 0.15],
+              x: [0, -40, 0],
+              y: [0, 40, 0],
+            }}
+            transition={{
+              duration: 12,
+              repeat: Infinity,
+              ease: 'easeInOut',
+              delay: 3,
+            }}
+            className="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full"
+            style={{ background: 'radial-gradient(circle, rgba(196,30,58,0.35), transparent 70%)' }}
+          />
+          <motion.div
+            animate={{
+              scale: [1, 1.2, 1],
+              opacity: [0.1, 0.25, 0.1],
+              x: [0, 30, 0],
+              y: [0, -20, 0],
             }}
             transition={{
               duration: 8,
               repeat: Infinity,
               ease: 'easeInOut',
-              delay: 2,
+              delay: 1.5,
             }}
-            className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full blur-3xl"
-            style={{ background: 'var(--gradient-secondary)', opacity: 0.3 }}
-          />
-          <motion.div
-            animate={{
-              scale: [1, 1.3, 1],
-              opacity: [0.2, 0.4, 0.2],
-            }}
-            transition={{
-              duration: 10,
-              repeat: Infinity,
-              ease: 'easeInOut',
-              delay: 4,
-            }}
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-3xl"
-            style={{ background: 'var(--gradient-accent)', opacity: 0.2 }}
+            className="absolute top-1/2 left-1/2 w-64 h-64 rounded-full"
+            style={{ background: 'radial-gradient(circle, rgba(255,215,0,0.3), transparent 70%)' }}
           />
         </div>
 
+        {/* 浮动图标 */}
         {floatingElements.map((el, index) => (
           <motion.div
             key={index}
             initial={{ opacity: 0, scale: 0 }}
             animate={{
-              opacity: [0.4, 0.7, 0.4],
-              scale: [1, 1.2, 1],
-              y: [0, -20, 0],
+              opacity: [0.5, 0.9, 0.5],
+              scale: [1, 1.25, 1],
+              y: [0, -25, 0],
+              rotate: [0, 10, -10, 0],
             }}
             transition={{
-              duration: 4,
+              duration: 5 + index * 0.5,
               repeat: Infinity,
               ease: 'easeInOut',
               delay: el.delay,
             }}
-            className="absolute text-4xl pointer-events-none"
-            style={{ left: el.x, top: el.y }}
+            className="absolute text-5xl pointer-events-none z-10 drop-shadow-lg"
+            style={{
+              left: el.x,
+              top: el.y,
+              filter: 'drop-shadow(0 4px 8px rgba(218,165,32,0.3))',
+              cursor: 'pointer',
+            }}
+            whileHover={{ scale: 1.3, rotate: 15, y: el.y - 35 }}
           >
             {el.icon}
           </motion.div>
         ))}
 
+        {/* 主要内容 - 左右布局 */}
         <motion.div
           variants={containerVariants}
           initial="hidden"
           animate="visible"
-          className="relative z-10 max-w-5xl mx-auto text-center"
+          className="relative z-20 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center"
         >
-          <motion.div variants={itemVariants} className="mb-8">
+          {/* 左侧内容 */}
+          <div className="text-center lg:text-left">
+            {/* 标题徽章 */}
+            <motion.div
+              variants={itemVariants}
+              className="inline-flex items-center gap-3 px-6 py-3 rounded-full mb-10 shadow-xl backdrop-blur-md lg:inline-flex"
+              style={{
+                background: 'rgba(250,249,246,0.15)',
+                border: '2px solid rgba(218,165,32,0.4)',
+                backdropFilter: 'blur(20px)',
+              }}
+            >
+              <motion.div
+                animate={{ rotate: [0, 360] }}
+                transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
+              >
+                <Star size={18} style={{ color: '#ffd700' }} fill="#ffd700" />
+              </motion.div>
+              <span
+                className="text-base font-semibold tracking-wider"
+                style={{ color: '#faf9f6', fontFamily: "'Noto Serif SC', serif" }}
+              >
+                非遗数字生命互动引擎
+              </span>
+              <span
+                className="seal-badge text-xs px-3 py-1 ml-2"
+                style={{
+                  background: 'rgba(196,30,58,0.9)',
+                  borderColor: '#c41e3a',
+                  color: '#fff',
+                }}
+              >
+                v2.0
+              </span>
+            </motion.div>
+
+            {/* 主标题 */}
+            <motion.h1
+              variants={itemVariants}
+              className="text-4xl md:text-5xl lg:text-6xl font-bold mb-8 leading-tight tracking-wide"
+              style={{ fontFamily: "'Noto Serif SC', serif", color: '#faf9f6' }}
+            >
+              面向地方志与非遗文化的
+              <br />
+              <motion.span
+                className="inline-block mt-2"
+                style={{
+                  background: 'linear-gradient(135deg, #ffd700 0%, #ffed4e 50%, #daa520 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                  filter: 'drop-shadow(0 2px 8px rgba(218,165,32,0.4))',
+                  textShadow: 'none',
+                }}
+              >
+                智能检索、问答与创意辅助平台
+              </motion.span>
+            </motion.h1>
+
+            {/* 副标题描述 */}
+            <motion.p
+              variants={itemVariants}
+              className="text-lg md:text-xl max-w-2xl mx-auto lg:mx-0 mb-14 leading-relaxed font-light tracking-wide"
+              style={{ color: 'rgba(250,249,246,0.88)', fontFamily: "'Noto Sans SC', sans-serif" }}
+            >
+              面向地方志与非遗文化的智能检索、问答与创意辅助平台
+            </motion.p>
+
+            {/* CTA按钮组 */}
+            <motion.div
+              variants={itemVariants}
+              className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-5"
+            >
+              <Link to="/chat" className="group block w-full sm:w-auto">
+                <motion.div
+                  whileHover={{ scale: 1.06, y: -4 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="flex items-center justify-center gap-3 px-10 py-5 rounded-2xl font-bold text-lg shadow-2xl relative overflow-hidden"
+                  style={{
+                    background: 'linear-gradient(135deg, #c41e3a 0%, #8b0000 100%)',
+                    color: '#fff',
+                    boxShadow:
+                      '0 15px 50px -10px rgba(196,30,58,0.6), inset 0 1px 0 rgba(255,255,255,0.2)',
+                    letterSpacing: '1px',
+                  }}
+                >
+                  <motion.div
+                    animate={{ rotate: [0, 10, -10, 0] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                  >
+                    <Play size={22} fill="currentColor" />
+                  </motion.div>
+                  立即体验问答
+                  <motion.div
+                    animate={{ x: [0, 6, 0] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                  >
+                    <ArrowRight size={22} />
+                  </motion.div>
+                  {/* 按钮光泽效果 */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-20 translate-x-[-100%] group-hover:translate-x-[100%] transition-all duration-700" />
+                  {/* 光晕效果 */}
+                  <motion.div
+                    className="absolute inset-0 rounded-2xl"
+                    style={{
+                      background: 'radial-gradient(circle, rgba(255,255,255,0.3), transparent 70%)',
+                      opacity: 0,
+                    }}
+                    whileHover={{ opacity: 1, scale: [1, 1.1, 1] }}
+                    transition={{ duration: 0.5 }}
+                  />
+                </motion.div>
+              </Link>
+
+              <Link to="/knowledge" className="group block w-full sm:w-auto">
+                <motion.div
+                  whileHover={{ scale: 1.06, y: -4 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="flex items-center justify-center gap-3 px-10 py-5 rounded-2xl font-bold text-lg backdrop-blur-md"
+                  style={{
+                    background: 'rgba(250,249,246,0.12)',
+                    color: '#faf9f6',
+                    border: '2px solid rgba(218,165,32,0.5)',
+                    boxShadow: '0 10px 40px -10px rgba(0,0,0,0.3)',
+                    letterSpacing: '1px',
+                  }}
+                >
+                  <motion.div
+                    animate={{ rotate: [0, 360] }}
+                    transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+                  >
+                    <Network size={22} />
+                  </motion.div>
+                  检索知识图谱
+                  {/* 边框光效 */}
+                  <motion.div
+                    className="absolute inset-0 rounded-2xl"
+                    style={{
+                      background:
+                        'linear-gradient(135deg, rgba(218,165,32,0.2), transparent 50%, rgba(218,165,32,0.2))',
+                      opacity: 0,
+                    }}
+                    whileHover={{ opacity: 1 }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </motion.div>
+              </Link>
+            </motion.div>
+          </div>
+
+          {/* 右侧六边形大图 */}
+          <motion.div
+            variants={itemVariants}
+            className="relative flex items-center justify-center w-full"
+          >
             <motion.div
               initial={{ scale: 0, rotate: -180 }}
               animate={{ scale: 1, rotate: 0 }}
               transition={{
                 type: 'spring',
-                delay: 0.3,
+                delay: 0.6,
                 stiffness: 200,
                 damping: 15,
               }}
-              className="relative inline-block mb-6"
+              className="relative w-full"
+              whileHover={{ scale: 1.02 }}
             >
+              {/* 六边形容器 */}
+              <svg
+                viewBox="0 0 400 440"
+                className="w-full h-auto drop-shadow-2xl"
+                style={{
+                  filter: 'drop-shadow(0 25px 50px rgba(218,165,32,0.4))',
+                  maxHeight: '80vh',
+                }}
+              >
+                <defs>
+                  {/* 六边形渐变背景 */}
+                  <linearGradient id="hexGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#daa520" stopOpacity="0.3" />
+                    <stop offset="50%" stopColor="#c41e3a" stopOpacity="0.2" />
+                    <stop offset="100%" stopColor="#8b4513" stopOpacity="0.3" />
+                  </linearGradient>
+
+                  {/* 六边形边框渐变 */}
+                  <linearGradient id="hexBorderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#ffd700" />
+                    <stop offset="50%" stopColor="#ffed4e" />
+                    <stop offset="100%" stopColor="#daa520" />
+                  </linearGradient>
+
+                  {/* 内部图案 */}
+                  <pattern
+                    id="heritagePattern"
+                    x="0"
+                    y="0"
+                    width="60"
+                    height="60"
+                    patternUnits="userSpaceOnUse"
+                  >
+                    <circle cx="30" cy="30" r="2" fill="rgba(255,215,0,0.15)" />
+                    <path
+                      d="M 30 15 L 35 25 L 45 30 L 35 35 L 30 45 L 25 35 L 15 30 L 25 25 Z"
+                      fill="none"
+                      stroke="rgba(255,215,0,0.1)"
+                      strokeWidth="1"
+                    />
+                  </pattern>
+
+                  {/* 发光效果 */}
+                  <filter id="glow">
+                    <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                    <feMerge>
+                      <feMergeNode in="coloredBlur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
+                </defs>
+
+                {/* 六边形主体 */}
+                <polygon
+                  points="200,20 370,120 370,320 200,420 30,320 30,120"
+                  fill="url(#hexGrad)"
+                  stroke="url(#hexBorderGrad)"
+                  strokeWidth="3"
+                  filter="url(#glow)"
+                />
+
+                {/* 图案层 */}
+                <polygon
+                  points="200,20 370,120 370,320 200,420 30,320 30,120"
+                  fill="url(#heritagePattern)"
+                  opacity="0.5"
+                />
+
+                {/* 古建筑剪影 */}
+                <g transform="translate(200, 220)" opacity="0.4">
+                  {/* 主建筑轮廓 */}
+                  <path
+                    d="M -80,-60 L -60,-90 L -40,-70 L -20,-95 L 0,-80 L 20,-105 L 40,-85 L 60,-110 L 80,-90 L 100,-65 L 100,80 L -100,80 Z"
+                    fill="none"
+                    stroke="#ffd700"
+                    strokeWidth="2"
+                    filter="url(#glow)"
+                  />
+
+                  {/* 屋檐装饰 */}
+                  <line
+                    x1="-90"
+                    y1="-55"
+                    x2="90"
+                    y2="-55"
+                    stroke="#ffd700"
+                    strokeWidth="1.5"
+                    opacity="0.6"
+                  />
+                  <line
+                    x1="-85"
+                    y1="-40"
+                    x2="85"
+                    y2="-40"
+                    stroke="#ffd700"
+                    strokeWidth="1"
+                    opacity="0.4"
+                  />
+
+                  {/* 门 */}
+                  <rect
+                    x="-20"
+                    y="20"
+                    width="40"
+                    height="60"
+                    fill="none"
+                    stroke="#daa520"
+                    strokeWidth="2"
+                    rx="3"
+                  />
+                  <circle cx="12" cy="52" r="3" fill="#ffd700" opacity="0.7" />
+
+                  {/* 窗户 */}
+                  <rect
+                    x="-70"
+                    y="-10"
+                    width="25"
+                    height="30"
+                    fill="none"
+                    stroke="#daa520"
+                    strokeWidth="1.5"
+                    rx="2"
+                    opacity="0.6"
+                  />
+                  <rect
+                    x="45"
+                    y="-10"
+                    width="25"
+                    height="30"
+                    fill="none"
+                    stroke="#daa520"
+                    strokeWidth="1.5"
+                    rx="2"
+                    opacity="0.6"
+                  />
+
+                  {/* 装饰云纹 */}
+                  <g transform="translate(-60, -75)" opacity="0.5">
+                    <path
+                      d="M 0,0 Q 10,-10 20,0 Q 30,-10 40,0"
+                      fill="none"
+                      stroke="#ffd700"
+                      strokeWidth="1.5"
+                    />
+                  </g>
+                  <g transform="translate(30, -90)" opacity="0.5">
+                    <path
+                      d="M 0,0 Q 10,-10 20,0 Q 30,-10 40,0"
+                      fill="none"
+                      stroke="#ffd700"
+                      strokeWidth="1.5"
+                    />
+                  </g>
+                </g>
+
+                {/* 浮动装饰元素 */}
+                <g opacity="0.6">
+                  <circle cx="100" cy="150" r="4" fill="#ffd700" filter="url(#glow)">
+                    <animate
+                      attributeName="opacity"
+                      values="0.3;1;0.3"
+                      dur="3s"
+                      repeatCount="indefinite"
+                    />
+                  </circle>
+                  <circle cx="300" cy="280" r="3" fill="#ffed4e" filter="url(#glow)">
+                    <animate
+                      attributeName="opacity"
+                      values="0.5;1;0.5"
+                      dur="2.5s"
+                      repeatCount="indefinite"
+                      delay="1s"
+                    />
+                  </circle>
+                  <circle cx="250" cy="130" r="5" fill="#daa520" filter="url(#glow)">
+                    <animate
+                      attributeName="opacity"
+                      values="0.4;1;0.4"
+                      dur="4s"
+                      repeatCount="indefinite"
+                      begin="0.5s"
+                    />
+                  </circle>
+                  <circle cx="150" cy="330" r="3.5" fill="#ffd700" filter="url(#glow)">
+                    <animate
+                      attributeName="opacity"
+                      values="0.6;1;0.6"
+                      dur="3.5s"
+                      repeatCount="indefinite"
+                      begin="1.5s"
+                    />
+                  </circle>
+                </g>
+
+                {/* 边角装饰 */}
+                <g stroke="#ffd700" strokeWidth="2" fill="none" opacity="0.7">
+                  <path d="M 190,28 L 200,20 L 210,28" />
+                  <path d="M 365,125 L 370,120 L 365,115" />
+                  <path d="M 365,315 L 370,320 L 365,325" />
+                  <path d="M 190,412 L 200,420 L 210,412" />
+                  <path d="M 35,315 L 30,320 L 35,325" />
+                  <path d="M 35,125 L 30,120 L 35,115" />
+                </g>
+              </svg>
+
+              {/* 外部光晕效果 */}
               <div
-                className="absolute inset-0 rounded-3xl blur-2xl opacity-50"
-                style={{ background: 'var(--gradient-primary)' }}
+                className="absolute inset-0 rounded-lg blur-3xl opacity-40 pointer-events-none"
+                style={{
+                  background:
+                    'radial-gradient(circle at center, rgba(218,165,32,0.6), transparent 70%)',
+                  transform: 'scale(1.2)',
+                }}
               />
-              <div
-                className="relative w-24 h-24 rounded-3xl flex items-center justify-center shadow-2xl"
-                style={{
-                  background: 'var(--gradient-primary)',
-                  boxShadow: '0 20px 60px -15px var(--color-primary)',
-                }}
-              >
-                <motion.div
-                  animate={{ rotate: [0, 10, -10, 0] }}
-                  transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-                >
-                  <Sparkles size={44} style={{ color: 'var(--color-text-inverse)' }} />
-                </motion.div>
-              </div>
             </motion.div>
           </motion.div>
 
+          {/* 特色亮点 */}
           <motion.div
             variants={itemVariants}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full mb-8 shadow-lg"
-            style={{
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-            }}
-          >
-            <motion.div
-              animate={{ rotate: [0, 360] }}
-              transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
-            >
-              <Star size={16} style={{ color: 'var(--color-primary)' }} fill="currentColor" />
-            </motion.div>
-            <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
-              非遗文化数字传承平台
-            </span>
-            <span
-              className="px-2 py-0.5 rounded-full text-xs font-semibold"
-              style={{
-                background: 'var(--gradient-primary)',
-                color: 'var(--color-text-inverse)',
-              }}
-            >
-              v2.0
-            </span>
-          </motion.div>
-
-          <motion.h1
-            variants={itemVariants}
-            className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight"
-          >
-            <span style={{ color: 'var(--color-text-primary)' }}>非遗数字生命</span>
-            <br />
-            <motion.span
-              style={{
-                background: 'var(--gradient-primary)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}
-              animate={{
-                backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
-              }}
-              transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-            >
-              互动引擎
-            </motion.span>
-          </motion.h1>
-
-          <motion.p
-            variants={itemVariants}
-            className="text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed"
-            style={{ color: 'var(--color-text-secondary)' }}
-          >
-            融合
-            <span className="font-semibold" style={{ color: 'var(--color-primary)' }}>
-              人工智能
-            </span>
-            与
-            <span className="font-semibold" style={{ color: 'var(--color-secondary)' }}>
-              传统文化
-            </span>
-            ，打造沉浸式的非遗知识探索体验，
-            <br className="hidden md:block" />
-            让千年技艺在数字时代焕发新生
-          </motion.p>
-
-          <motion.div
-            variants={itemVariants}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12"
-          >
-            <Link to="/chat" className="group">
-              <motion.div
-                whileHover={{ scale: 1.05, y: -2 }}
-                whileTap={{ scale: 0.98 }}
-                className="flex items-center gap-3 px-8 py-4 rounded-2xl font-semibold text-lg shadow-xl"
-                style={{
-                  background: 'var(--gradient-primary)',
-                  color: 'var(--color-text-inverse)',
-                  boxShadow: '0 10px 40px -10px var(--color-primary)',
-                }}
-              >
-                <Play size={20} fill="currentColor" />
-                开始探索
-                <motion.div
-                  animate={{ x: [0, 4, 0] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                >
-                  <ArrowRight size={20} />
-                </motion.div>
-              </motion.div>
-            </Link>
-
-            <Link to="/knowledge" className="group">
-              <motion.div
-                whileHover={{ scale: 1.05, y: -2 }}
-                whileTap={{ scale: 0.98 }}
-                className="flex items-center gap-3 px-8 py-4 rounded-2xl font-semibold text-lg"
-                style={{
-                  background: 'var(--color-surface)',
-                  color: 'var(--color-text-primary)',
-                  border: '2px solid var(--color-border)',
-                }}
-              >
-                <Network size={20} />
-                浏览图谱
-              </motion.div>
-            </Link>
-          </motion.div>
-
-          <motion.div
-            variants={itemVariants}
-            className="flex items-center justify-center gap-6 flex-wrap"
+            className="flex items-center justify-center gap-8 flex-wrap max-w-3xl mx-auto"
           >
             {highlights.map((item, index) => (
               <motion.div
                 key={item.title}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 25 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.8 + index * 0.1 }}
-                className="flex items-center gap-2"
+                transition={{ delay: 1 + index * 0.15 }}
+                className="flex items-center gap-3 px-5 py-3 rounded-xl backdrop-blur-sm"
+                style={{
+                  background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                }}
               >
                 <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center"
+                  className="w-11 h-11 rounded-xl flex items-center justify-center shadow-lg"
                   style={{
-                    background: 'var(--color-primary-light)',
+                    background: item.gradient,
+                    boxShadow: `0 4px 15px ${item.bgGlow || 'rgba(0,0,0,0.2)'}`,
                   }}
                 >
-                  <item.icon size={16} style={{ color: 'var(--color-primary)' }} />
+                  <item.icon size={20} style={{ color: '#fff' }} />
                 </div>
                 <div className="text-left">
-                  <div
-                    className="text-sm font-medium"
-                    style={{ color: 'var(--color-text-primary)' }}
-                  >
+                  <div className="text-sm font-bold tracking-wide" style={{ color: '#faf9f6' }}>
                     {item.title}
                   </div>
-                  <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  <div className="text-xs" style={{ color: 'rgba(250,249,246,0.65)' }}>
                     {item.description}
                   </div>
                 </div>
@@ -384,144 +657,197 @@ export default function Homepage() {
           </motion.div>
         </motion.div>
 
+        {/* 向下滚动指示器 */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1.5 }}
-          className="absolute bottom-8 left-1/2 -translate-x-1/2"
+          transition={{ delay: 2, duration: 1 }}
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20"
         >
           <motion.div
-            animate={{ y: [0, 8, 0] }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+            animate={{ y: [0, 12, 0] }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
             className="flex flex-col items-center gap-2 cursor-pointer"
-            style={{ color: 'var(--color-text-muted)' }}
+            style={{ color: 'rgba(250,249,246,0.6)' }}
           >
-            <span className="text-xs">向下滚动</span>
-            <ChevronDown size={20} />
+            <span className="text-xs font-medium tracking-widest uppercase">向下探索</span>
+            <ChevronDown size={24} strokeWidth={2.5} />
           </motion.div>
         </motion.div>
       </section>
 
-      <section className="py-20 px-4 relative">
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              'linear-gradient(180deg, transparent 0%, var(--color-surface) 50%, transparent 100%)',
-          }}
-        />
+      {/* 功能卡片区域 - 古风纯色背景 */}
+      <section className="py-24 px-4 relative ancient-bg-solid ancient-texture">
+        {/* 祥云纹样装饰条 */}
+        <div className="xiangyun-pattern absolute top-0 left-0 right-0 h-16" />
 
-        <div className="relative max-w-6xl mx-auto">
+        <div className="relative z-10 max-w-7xl mx-auto">
+          {/* 区域标题 */}
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
+            viewport={{ once: true, margin: '-100px' }}
+            className="text-center mb-18"
+            style={{ marginBottom: '72px' }}
           >
             <motion.div
-              initial={{ scale: 0 }}
-              whileInView={{ scale: 1 }}
+              initial={{ scale: 0, rotate: -180 }}
+              whileInView={{ scale: 1, rotate: 0 }}
               viewport={{ once: true }}
-              className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-6 shadow-lg"
+              transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+              className="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-8 shadow-2xl"
               style={{
-                background: 'var(--gradient-primary)',
+                background: 'linear-gradient(135deg, #daa520, #b8860b)',
+                boxShadow: '0 15px 45px -10px rgba(218,165,32,0.5)',
               }}
             >
-              <Layers size={28} style={{ color: 'var(--color-text-inverse)' }} />
+              <Layers size={36} style={{ color: '#fff' }} />
             </motion.div>
-            <h2 className="text-4xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
-              核心功能
+
+            <h2
+              className="text-4xl md:text-5xl font-bold mb-5 tracking-wide"
+              style={{
+                color: '#2c1810',
+                fontFamily: "'Noto Serif SC', serif",
+              }}
+            >
+              核心功能模块
             </h2>
             <p
-              className="text-lg max-w-xl mx-auto"
-              style={{ color: 'var(--color-text-secondary)' }}
+              className="text-lg md:text-xl max-w-2xl mx-auto leading-relaxed"
+              style={{ color: '#6b4423' }}
             >
-              三大核心模块，全方位探索非遗文化
+              三大核心模块，全方位探索非遗文化的智慧殿堂
             </p>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-8">
+          {/* 功能卡片网格 */}
+          <div className="grid md:grid-cols-3 gap-8 lg:gap-10">
             {features.map((feature, index) => (
               <motion.div
                 key={feature.title}
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.15 }}
+                initial={{ opacity: 0, y: 60, scale: 0.9 }}
+                whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                viewport={{ once: true, margin: '-50px' }}
+                transition={{
+                  delay: index * 0.2,
+                  type: 'spring',
+                  stiffness: 100,
+                  damping: 15,
+                }}
               >
                 <Link to={feature.link} className="block h-full group">
                   <motion.div
-                    whileHover={{ y: -8, scale: 1.02 }}
-                    transition={{ type: 'spring', stiffness: 300 }}
-                    className="h-full rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500"
+                    whileHover={{ y: -12, scale: 1.03 }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                    className="h-full rounded-3xl overflow-hidden heritage-card-shadow traditional-border"
                     style={{
-                      background: 'var(--color-surface)',
-                      border: '1px solid var(--color-border)',
+                      background:
+                        'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(250,249,246,0.95) 100%)',
+                      minHeight: '380px',
                     }}
                   >
+                    {/* 卡片顶部渐变区域 */}
                     <div
-                      className="relative h-40 flex items-center justify-center overflow-hidden"
-                      style={{
-                        background: feature.gradient,
-                      }}
+                      className="relative h-48 flex items-center justify-center overflow-hidden"
+                      style={{ background: feature.gradient }}
                     >
+                      {/* 光泽效果 */}
                       <div
                         className="absolute inset-0 opacity-30"
                         style={{
                           background:
-                            'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.3) 0%, transparent 60%)',
+                            'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.4) 0%, transparent 70%)',
                         }}
                       />
+
+                      {/* 图标容器 */}
                       <motion.div
-                        whileHover={{ scale: 1.1, rotate: 5 }}
+                        whileHover={{ scale: 1.15, rotate: 8 }}
                         transition={{ type: 'spring', stiffness: 300 }}
-                        className="relative w-20 h-20 rounded-2xl flex items-center justify-center shadow-xl"
+                        className="relative w-24 h-24 rounded-2xl flex items-center justify-center shadow-2xl"
                         style={{
-                          background: 'rgba(255,255,255,0.2)',
-                          backdropFilter: 'blur(10px)',
+                          background: 'rgba(255,255,255,0.25)',
+                          backdropFilter: 'blur(15px)',
+                          border: '2px solid rgba(255,255,255,0.35)',
+                          boxShadow: '0 15px 45px -10px rgba(0,0,0,0.3)',
                         }}
                       >
-                        <feature.icon size={36} style={{ color: 'white' }} />
+                        <feature.icon
+                          size={44}
+                          style={{
+                            color: '#fff',
+                            filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))',
+                          }}
+                        />
                       </motion.div>
+
+                      {/* 徽章标签 */}
                       <motion.div
-                        initial={{ opacity: 0, x: -20 }}
+                        initial={{ opacity: 0, x: 20 }}
                         whileHover={{ opacity: 1, x: 0 }}
-                        className="absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-semibold"
+                        className="absolute top-5 right-5 px-4 py-1.5 rounded-full text-xs font-bold tracking-wide shadow-lg"
                         style={{
-                          background: 'rgba(255,255,255,0.2)',
-                          color: 'white',
+                          background: 'rgba(255,255,255,0.25)',
+                          color: '#fff',
                           backdropFilter: 'blur(10px)',
+                          border: '1px solid rgba(255,255,255,0.3)',
+                          letterSpacing: '1px',
+                        }}
+                      >
+                        {feature.badge}
+                      </motion.div>
+
+                      {/* 统计数据 */}
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        whileHover={{ opacity: 1, y: 0 }}
+                        className="absolute bottom-5 left-5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-md"
+                        style={{
+                          background: 'rgba(0,0,0,0.2)',
+                          color: '#fff',
+                          backdropFilter: 'blur(8px)',
                         }}
                       >
                         {feature.stats}
                       </motion.div>
                     </div>
 
-                    <div className="p-6">
+                    {/* 卡片内容区 */}
+                    <div className="p-7 lg:p-8">
                       <h3
-                        className="text-xl font-bold mb-3 group-hover:text-primary transition-colors"
-                        style={{ color: 'var(--color-text-primary)' }}
+                        className="text-2xl font-bold mb-4 group-hover:text-primary transition-colors duration-300"
+                        style={{
+                          color: '#2c1810',
+                          fontFamily: "'Noto Serif SC', serif",
+                        }}
                       >
                         {feature.title}
                       </h3>
-                      <p
-                        className="text-sm leading-relaxed mb-4"
-                        style={{ color: 'var(--color-text-secondary)' }}
-                      >
+                      <p className="text-base leading-relaxed mb-6" style={{ color: '#6b4423' }}>
                         {feature.description}
                       </p>
+
+                      {/* CTA链接 */}
                       <motion.div
-                        initial={{ opacity: 0, x: -10 }}
+                        initial={{ opacity: 0, x: -15 }}
                         whileHover={{ opacity: 1, x: 0 }}
-                        className="flex items-center gap-2 text-sm font-medium"
-                        style={{ color: 'var(--color-primary)' }}
+                        className="flex items-center gap-2.5 text-base font-semibold pt-4 border-t-2"
+                        style={{
+                          color: feature.gradient.includes('c41e')
+                            ? '#c41e3a'
+                            : feature.gradient.includes('3a8a')
+                              ? '#1e3a8a'
+                              : '#daa520',
+                          borderColor: 'rgba(139,69,19,0.1)',
+                        }}
                       >
                         <span>立即体验</span>
                         <motion.div
-                          animate={{ x: [0, 4, 0] }}
-                          transition={{ duration: 1, repeat: Infinity }}
+                          animate={{ x: [0, 6, 0] }}
+                          transition={{ duration: 1.5, repeat: Infinity }}
                         >
-                          <ArrowRight size={16} />
+                          <ArrowRight size={18} strokeWidth={2.5} />
                         </motion.div>
                       </motion.div>
                     </div>
@@ -533,91 +859,74 @@ export default function Homepage() {
         </div>
       </section>
 
-      <section className="py-20 px-4 relative overflow-hidden">
-        <div className="absolute inset-0">
-          <motion.div
-            animate={{ rotate: [0, 360] }}
-            transition={{ duration: 60, repeat: Infinity, ease: 'linear' }}
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full"
-            style={{
-              border: '1px solid var(--color-border)',
-              opacity: 0.3,
-            }}
-          />
-          <motion.div
-            animate={{ rotate: [360, 0] }}
-            transition={{ duration: 45, repeat: Infinity, ease: 'linear' }}
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full"
-            style={{
-              border: '1px solid var(--color-border)',
-              opacity: 0.3,
-            }}
-          />
-        </div>
+      {/* 数据统计区域 */}
+      <section className="py-24 px-4 relative overflow-hidden ancient-bg-solid">
+        <div className="huiwen-pattern absolute inset-0 opacity-40" />
 
-        <div className="relative max-w-6xl mx-auto">
+        <div className="relative z-10 max-w-6xl mx-auto">
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-center mb-16"
+            className="text-center mb-18"
+            style={{ marginBottom: '72px' }}
           >
-            <h2 className="text-4xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
-              平台数据
+            <h2
+              className="text-4xl md:text-5xl font-bold mb-5 tracking-wide"
+              style={{
+                color: '#2c1810',
+                fontFamily: "'Noto Serif SC', serif",
+              }}
+            >
+              平台数据概览
             </h2>
-            <p className="text-lg" style={{ color: 'var(--color-text-secondary)' }}>
-              持续增长的文化资源库
+            <p className="text-lg md:text-xl" style={{ color: '#6b4423' }}>
+              持续增长的文化资源库，守护千年文明瑰宝
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 lg:gap-8">
             {stats.map((stat, index) => (
               <motion.div
                 key={stat.label}
-                initial={{ opacity: 0, scale: 0.8 }}
-                whileInView={{ opacity: 1, scale: 1 }}
+                initial={{ opacity: 0, y: 40, scale: 0.9 }}
+                whileInView={{ opacity: 1, y: 0, scale: 1 }}
                 viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-                whileHover={{ y: -5, scale: 1.05 }}
-                className="relative p-6 rounded-2xl text-center shadow-lg"
-                style={{
-                  background: 'var(--color-surface)',
-                  border: '1px solid var(--color-border)',
-                }}
+                transition={{ delay: index * 0.15, type: 'spring', stiffness: 120 }}
+                whileHover={{ y: -10, scale: 1.05 }}
+                className="traditional-border rounded-2xl p-6 text-center heritage-card-shadow"
               >
                 <motion.div
-                  whileHover={{ rotate: [0, -10, 10, 0] }}
-                  transition={{ duration: 0.5 }}
-                  className="w-14 h-14 mx-auto mb-4 rounded-xl flex items-center justify-center shadow-md"
+                  whileHover={{ rotate: 360, scale: 1.2 }}
+                  transition={{ duration: 0.6 }}
+                  className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center shadow-lg"
                   style={{
-                    background: 'var(--gradient-primary)',
+                    background: `linear-gradient(135deg, ${stat.color}, ${stat.color}dd)`,
+                    boxShadow: `0 8px 25px -5px ${stat.color}50`,
                   }}
                 >
-                  <stat.icon size={24} style={{ color: 'var(--color-text-inverse)' }} />
+                  <stat.icon size={28} style={{ color: '#fff' }} />
                 </motion.div>
                 <div
-                  className="text-3xl font-bold mb-1"
+                  className="text-3xl md:text-4xl font-bold mb-2 tracking-tight"
                   style={{
-                    background: 'var(--gradient-primary)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                    backgroundClip: 'text',
+                    color: stat.color,
+                    fontFamily: "'Noto Serif SC', serif",
                   }}
                 >
                   {stat.value}
                 </div>
-                <div className="text-sm mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+                <div className="text-sm font-medium mb-2" style={{ color: '#2c1810' }}>
                   {stat.label}
                 </div>
                 <div
-                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
+                  className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold"
                   style={{
-                    background: 'rgba(34, 197, 94, 0.1)',
-                    color: 'var(--color-success)',
+                    background: `${stat.color}15`,
+                    color: stat.color,
                   }}
                 >
-                  <TrendingUp size={10} />
-                  {stat.trend}
+                  ↑ {stat.trend}
                 </div>
               </motion.div>
             ))}
@@ -625,133 +934,156 @@ export default function Homepage() {
         </div>
       </section>
 
-      <section className="py-20 px-4">
-        <div className="max-w-4xl mx-auto">
+      {/* 非遗图片展示区域 - 5张图片 */}
+      <section className="py-24 px-4 relative ancient-bg-solid ancient-texture">
+        <div className="xiangyun-pattern absolute top-0 left-0 right-0 h-16 opacity-50" />
+
+        <div className="relative z-10 max-w-7xl mx-auto">
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 40 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-center mb-12"
+            className="text-center mb-18"
+            style={{ marginBottom: '72px' }}
           >
-            <h2 className="text-4xl font-bold mb-4" style={{ color: 'var(--color-text-primary)' }}>
-              用户评价
+            <h2
+              className="text-4xl md:text-5xl font-bold mb-5 tracking-wide"
+              style={{
+                color: '#2c1810',
+                fontFamily: "'Noto Serif SC', serif",
+              }}
+            >
+              非遗瑰宝展示
             </h2>
-            <p style={{ color: 'var(--color-text-secondary)' }}>来自各领域用户的真实反馈</p>
+            <p
+              className="text-lg md:text-xl max-w-2xl mx-auto leading-relaxed"
+              style={{ color: '#6b4423' }}
+            >
+              昆曲之韵、苏绣之美、蜀锦之华、银花丝之精、川剧之魅
+            </p>
           </motion.div>
 
-          <div className="relative h-48">
-            <AnimatePresence mode="wait">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-5 lg:gap-6">
+            {heritageGallery.map((image, index) => (
               <motion.div
-                key={currentTestimonial}
-                initial={{ opacity: 0, x: 50 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -50 }}
-                transition={{ duration: 0.5 }}
-                className="absolute inset-0 flex items-center justify-center"
+                key={image.id}
+                initial={{ opacity: 0, y: 50, scale: 0.8 }}
+                whileInView={{ opacity: 1, y: 0, scale: 1 }}
+                viewport={{ once: true }}
+                transition={{
+                  delay: index * 0.12,
+                  type: 'spring',
+                  stiffness: 100,
+                  damping: 15,
+                }}
+                className="heritage-gallery-item shadow-xl"
+                style={{
+                  aspectRatio: '1 / 1',
+                }}
+                whileHover={{
+                  scale: 1.05,
+                  boxShadow: '0 25px 60px rgba(92,64,51,0.35)',
+                }}
               >
-                <div
-                  className="max-w-2xl text-center p-8 rounded-3xl shadow-xl"
-                  style={{
-                    background: 'var(--color-surface)',
-                    border: '1px solid var(--color-border)',
-                  }}
-                >
-                  <div className="text-4xl mb-4">{testimonials[currentTestimonial].avatar}</div>
-                  <p className="text-lg mb-4 italic" style={{ color: 'var(--color-text-primary)' }}>
-                    &ldquo;{testimonials[currentTestimonial].content}&rdquo;
-                  </p>
-                  <div
-                    className="flex items-center justify-center gap-1"
-                    style={{ color: 'var(--color-text-muted)' }}
+                {image.pattern}
+
+                {/* 图片标题覆盖层 */}
+                <div className="absolute bottom-0 left-0 right-0 p-4 z-10 opacity-0 hover:opacity-100 transition-all duration-300 transform translate-y-2 hover:translate-y-0">
+                  <h3
+                    className="text-lg font-bold text-white tracking-wide"
+                    style={{
+                      fontFamily: "'Noto Serif SC', serif",
+                      textShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                    }}
                   >
-                    <Heart
-                      size={14}
-                      fill="var(--color-error)"
-                      style={{ color: 'var(--color-error)' }}
-                    />
-                    <span className="text-sm font-medium">
-                      {testimonials[currentTestimonial].author}
-                    </span>
-                  </div>
+                    {image.name}
+                  </h3>
+                  <p className="text-xs text-white/80 mt-1">点击了解更多</p>
                 </div>
               </motion.div>
-            </AnimatePresence>
-          </div>
-
-          <div className="flex justify-center gap-2 mt-6">
-            {testimonials.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => setCurrentTestimonial(index)}
-                className="w-2 h-2 rounded-full transition-all"
-                style={{
-                  background:
-                    index === currentTestimonial ? 'var(--color-primary)' : 'var(--color-border)',
-                  transform: index === currentTestimonial ? 'scale(1.5)' : 'scale(1)',
-                }}
-              />
             ))}
           </div>
         </div>
       </section>
 
-      <section className="py-20 px-4 relative overflow-hidden">
-        <div
-          className="absolute inset-0"
-          style={{
-            background: 'var(--gradient-primary)',
-          }}
-        />
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.1) 0%, transparent 60%)',
-          }}
-        />
+      {/* 底部CTA区域 */}
+      <section className="py-24 px-4 relative hero-heritage-bg overflow-hidden">
+        <div className="building-silhouette" />
 
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="relative max-w-4xl mx-auto text-center"
-        >
+        {[...Array(8)].map((_, i) => (
+          <div
+            key={i}
+            className="golden-particle"
+            style={{
+              left: `${5 + i * 12}%`,
+              top: `${20 + ((i * 17) % 60)}%`,
+              animationDelay: `${i * 0.9}s`,
+              width: `${2 + Math.random() * 3}px`,
+              height: `${2 + Math.random() * 3}px`,
+            }}
+          />
+        ))}
+
+        <div className="relative z-20 max-w-4xl mx-auto text-center">
           <motion.div
-            animate={{ y: [0, -10, 0] }}
-            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-            className="mb-8"
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
           >
-            <MousePointer2 size={48} style={{ color: 'rgba(255,255,255,0.8)' }} />
-          </motion.div>
+            <motion.h2
+              className="text-4xl md:text-5xl lg:text-6xl font-bold mb-8 leading-tight tracking-wide"
+              style={{
+                color: '#faf9f6',
+                fontFamily: "'Noto Serif SC', serif",
+              }}
+            >
+              开启您的非遗探索之旅
+            </motion.h2>
 
-          <h2 className="text-4xl font-bold text-white mb-4">开始您的非遗探索之旅</h2>
-          <p className="text-white/80 mb-10 text-lg max-w-xl mx-auto">
-            与AI助手对话，深入了解非遗文化的魅力，探索千年传承的智慧结晶
-          </p>
+            <motion.p
+              className="text-lg md:text-xl mb-12 leading-relaxed font-light"
+              style={{ color: 'rgba(250,249,246,0.88)' }}
+            >
+              让我们一起用科技的力量，守护和传承中华民族的文化瑰宝
+            </motion.p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/chat">
-              <motion.div
-                whileHover={{ scale: 1.05, y: -2 }}
-                whileTap={{ scale: 0.98 }}
-                className="flex items-center gap-3 px-10 py-5 rounded-2xl font-semibold text-lg shadow-2xl"
-                style={{
-                  background: 'white',
-                  color: 'var(--color-primary)',
-                }}
-              >
-                <Sparkles size={22} />
-                立即开始
-                <motion.div
-                  animate={{ x: [0, 5, 0] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
+              <Link to="/chat" className="block w-full sm:w-auto">
+                <motion.button
+                  whileHover={{ scale: 1.06, y: -3 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="w-full px-12 py-5 rounded-2xl font-bold text-lg shadow-2xl tracking-wide"
+                  style={{
+                    background: 'linear-gradient(135deg, #ffd700, #daa520)',
+                    color: '#2c1810',
+                    boxShadow: '0 15px 50px -10px rgba(218,165,32,0.6)',
+                    letterSpacing: '1px',
+                  }}
                 >
-                  <ArrowRight size={22} />
-                </motion.div>
-              </motion.div>
-            </Link>
-          </div>
-        </motion.div>
+                  开始探索
+                  <ArrowRight size={20} className="inline-block ml-2" />
+                </motion.button>
+              </Link>
+
+              <Link to="/knowledge" className="block w-full sm:w-auto">
+                <motion.button
+                  whileHover={{ scale: 1.06, y: -3 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="w-full px-12 py-5 rounded-2xl font-bold text-lg backdrop-blur-md tracking-wide"
+                  style={{
+                    background: 'rgba(250,249,246,0.12)',
+                    color: '#faf9f6',
+                    border: '2px solid rgba(218,165,32,0.5)',
+                    boxShadow: '0 10px 40px -10px rgba(0,0,0,0.3)',
+                    letterSpacing: '1px',
+                  }}
+                >
+                  浏览知识图谱
+                </motion.button>
+              </Link>
+            </div>
+          </motion.div>
+        </div>
       </section>
     </div>
   );

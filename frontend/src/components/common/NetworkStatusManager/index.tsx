@@ -14,7 +14,6 @@ import {
   ChevronDown,
   Signal,
   Globe,
-  X,
   TrendingUp,
   TrendingDown,
   Minus,
@@ -42,7 +41,6 @@ export default function NetworkStatusManager({
   showDetails = true,
   showLatency = true,
   showQueue = true,
-  autoHide = false,
   className = '',
 }: NetworkStatusManagerProps) {
   const {
@@ -58,7 +56,6 @@ export default function NetworkStatusManager({
   const toast = useToast();
   const [isExpanded, setIsExpanded] = useState(false);
   const [latencyHistory, setLatencyHistory] = useState<number[]>([]);
-  const [isDismissed, setIsDismissed] = useState(false);
   const quality = getConnectionQuality(latency);
   const isAnimating = status === 'reconnecting' || isManualReconnect;
   const isOffline = status === 'offline' || !httpAvailable;
@@ -68,12 +65,6 @@ export default function NetworkStatusManager({
       setLatencyHistory((prev) => [...prev.slice(-9), latency!]);
     }
   }, [latency]);
-
-  useEffect(() => {
-    if (status === 'online') {
-      setIsDismissed(false);
-    }
-  }, [status]);
 
   const getStatusColor = () => {
     switch (status) {
@@ -176,96 +167,6 @@ export default function NetworkStatusManager({
           />
         )}
       </motion.div>
-    );
-  }
-
-  if (position === 'top-bar') {
-    if (!isOffline && !isDismissed) return null;
-
-    return (
-      <AnimatePresence>
-        {isOffline && !isDismissed && (
-          <motion.div
-            initial={{ y: -100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -100, opacity: 0 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className={`fixed top-0 left-0 right-0 z-[100] ${className}`}
-          >
-            <div className="shadow-lg" style={{ background: statusColor }}>
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex items-center justify-between py-3">
-                  <div className="flex items-center gap-3">
-                    <motion.div
-                      animate={isAnimating ? { rotate: 360 } : {}}
-                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                      style={{ color: 'var(--color-text-inverse)' }}
-                    >
-                      <Icon size={20} />
-                    </motion.div>
-
-                    <div>
-                      <p className="font-medium text-sm" style={{ color: 'var(--color-text-inverse)' }}>
-                        {getStatusMessage(status)}
-                      </p>
-                      <p className="text-xs" style={{ color: 'var(--color-text-inverse)', opacity: 0.8 }}>
-                        部分功能可能受限
-                      </p>
-                    </div>
-
-                    {showQueue && queuedRequestsCount > 0 && (
-                      <div
-                        className="flex items-center gap-1.5 px-2 py-1 rounded-full"
-                        style={{ background: 'rgba(255,255,255,0.2)' }}
-                      >
-                        <CloudOff size={12} style={{ color: 'var(--color-text-inverse)' }} />
-                        <span className="text-xs font-medium" style={{ color: 'var(--color-text-inverse)' }}>
-                          {queuedRequestsCount} 个请求等待
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <motion.button
-                      onClick={handleReconnect}
-                      disabled={isManualReconnect}
-                      className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                      style={{
-                        background: 'rgba(255,255,255,0.2)',
-                        color: 'var(--color-text-inverse)',
-                      }}
-                      whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.3)' }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      {isManualReconnect ? (
-                        <>
-                          <RefreshCw size={14} className="animate-spin" />
-                          <span>连接中...</span>
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw size={14} />
-                          <span>重新连接</span>
-                        </>
-                      )}
-                    </motion.button>
-
-                    <button
-                      onClick={() => setIsDismissed(true)}
-                      className="p-1.5 rounded-lg transition-colors"
-                      style={{ color: 'var(--color-text-inverse)' }}
-                      aria-label="关闭提示"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     );
   }
 
@@ -407,7 +308,10 @@ export default function NetworkStatusManager({
                       <Signal size={16} style={{ color: 'var(--color-text-inverse)' }} />
                     </motion.div>
                     <div>
-                      <h3 className="font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                      <h3
+                        className="font-semibold text-sm"
+                        style={{ color: 'var(--color-text-primary)' }}
+                      >
                         网络状态
                       </h3>
                       <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
@@ -450,7 +354,10 @@ export default function NetworkStatusManager({
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-lg font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                      <span
+                        className="text-lg font-bold"
+                        style={{ color: 'var(--color-text-primary)' }}
+                      >
                         {quality === 'excellent'
                           ? '优秀'
                           : quality === 'good'
@@ -498,7 +405,10 @@ export default function NetworkStatusManager({
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-lg font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                      <span
+                        className="text-lg font-bold"
+                        style={{ color: 'var(--color-text-primary)' }}
+                      >
                         {latency ? `${Math.round(latency)}ms` : '--'}
                       </span>
                       {latency && getTrendIcon()}
@@ -523,7 +433,10 @@ export default function NetworkStatusManager({
                         HTTP服务
                       </span>
                     </div>
-                    <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                    <span
+                      className="text-sm font-medium"
+                      style={{ color: 'var(--color-text-primary)' }}
+                    >
                       {httpAvailable ? '正常' : '不可用'}
                     </span>
                   </motion.div>
@@ -544,7 +457,10 @@ export default function NetworkStatusManager({
                         WebSocket
                       </span>
                     </div>
-                    <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                    <span
+                      className="text-sm font-medium"
+                      style={{ color: 'var(--color-text-primary)' }}
+                    >
                       {wsAvailable ? '正常' : '不可用'}
                     </span>
                   </motion.div>
@@ -562,7 +478,10 @@ export default function NetworkStatusManager({
                     <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                       上次连接:
                     </span>
-                    <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                    <span
+                      className="text-xs font-medium"
+                      style={{ color: 'var(--color-text-primary)' }}
+                    >
                       {formatTime(lastConnected)}
                     </span>
                   </motion.div>
@@ -573,7 +492,10 @@ export default function NetworkStatusManager({
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <Cloud size={16} style={{ color: 'var(--color-primary)' }} />
-                    <h3 className="font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                    <h3
+                      className="font-semibold text-sm"
+                      style={{ color: 'var(--color-text-primary)' }}
+                    >
                       数据同步
                     </h3>
                   </div>

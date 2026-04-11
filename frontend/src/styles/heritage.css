@@ -1,0 +1,277 @@
+/* 古风非遗建筑背景样式 */
+
+/* Hero区域 - 非遗建筑背景 */
+.hero-heritage-bg {
+  position: relative;
+  background: linear-gradient(135deg, 
+    #2c1810 0%, 
+    #4a2c1a 20%, 
+    #6b4423 40%, 
+    #8b6f47 60%, 
+    #a0826d 80%, 
+    #4a3428 100%
+  );
+  overflow: hidden;
+}
+
+.hero-heritage-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: 
+    url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 10 L90 35 L85 38 L50 18 L15 38 L10 35 Z' fill='rgba(218,165,32,0.15)'/%3E%3Cpath d='M30 45 L70 45 L65 48 L35 48 Z' fill='rgba(139,69,19,0.2)'/%3E%3Crect x='25' y='52' width='50' height='30' fill='none' stroke='rgba(160,82,45,0.15)' stroke-width='1'/%3E%3Ccircle cx='50' cy='67' r='8' fill='none' stroke='rgba(218,165,32,0.1)' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+  opacity: 0.4;
+  animation: patternFloat 20s ease-in-out infinite;
+}
+
+@keyframes patternFloat {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50% { transform: translateY(-10px) translateX(5px); }
+}
+
+/* 古建筑轮廓剪影效果 */
+.building-silhouette {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 300px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='%23000000' fill-opacity='0.15' d='M0,192L48,197.3C96,203,192,213,288,229.3C384,245,480,267,576,250.7C672,235,768,181,864,181.3C960,181,1056,235,1152,234.7C1248,235,1344,181,1392,154.7L1440,128L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z'%3E%3C/path%3E%3C/svg%3E");
+  background-size: cover;
+  background-position: bottom;
+  pointer-events: none;
+}
+
+/* 古风云纹装饰 */
+.cloud-pattern {
+  position: absolute;
+  width: 200px;
+  height: 100px;
+  opacity: 0.1;
+  animation: cloudFloat 15s ease-in-out infinite;
+}
+
+.cloud-pattern::before,
+.cloud-pattern::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(218,165,32,0.3) 0%, transparent 70%);
+}
+
+.cloud-pattern::before {
+  width: 120px;
+  height: 60px;
+  top: 20px;
+  left: 20px;
+}
+
+.cloud-pattern::after {
+  width: 80px;
+  height: 40px;
+  top: 40px;
+  left: 80px;
+}
+
+@keyframes cloudFloat {
+  0%, 100% { transform: translateX(0) translateY(0); }
+  33% { transform: translateX(30px) translateY(-10px); }
+  66% { transform: translateX(-20px) translateY(5px); }
+}
+
+/* 金色粒子特效 */
+.golden-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: radial-gradient(circle, #daa520 0%, transparent 70%);
+  border-radius: 50%;
+  animation: particleFloat 8s ease-in-out infinite;
+  box-shadow: 0 0 10px rgba(218,165,32,0.6);
+}
+
+@keyframes particleFloat {
+  0%, 100% { 
+    transform: translateY(0) translateX(0) scale(1);
+    opacity: 0.6;
+  }
+  25% { 
+    transform: translateY(-50px) translateX(20px) scale(1.2);
+    opacity: 1;
+  }
+  50% { 
+    transform: translateY(-100px) translateX(-10px) scale(0.8);
+    opacity: 0.8;
+  }
+  75% { 
+    transform: translateY(-50px) translateX(-30px) scale(1.1);
+    opacity: 0.4;
+  }
+}
+
+/* 页面主体 - 古风纯色背景 */
+.ancient-bg-solid {
+  background: linear-gradient(180deg, 
+    #faf9f6 0%, 
+    #f5f1eb 50%, 
+    #ede7dc 100%
+  );
+  position: relative;
+}
+
+/* 古建筑纹路纹理 */
+.ancient-texture {
+  position: relative;
+}
+
+.ancient-texture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: 
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 100px,
+      rgba(139, 69, 19, 0.03) 100px,
+      rgba(139, 69, 19, 0.03) 101px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 100px,
+      rgba(160, 82, 45, 0.02) 100px,
+      rgba(160, 82, 45, 0.02) 101px
+    );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 传统纹样边框装饰 */
+.traditional-border {
+  position: relative;
+  border: 2px solid rgba(139, 69, 19, 0.2);
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.traditional-border::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 1px solid rgba(218, 165, 32, 0.3);
+  pointer-events: none;
+}
+
+/* 祥云纹样 */
+.xiangyun-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg width='120' height='60' viewBox='0 0 120 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20,30 Q25,20 35,25 Q40,15 55,22 Q65,12 75,25 Q85,18 95,28 Q100,25 100,35 Q95,42 85,38 Q75,45 65,36 Q55,43 45,35 Q35,42 25,35 Q15,38 20,30' fill='none' stroke='rgba(218,165,32,0.15)' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-size: 240px 120px;
+  background-repeat: repeat-x;
+  opacity: 0.6;
+}
+
+/* 回字纹 */
+.huiwen-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='5' y='5' width='30' height='30' fill='none' stroke='rgba(139,69,19,0.1)' stroke-width='1'/%3E%3Crect x='10' y='10' width='20' height='20' fill='none' stroke='rgba(139,69,19,0.08)' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 40px 40px;
+  opacity: 0.4;
+}
+
+/* 卡片古风阴影 */
+.heritage-card-shadow {
+  box-shadow: 
+    0 4px 16px rgba(92, 64, 51, 0.12),
+    0 8px 32px rgba(92, 64, 51, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.heritage-card-shadow:hover {
+  box-shadow: 
+    0 12px 40px rgba(92, 64, 51, 0.2),
+    0 16px 56px rgba(92, 64, 51, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  transform: translateY(-8px);
+}
+
+/* 图片展示区域样式 */
+.heritage-gallery-item {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  aspect-ratio: 1;
+  cursor: pointer;
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.heritage-gallery-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 50%,
+    rgba(0, 0, 0, 0.7) 100%
+  );
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.heritage-gallery-item:hover::before {
+  opacity: 1;
+}
+
+.heritage-gallery-item:hover {
+  transform: scale(1.05);
+  box-shadow: 0 20px 60px rgba(92, 64, 51, 0.3);
+}
+
+.heritage-gallery-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.heritage-gallery-item:hover img {
+  transform: scale(1.1);
+}
+
+/* 印章风格标签 */
+.seal-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  font-family: 'Noto Serif SC', 'Source Han Serif SC', serif;
+  font-weight: 600;
+  color: #c41e3a;
+  border: 2px solid #c41e3a;
+  border-radius: 4px;
+  position: relative;
+  letter-spacing: 2px;
+  background: rgba(196, 30, 58, 0.05);
+}
+
+.seal-badge::before {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1px solid rgba(196, 30, 58, 0.3);
+  pointer-events: none;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .building-silhouette {
+    height: 150px;
+  }
+  
+  .hero-heritage-bg::before {
+    background-size: 150px 150px;
+  }
+}

@@ -15,6 +15,7 @@ import {
 import { useUIStore } from '../../../stores/uiStore';
 import NetworkStatusManager from '../../common/NetworkStatusManager';
 import ThemeToggle from '../../common/ThemeToggle';
+import logoSvg from '../../../assets/icon/logo.svg';
 
 const navItems = [
   { path: '/', label: '首页', icon: null },
@@ -45,33 +46,18 @@ export default function Header() {
     >
       <div className="h-full px-4 lg:px-6 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <button
-            onClick={toggleSidebar}
-            className="w-10 h-10 flex items-center justify-center rounded-lg transition-all duration-200 border-none"
-            style={{ background: 'transparent', color: 'var(--color-text-primary)' }}
-            aria-label="Toggle sidebar"
-          >
-            {sidebarCollapsed ? <Menu size={20} /> : <X size={20} />}
-          </button>
-
           <Link to="/" className="flex items-center gap-3 group">
             <motion.div
-              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow"
-              style={{ background: 'var(--gradient-secondary)' }}
+              className="w-10 h-10 flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              <span className="font-bold text-lg" style={{ color: 'var(--color-text-inverse)' }}>
-                非
-              </span>
+              <img src={logoSvg} alt="Logo" className="w-full h-full object-contain" />
             </motion.div>
             <div className="hidden sm:block">
               <h1 className="text-lg font-bold" style={{ color: 'var(--color-primary)' }}>
-                非遗数字生命
+                故障机器人
               </h1>
-              <p className="text-xs -mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                互动引擎
-              </p>
             </div>
           </Link>
         </div>
