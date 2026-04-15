@@ -7,8 +7,6 @@ import { apiAdapterManager } from '../data/apiAdapter';
 export interface User {
   id: string;
   username: string;
-  email: string;
-  nickname?: string;
   avatar?: string;
   is_active: boolean;
   created_at: string;
@@ -109,12 +107,30 @@ export const useAuthStore = create<AuthState>()(
         });
       },
 
-      updateUser: (userData) => {
-        const currentUser = get().user;
-        if (currentUser) {
-          set({ user: { ...currentUser, ...userData } });
-        }
-      },
+      // 把原来的 updateUser 替换为这个增强版：
+updateUser: (userData) => {
+  const currentUser = get().user;
+  if (currentUser) {
+    // 1. 更新 Zustand 全局状态
+    const updatedUser = { ...currentUser, ...userData };
+    set({ user: updatedUser });
+
+    // 2. 🔥 核心修复：同步更新底层 LocalStorage，防止路由跳转时被 App.jsx 的旧数据覆盖
+    try {
+      const legacyUserStr = localStorage.getItem('heritage_current_user');
+      if (legacyUserStr) {
+        const legacyUser = JSON.parse(legacyUserStr);
+        // 把新的 userData (比如 avatar) 合并进去，再存回本地
+        localStorage.setItem(
+          'heritage_current_user', 
+          JSON.stringify({ ...legacyUser, ...userData })
+        );
+      }
+    } catch (e) {
+      console.warn('同步本地 legacy 存储失败:', e);
+    }
+  }
+},
 
       setUserFromStorage: (user, token) => {
         set({
@@ -179,6 +195,12 @@ export const useAuthStore = create<AuthState>()(
       },
 
       loginWithCredentials: async (username: string, password: string) => {
+        // 【关键新增】：如果当前有残留的登录状态（比如游客），先静默退出，彻底清理旧 Token 和环境
+        const currentState = get();
+        if (currentState.isGuest || currentState.isAuthenticated) {
+          await currentState.logout();
+        }
+
         set({ isLoading: true, error: null });
 
         try {
@@ -226,6 +248,11 @@ export const useAuthStore = create<AuthState>()(
       },
 
       loginAsGuest: async () => {
+        // 【关键新增】：防止游客重复点击或从真实用户切回游客导致的状态混乱
+        const currentState = get();
+        if (currentState.isAuthenticated) {
+          await currentState.logout();
+        }
         set({ isLoading: true, error: null });
 
         try {
@@ -252,52 +279,45 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      register: async (username: string, email: string, password: string, nickname?: string) => {
-        set({ isLoading: true, error: null });
-
-        try {
-          const backendAvailable = await get().checkBackendStatus();
-
-          if (backendAvailable) {
-            try {
-              const response = await authApi.register({ username, email, password, nickname });
-              set({
-                user: response.user,
-                token: response.access_token,
-                isAuthenticated: true,
-                isGuest: false,
-                isLocalUser: false,
-                isLoading: false,
-              });
-              localStorage.setItem('token', response.access_token);
-              return { success: true };
-            } catch (e: any) {
-              console.warn('Backend register failed, trying local:', e);
-            }
-          }
-
-          const localResult = await localAuthService.register(username, email, password, nickname);
-
-          if (localResult.success && localResult.user && localResult.token) {
-            await localAuthService.setCurrentUser(localResult.user, localResult.token);
-            set({
-              user: localResult.user as User,
-              token: localResult.token,
-              isAuthenticated: true,
-              isGuest: false,
-              isLocalUser: true,
-              isLoading: false,
-            });
-            return { success: true };
-          }
-
-          set({ isLoading: false, error: localResult.error });
-          return { success: false, error: localResult.error };
-        } catch (e: any) {
-          set({ isLoading: false, error: e.message });
-          return { success: false, error: e.message };
+   register: async (username: string, password: string) => {
+    // 【关键新增】：如果是游客点击了注册，注册前先清理游客状态
+        const currentState = get();
+        if (currentState.isAuthenticated) {
+          await currentState.logout();
         }
-      },
+  set({ isLoading: true, error: null });
+
+  try {
+    // 1. 检查后端是否可用
+    const backendAvailable = await get().checkBackendStatus();
+    if (!backendAvailable) {
+      set({ isLoading: false, error: '服务器不可用，请稍后重试' });
+      return { success: false, error: '服务器不可用' };
+    }
+
+    // 2. 直接调用后端注册（不再降级到本地）
+    const response = await authApi.register({ username, password });
+    
+    // 3. 注册成功，更新状态
+    set({
+      user: response.user,
+      token: response.access_token,
+      isAuthenticated: true,
+      isGuest: false,
+      isLocalUser: false,      // 明确标记为在线用户
+      isLoading: false,
+    });
+    localStorage.setItem('token', response.access_token);
+    return { success: true };
+
+  } catch (e: any) {
+    // 4. 后端注册失败，直接返回错误，不进行任何本地降级
+    console.error('Backend register failed:', e);
+    const errorMsg = e.response?.data?.detail || e.message || '注册失败，请重试';
+    set({ isLoading: false, error: errorMsg });
+    return { success: false, error: errorMsg };
+  }
+},
     }),
     {
       name: 'auth-storage',

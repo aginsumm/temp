@@ -4,13 +4,12 @@ import type { User } from '../stores/authStore';
 interface LoginRequest {
   username: string;
   password: string;
+  avatar?: string;
 }
 
 interface RegisterRequest {
   username: string;
-  email: string;
   password: string;
-  nickname?: string;
 }
 
 interface TokenResponse {
@@ -23,8 +22,6 @@ interface TokenResponse {
 interface UserResponse {
   id: string;
   username: string;
-  email: string;
-  nickname?: string;
   avatar?: string;
   is_active: boolean;
   created_at: string;
@@ -33,12 +30,12 @@ interface UserResponse {
 
 export const authApi = {
   login: async (credentials: LoginRequest): Promise<TokenResponse> => {
-    const response = await apiClient.post<TokenResponse>('/api/v1/auth/login', credentials);
+    const response = await apiClient.post<TokenResponse>('/user/login', credentials);
     return response;
   },
 
   register: async (data: RegisterRequest): Promise<TokenResponse> => {
-    const response = await apiClient.post<TokenResponse>('/api/v1/auth/register', data);
+    const response = await apiClient.post<TokenResponse>('/user/register', data);
     return response;
   },
 
@@ -47,7 +44,7 @@ export const authApi = {
     return response;
   },
 
-  updateProfile: async (data: { nickname?: string; avatar?: string }): Promise<UserResponse> => {
+  updateProfile: async (data: {avatar?: string }): Promise<UserResponse> => {
     const response = await apiClient.put<UserResponse>('/api/v1/auth/me', data);
     return response;
   },

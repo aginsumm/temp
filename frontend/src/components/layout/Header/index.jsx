@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   MessageSquare,
@@ -12,6 +12,7 @@ import {
   LogOut,
   ChevronDown,
 } from 'lucide-react';
+import { useAuthStore } from '../../../stores/authStore';
 import { useUIStore } from '../../../stores/uiStore';
 import NetworkStatusManager from '../../common/NetworkStatusManager';
 import ThemeToggle from '../../common/ThemeToggle';
@@ -27,6 +28,22 @@ const navItems = [
 export default function Header() {
   const location = useLocation();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
+  // === 新增获取用户状态和退出方法的代码 ===
+  const { user, logout } = useAuthStore();
+  const navigate = useNavigate();
+  
+  const handleLogout = async () => {
+    setShowUserMenu(false);
+    await logout(); // 清除 Zustand 和 localStorage 中的 Token
+    // 移除 navigate('/login'), 保留在当前页面
+  };
+  
+ // 计算显示的文字：优先取昵称首字，其次用户名首字，最后默认为“游”
+  const displayName = user?.username || "";
+  const displayChar = displayName.charAt(0).toUpperCase() || "游";
+  
+  // 👉 新增这一行！我们把 user 打印出来看看
+  console.log("当前 Header 里的 user 数据:", user);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -104,11 +121,22 @@ export default function Header() {
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm"
                 style={{
-                  background: 'var(--gradient-primary)',
+                  background: user?.avatar ? 'transparent' : 'var(--gradient-primary)',
                   color: 'var(--color-text-inverse)',
+                  border: user?.avatar ? '1px solid var(--color-border-light)' : 'none'
                 }}
               >
-                U
+                {user?.avatar ? (
+                  // 如果有头像，显示图片
+                  <img 
+                    src={user.avatar} 
+                    alt={displayName} 
+                    className="w-full h-full object-cover rounded-full" 
+                  />
+                ) : (
+                  // 如果没有头像，显示首字符
+                  <span>{displayChar}</span>
+                )}
               </div>
               <ChevronDown
                 size={14}
@@ -150,9 +178,7 @@ export default function Header() {
                 <button
                   className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors"
                   style={{ color: 'var(--color-error)' }}
-                  onClick={() => {
-                    setShowUserMenu(false);
-                  }}
+                  onClick={handleLogout}
                 >
                   <LogOut size={16} />
                   退出登录

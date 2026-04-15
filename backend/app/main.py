@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from fastapi.staticfiles import StaticFiles
+import os
 import uvicorn
 
 from app.core.config import settings
@@ -23,6 +25,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# 2. 确保存放头像的文件夹存在
+os.makedirs("static/avatars", exist_ok=True)
+
+# 3. 挂载静态资源目录 (加上这行代码，放在 app.add_middleware 下面)
+# 这样前端就能通过 http://localhost:8000/static/avatars/xxx.png 访问图片了
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -44,7 +53,7 @@ async def root():
         "version": settings.APP_VERSION,
     }
 
-
+@app.get("/api/v1/health")
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}

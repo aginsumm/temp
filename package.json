@@ -17,6 +17,7 @@
 		"tailwindcss": "^4.2.2"
 	},
 	"dependencies": {
+		"@types/react-syntax-highlighter": "^15.5.13",
 		"@types/three": "^0.183.1",
 		"@vitejs/plugin-react": "^6.0.1",
 		"ai": "^6.0.138",
@@ -27,6 +28,7 @@
 		"react": "^19.2.4",
 		"react-dom": "^19.2.4",
 		"react-router-dom": "^7.13.2",
+		"react-syntax-highlighter": "^16.1.1",
 		"three": "^0.183.2",
 		"vite": "^8.0.2",
 		"zustand": "^5.0.12"

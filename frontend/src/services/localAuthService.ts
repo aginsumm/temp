@@ -35,9 +35,7 @@ class LocalAuthService {
     if (!guestExists) {
       const guestUser: GuestUser = {
         id: GUEST_USER_ID,
-        username: 'guest',
-        email: 'guest@local',
-        nickname: '访客用户',
+        username: '游客',
         is_active: true,
         isGuest: true,
         created_at: new Date().toISOString(),
@@ -71,9 +69,7 @@ class LocalAuthService {
 
   async register(
     username: string,
-    email: string,
     password: string,
-    nickname?: string
   ): Promise<{
     success: boolean;
     user?: AppUser;
@@ -88,16 +84,11 @@ class LocalAuthService {
       return { success: false, error: '用户名已存在' };
     }
 
-    if (users.some((u) => u.email === email)) {
-      return { success: false, error: '邮箱已被注册' };
-    }
 
     const newUser: LocalUser = {
       id: this.generateId(),
       username,
-      email,
       password,
-      nickname: nickname || username,
       is_active: true,
       isLocal: true,
       created_at: new Date().toISOString(),
@@ -181,9 +172,7 @@ class LocalAuthService {
       success: true,
       user: {
         id: guestUser.id,
-        username: 'guest',
-        email: 'guest@local',
-        nickname: '访客用户',
+        username: '游客',
         is_active: true,
         isGuest: true,
         created_at: guestUser.created_at,

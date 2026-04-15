@@ -45,19 +45,8 @@ export default function Register() {
       return;
     }
 
-    if (username.length < 3) {
-      toast.warning('用户名至少需要3个字符');
-      return;
-    }
-
-    if (!email.trim()) {
-      toast.warning('请输入邮箱');
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      toast.warning('请输入有效的邮箱地址');
+    if (username.length < 1) {
+      toast.warning('用户名至少需要1个字符');
       return;
     }
 
@@ -71,11 +60,11 @@ export default function Register() {
       return;
     }
 
-    const result = await register(username, email, password);
+    const result = await register(username, password);
 
     if (result.success) {
       toast.success('注册成功', '欢迎加入非遗数字平台');
-      setTimeout(() => navigate('/chat'), 800);
+      setTimeout(() => navigate('/login'), 800);
     } else {
       toast.error('注册失败', result.error || '注册失败，请重试');
     }
@@ -146,30 +135,11 @@ export default function Register() {
             <input
               type="text"
               required
-              minLength={3}
-              placeholder="设置用户名 (至少3个字符)"
+              minLength={1}
+              placeholder="设置用户名 (至少1个字符)"
               value={username}
               onChange={(e) => {
                 setUsername(e.target.value);
-                setError(null);
-              }}
-              className={`w-full pl-12 pr-4 py-3.5 bg-[#f8f6f1] rounded-xl outline-none focus:ring-2 focus:bg-white transition-all ${colors.textMain} border border-transparent focus:ring-[#b89259]/50 focus:border-[#b89259]/30`}
-              disabled={isLoading}
-            />
-          </div>
-
-          <div className="relative group">
-            <Mail
-              className={`absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:${colors.accentGoldText} transition-colors`}
-              size={20}
-            />
-            <input
-              type="email"
-              required
-              placeholder="请输入邮箱"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
                 setError(null);
               }}
               className={`w-full pl-12 pr-4 py-3.5 bg-[#f8f6f1] rounded-xl outline-none focus:ring-2 focus:bg-white transition-all ${colors.textMain} border border-transparent focus:ring-[#b89259]/50 focus:border-[#b89259]/30`}
