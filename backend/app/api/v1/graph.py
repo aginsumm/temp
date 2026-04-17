@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 import uuid
@@ -240,6 +240,7 @@ async def update_snapshot(
 async def share_snapshot(
     snapshot_id: str,
     expires_days: Optional[int] = Query(7, ge=1, le=365),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ):
@@ -256,7 +257,11 @@ async def share_snapshot(
     # 获取更新后的快照
     snapshot = await snapshot_service.get_snapshot(snapshot_id)
     
-    share_url = f"/shared/graph/{share.share_token}"
+    # 生成完整 URL
+    if request:
+        share_url = f"{request.url.scheme}://{request.url.netloc}/shared/graph/{share.share_token}"
+    else:
+        share_url = f"/shared/graph/{share.share_token}"
     
     return SnapshotResponse(
         id=snapshot.id,

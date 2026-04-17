@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { graphService } from '../../../api/graph';
 import { snapshotService } from '../../../api/snapshot';
+import ErrorBoundary from '../../common/ErrorBoundary';
 import { useToast } from '../../common/Toast';
 import { useThemeStore } from '../../../stores/themeStore';
 import type { Entity, Relation, GraphNode, EntityType } from '../../../types/chat';
@@ -375,9 +376,8 @@ export default function DynamicGraphPanel({
       const result = await snapshotService.shareSnapshot(snapshotId, 7);
 
       if (result && result.share_url) {
-        // 复制分享链接到剪贴板
-        const shareLink = window.location.origin + result.share_url;
-        await navigator.clipboard.writeText(shareLink);
+        // 直接使用后端返回的完整 URL
+        await navigator.clipboard.writeText(result.share_url);
         toast.success('分享成功', '链接已复制到剪贴板，7 天内有效');
       } else {
         toast.success('分享成功', '快照已设置为共享状态');

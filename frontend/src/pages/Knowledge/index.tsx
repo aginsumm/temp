@@ -22,6 +22,7 @@ import {
   FilterPanelSkeleton,
   DetailPanelSkeleton,
 } from '../../components/common/Skeleton';
+import ErrorBoundary from '../../components/common/ErrorBoundary';
 import SearchHistory from '../../components/knowledge/SearchHistory';
 
 const KnowledgeGraph = lazy(() => import('../../components/knowledge/KnowledgeGraph'));
@@ -412,9 +413,11 @@ export default function KnowledgePage() {
           transition={{ delay: 0.4 }}
           className="flex gap-4 flex-1 min-h-0"
         >
-          <Suspense fallback={<FilterPanelSkeleton />}>
-            <FilterPanel />
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={<FilterPanelSkeleton />}>
+              <FilterPanel />
+            </Suspense>
+          </ErrorBoundary>
 
           <div
             className="flex-1 backdrop-blur-xl rounded-2xl overflow-hidden relative"
@@ -443,44 +446,54 @@ export default function KnowledgePage() {
                 className={`relative z-10 h-full w-full ${isPending ? 'opacity-50' : ''}`}
               >
                 {viewMode === 'graph' && (
-                  <Suspense fallback={<GraphSkeleton />}>
-                    <KnowledgeGraph />
-                  </Suspense>
+                  <ErrorBoundary>
+                    <Suspense fallback={<GraphSkeleton />}>
+                      <KnowledgeGraph />
+                    </Suspense>
+                  </ErrorBoundary>
                 )}
                 {viewMode === 'list' && (
-                  <Suspense fallback={<ListSkeleton />}>
-                    <ListView
-                      entities={entities}
-                      onEntityClick={handleEntityClick}
-                      loading={loading}
-                    />
-                  </Suspense>
+                  <ErrorBoundary>
+                    <Suspense fallback={<ListSkeleton />}>
+                      <ListView
+                        entities={entities}
+                        onEntityClick={handleEntityClick}
+                        loading={loading}
+                      />
+                    </Suspense>
+                  </ErrorBoundary>
                 )}
                 {viewMode === 'map' && (
-                  <Suspense fallback={<MapSkeleton />}>
-                    <MapView
-                      entities={entities}
-                      onEntityClick={handleEntityClick}
-                      loading={loading}
-                    />
-                  </Suspense>
+                  <ErrorBoundary>
+                    <Suspense fallback={<MapSkeleton />}>
+                      <MapView
+                        entities={entities}
+                        onEntityClick={handleEntityClick}
+                        loading={loading}
+                      />
+                    </Suspense>
+                  </ErrorBoundary>
                 )}
                 {viewMode === 'timeline' && (
-                  <Suspense fallback={<TimelineSkeleton />}>
-                    <TimelineView
-                      entities={entities}
-                      onEntityClick={handleEntityClick}
-                      loading={loading}
-                    />
-                  </Suspense>
+                  <ErrorBoundary>
+                    <Suspense fallback={<TimelineSkeleton />}>
+                      <TimelineView
+                        entities={entities}
+                        onEntityClick={handleEntityClick}
+                        loading={loading}
+                      />
+                    </Suspense>
+                  </ErrorBoundary>
                 )}
               </motion.div>
             </AnimatePresence>
           </div>
 
-          <Suspense fallback={<DetailPanelSkeleton />}>
-            <DetailPanel />
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense fallback={<DetailPanelSkeleton />}>
+              <DetailPanel />
+            </Suspense>
+          </ErrorBoundary>
         </motion.div>
 
         <motion.div

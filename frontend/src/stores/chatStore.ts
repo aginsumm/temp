@@ -167,7 +167,7 @@ export const useChatStore = create<ChatState>()(
       createSession: async (userId = 'default') => {
         const now = new Date().toISOString();
         const newSession: Session = {
-          id: `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
           user_id: userId,
           title: '新对话',
           created_at: now,
@@ -1052,19 +1052,20 @@ export const useChatStore = create<ChatState>()(
         messagesBySession: state.messagesBySession,
       }),
       version: 2,
-      migrate: (persistedState: any, version: number) => {
+      migrate: (persistedState: unknown, version: number) => {
+        const state = persistedState as Record<string, unknown>;
         if (version === 0 || version === 1) {
-          if (persistedState.messages && !persistedState.messagesBySession) {
-            const sessionId = persistedState.currentSessionId;
+          if (state.messages && !state.messagesBySession) {
+            const sessionId = state.currentSessionId as string | undefined;
             if (sessionId) {
-              persistedState.messagesBySession = {
-                [sessionId]: persistedState.messages,
+              state.messagesBySession = {
+                [sessionId]: state.messages,
               };
             }
-            delete persistedState.messages;
+            delete state.messages;
           }
         }
-        return persistedState;
+        return persistedState as ChatState;
       },
     }
   )

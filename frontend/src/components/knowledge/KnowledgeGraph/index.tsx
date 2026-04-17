@@ -18,6 +18,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { optimizeGraphData, getTopKNodes, getConnectedNodes } from '../../../utils/graphOptimizer';
+import { debounce } from '../../../utils/performance';
 import { GraphSkeleton } from '../../common/Skeleton';
 import { useToast } from '../../common/Toast';
 import {
@@ -69,6 +70,7 @@ export default function KnowledgeGraph() {
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const [viewMode, setViewMode] = useState<'all' | 'top' | 'connected'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [showViewMode, setShowViewMode] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
@@ -79,10 +81,30 @@ export default function KnowledgeGraph() {
   const { resolvedMode } = useThemeStore();
   const toast = useToast();
 
+  // 防抖搜索查询（500ms 延迟）
+  const debouncedSetSearchQuery = useCallback(
+    debounce((query: string) => {
+      setDebouncedSearchQuery(query);
+    }, 500),
+    []
+  );
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    debouncedSetSearchQuery(e.target.value);
+  };
+
   const graphData = useMemo(() => {
     if (!rawGraphData) return null;
 
     let optimized = optimizeGraphData(rawGraphData);
+
+    // 自动切换到 Top K 模式如果节点过多
+    if (optimized.nodes.length > 200 && viewMode === 'all') {
+      console.info(`节点数量过多 (${optimized.nodes.length})，自动切换到 Top K 模式`);
+      setViewMode('top');
+      optimized = getTopKNodes(optimized, 100);
+    }
 
     if (selectedCategories.size > 0) {
       const filteredNodes = optimized.nodes.filter((node) => selectedCategories.has(node.category));
@@ -107,8 +129,9 @@ export default function KnowledgeGraph() {
       };
     }
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+    // 使用防抖后的搜索查询
+    if (debouncedSearchQuery) {
+      const query = debouncedSearchQuery.toLowerCase();
       const matchedNodes = optimized.nodes.filter((node) =>
         node.name.toLowerCase().includes(query)
       );
@@ -140,7 +163,7 @@ export default function KnowledgeGraph() {
     }
 
     return optimized;
-  }, [rawGraphData, viewMode, selectedNode, searchQuery, selectedCategories]);
+  }, [rawGraphData, viewMode, selectedNode, debouncedSearchQuery, selectedCategories]);
 
   const renderGraph = useCallback(() => {
     if (!chartInstance.current || !graphData) return;
@@ -164,8 +187,9 @@ export default function KnowledgeGraph() {
           fontSize: 14,
         },
         formatter: (params: any) => {
-          if (params.dataType === 'node') {
+          if (params.dataType === 'node' && params.data) {
             const color = getCategoryColor(params.data.category);
+            const value = params.data.value ?? 0.5;
             return `
               <div style="padding: 12px; min-width: 200px;">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
@@ -177,7 +201,7 @@ export default function KnowledgeGraph() {
                 </div>
                 <div style="color: var(--color-text-muted); font-size: 13px;">
                   <span style="color: var(--color-text-secondary);">重要性:</span> 
-                  <span style="color: var(--color-warning); font-weight: bold;">${(params.data.value * 100).toFixed(0)}%</span>
+                  <span style="color: var(--color-warning); font-weight: bold;">${(value * 100).toFixed(0)}%</span>
                 </div>
               </div>
             `;
@@ -185,11 +209,11 @@ export default function KnowledgeGraph() {
           return `
             <div style="padding: 12px; min-width: 200px;">
               <div style="color: var(--color-primary); font-size: 14px; margin-bottom: 8px;">
-                ${params.data.source} → ${params.data.target}
+                ${params.data?.source} → ${params.data?.target}
               </div>
               <div style="color: var(--color-text-muted); font-size: 13px;">
                 <span style="color: var(--color-text-secondary);">关系:</span> 
-                <span style="color: var(--color-success); font-weight: bold;">${params.data.relationType || '关联'}</span>
+                <span style="color: var(--color-success); font-weight: bold;">${params.data?.relationType || '关联'}</span>
               </div>
             </div>
           `;
@@ -319,7 +343,7 @@ export default function KnowledgeGraph() {
 
     chartInstance.current.off('click');
     chartInstance.current.on('click', (params: any) => {
-      if (params.dataType === 'node') {
+      if (params.dataType === 'node' && params.data) {
         const nodeId = params.data.id;
 
         const relatedNodeIds = graphData.edges
@@ -333,7 +357,7 @@ export default function KnowledgeGraph() {
 
     chartInstance.current.off('mouseover');
     chartInstance.current.on('mouseover', (params: any) => {
-      if (params.dataType === 'node') {
+      if (params.dataType === 'node' && params.data) {
         setHoveredNode(params.data);
       }
     });
@@ -351,6 +375,7 @@ export default function KnowledgeGraph() {
         chartInstance.current.dispose();
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -360,7 +385,8 @@ export default function KnowledgeGraph() {
       }
       renderGraph();
     }
-  }, [graphData, layoutType, selectedNode, highlightedNodes, renderGraph]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphData, layoutType, selectedNode, highlightedNodes]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -373,8 +399,9 @@ export default function KnowledgeGraph() {
       setIsFullscreen(!!document.fullscreenElement);
     };
 
-    const handleLoadSnapshot = (event: CustomEvent) => {
-      const { entities, relations } = event.detail;
+    const handleLoadSnapshot = (event: Event) => {
+      const customEvent = event as CustomEvent<{ entities: Entity[]; relations?: Relation[] }>;
+      const { entities, relations } = customEvent.detail;
       if (entities && entities.length > 0) {
         const graphData = convertEntitiesToGraphData(entities, relations || []);
         setRawGraphData(graphData);
@@ -384,11 +411,11 @@ export default function KnowledgeGraph() {
 
     window.addEventListener('resize', handleResize);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    window.addEventListener('loadSnapshot', handleLoadSnapshot as any);
+    window.addEventListener('loadSnapshot', handleLoadSnapshot);
     return () => {
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      window.removeEventListener('loadSnapshot', handleLoadSnapshot as any);
+      window.removeEventListener('loadSnapshot', handleLoadSnapshot);
     };
   }, [toast]);
 
@@ -421,8 +448,9 @@ export default function KnowledgeGraph() {
 
   const handleZoomIn = () => {
     if (chartInstance.current) {
-      const option = chartInstance.current.getOption() as any;
-      const zoom = (option.series[0].zoom || 1) * 1.2;
+      const option = chartInstance.current.getOption();
+      const series = option.series as Array<{ zoom?: number }> | undefined;
+      const zoom = (series?.[0]?.zoom || 1) * 1.2;
       chartInstance.current.setOption({
         series: [{ zoom }],
       });
@@ -431,8 +459,9 @@ export default function KnowledgeGraph() {
 
   const handleZoomOut = () => {
     if (chartInstance.current) {
-      const option = chartInstance.current.getOption() as any;
-      const zoom = (option.series[0].zoom || 1) / 1.2;
+      const option = chartInstance.current.getOption();
+      const series = option.series as Array<{ zoom?: number }> | undefined;
+      const zoom = (series?.[0]?.zoom || 1) / 1.2;
       chartInstance.current.setOption({
         series: [{ zoom: Math.max(zoom, 0.3) }],
       });
@@ -639,7 +668,7 @@ export default function KnowledgeGraph() {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={handleSearchChange}
             placeholder="搜索节点..."
             className="w-64 pl-11 pr-4 py-3 backdrop-blur-xl rounded-xl focus:outline-none transition-all"
             style={{

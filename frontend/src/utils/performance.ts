@@ -17,6 +17,99 @@ export interface PerformanceReport {
   };
 }
 
+/**
+ * 防抖函数 - 延迟执行函数，直到等待时间结束后才执行
+ * @param func 需要防抖的函数
+ * @param wait 等待时间（毫秒）
+ * @returns 防抖后的函数
+ */
+export function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+
+  return function executedFunction(...args: Parameters<T>) {
+    const later = () => {
+      timeout = null;
+      func(...args);
+    };
+
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    timeout = setTimeout(later, wait);
+  };
+}
+
+/**
+ * 节流函数 - 限制函数在指定时间内只执行一次
+ * @param func 需要节流的函数
+ * @param limit 时间限制（毫秒）
+ * @returns 节流后的函数
+ */
+export function throttle<T extends (...args: any[]) => any>(
+  func: T,
+  limit: number
+): (...args: Parameters<T>) => void {
+  let inThrottle: boolean = false;
+
+  return function executedFunction(...args: Parameters<T>) {
+    if (!inThrottle) {
+      func(...args);
+      inThrottle = true;
+      setTimeout(() => (inThrottle = false), limit);
+    }
+  };
+}
+
+/**
+ * 大数据量处理优化 - 分块处理大型数组
+ * @param array 待处理的数组
+ * @param processor 处理函数
+ * @param chunkSize 分块大小
+ * @returns Promise
+ */
+export async function processInChunks<T, R>(
+  array: T[],
+  processor: (chunk: T[]) => R[],
+  chunkSize: number = 100
+): Promise<R[]> {
+  const results: R[] = [];
+  
+  for (let i = 0; i < array.length; i += chunkSize) {
+    const chunk = array.slice(i, i + chunkSize);
+    const chunkResults = processor(chunk);
+    results.push(...chunkResults);
+    
+    // 让出主线程，避免阻塞 UI
+    if (i + chunkSize < array.length) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+  
+  return results;
+}
+
+/**
+ * 使用 requestIdleCallback 进行低优先级处理
+ * @param callback 回调函数
+ * @param timeout 超时时间
+ */
+export function idleCallback(callback: (deadline: IdleDeadline) => void, timeout?: number): void {
+  if ('requestIdleCallback' in window) {
+    (window as any).requestIdleCallback(callback, { timeout });
+  } else {
+    // Fallback: 使用 setTimeout
+    setTimeout(() => {
+      callback({
+        didTimeout: false,
+        timeRemaining: () => 50,
+      } as IdleDeadline);
+    }, 1);
+  }
+}
+
 export function usePerformanceMonitor(componentName: string) {
   const metricsRef = useRef<PerformanceMetric[]>([]);
   const frameCountRef = useRef(0);

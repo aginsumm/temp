@@ -15,9 +15,11 @@ import {
 import { useUIStore, MIN_RIGHT_PANEL_WIDTH, MAX_RIGHT_PANEL_WIDTH } from '../../../stores/uiStore';
 import { useResizablePanel } from '../../../hooks/useResizablePanel';
 import DynamicGraphPanel from '../DynamicGraphPanel';
+import ErrorBoundary from '../../common/ErrorBoundary';
 import { snapshotService } from '../../../api/snapshot';
 import { useToast } from '../../common/Toast';
 import ConfirmDialog from '../../common/ConfirmDialog';
+import { LoadingOverlay } from '../../common/ProgressBar';
 import type { Entity, Relation, GraphSnapshot } from '../../../types/chat';
 
 interface Keyword {
@@ -58,21 +60,23 @@ export default function RightPanel({
   const [isLoadingSnapshots, setIsLoadingSnapshots] = useState(false);
   const [pendingSnapshot, setPendingSnapshot] = useState<GraphSnapshot | null>(null);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState<number | undefined>(undefined);
 
   const toast = useToast();
 
   // 监听快照加载事件
   useEffect(() => {
-    const handleLoadSnapshot = (event: CustomEvent<GraphSnapshot>) => {
-      if (onLoadSnapshot) {
-        onLoadSnapshot(event.detail);
+    const handleLoadSnapshot = (event: Event) => {
+      const customEvent = event as CustomEvent<GraphSnapshot>;
+      if (onLoadSnapshot && customEvent.detail) {
+        onLoadSnapshot(customEvent.detail);
         toast.success('快照已加载', '请在图谱标签页查看');
       }
     };
 
-    window.addEventListener('loadSnapshot' as any, handleLoadSnapshot as any);
+    window.addEventListener('loadSnapshot', handleLoadSnapshot);
     return () => {
-      window.removeEventListener('loadSnapshot' as any, handleLoadSnapshot as any);
+      window.removeEventListener('loadSnapshot', handleLoadSnapshot);
     };
   }, [onLoadSnapshot, toast]);
 
@@ -101,36 +105,55 @@ export default function RightPanel({
 
   const hasGraphData = entities.length > 0;
 
-  useEffect(() => {
-    if (activeTab === 'history' && sessionId) {
-      loadSnapshots();
-    }
-  }, [activeTab, sessionId]);
-
-  const loadSnapshots = async () => {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const loadSnapshots = useCallback(async () => {
     if (!sessionId) return;
     setIsLoadingSnapshots(true);
+    setLoadingProgress(0);
     try {
+      // 模拟进度更新
+      const progressInterval = setInterval(() => {
+        setLoadingProgress((prev) => {
+          if (prev === undefined || prev >= 90) {
+            clearInterval(progressInterval);
+            return prev;
+          }
+          return prev + 10;
+        });
+      }, 100);
+
       const response = await snapshotService.listSnapshots(sessionId, 1, 10);
       setSnapshots(response.snapshots);
+      setLoadingProgress(100);
 
       // 如果快照列表为空，给出提示
       if (response.snapshots.length === 0) {
         toast.info('暂无快照', '当前会话还没有保存的快照');
       }
-    } catch (error: any) {
+
+      clearInterval(progressInterval);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
       console.warn('Failed to load snapshots:', error);
-      if (error.message?.includes('not found') || error.message?.includes('不存在')) {
+      setLoadingProgress(undefined);
+      if (errorMessage.includes('not found') || errorMessage.includes('不存在')) {
         toast.error('加载失败', '快照不存在');
-      } else if (error.message?.includes('permission') || error.message?.includes('权限')) {
+      } else if (errorMessage.includes('permission') || errorMessage.includes('权限')) {
         toast.error('加载失败', '无权访问快照');
       } else {
         toast.error('加载失败', '无法加载快照列表，请检查网络连接');
       }
     } finally {
       setIsLoadingSnapshots(false);
+      setTimeout(() => setLoadingProgress(undefined), 300);
     }
-  };
+  }, [sessionId, toast]);
+
+  useEffect(() => {
+    if (activeTab === 'history' && sessionId) {
+      loadSnapshots();
+    }
+  }, [activeTab, sessionId, loadSnapshots]);
 
   const handleSnapshotClick = useCallback(async (snapshot: GraphSnapshot) => {
     setPendingSnapshot(snapshot);
@@ -166,11 +189,12 @@ export default function RightPanel({
       window.dispatchEvent(event);
 
       toast.success('加载成功', '已恢复快照数据');
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
       console.error('Failed to load snapshot:', error);
-      if (error.message?.includes('not found') || error.message?.includes('不存在')) {
+      if (errorMessage.includes('not found') || errorMessage.includes('不存在')) {
         toast.error('加载失败', '快照数据不存在');
-      } else if (error.message?.includes('permission') || error.message?.includes('权限')) {
+      } else if (errorMessage.includes('permission') || errorMessage.includes('权限')) {
         toast.error('加载失败', '无权访问该快照');
       } else {
         toast.error('加载失败', '无法加载快照数据，请检查网络连接');
@@ -320,17 +344,19 @@ export default function RightPanel({
             className="flex flex-col h-full"
           >
             <div className="flex-1 min-h-0">
-              <DynamicGraphPanel
-                entities={entities}
-                relations={relations}
-                keywords={processedKeywords.map((k) => k.text)}
-                sessionId={sessionId}
-                messageId={messageId}
-                onNodeClick={onEntityClick}
-                height="100%"
-                showControls={true}
-                showSaveButton={true}
-              />
+              <ErrorBoundary>
+                <DynamicGraphPanel
+                  entities={entities}
+                  relations={relations}
+                  keywords={processedKeywords.map((k) => k.text)}
+                  sessionId={sessionId}
+                  messageId={messageId}
+                  onNodeClick={onEntityClick}
+                  height="100%"
+                  showControls={true}
+                  showSaveButton={true}
+                />
+              </ErrorBoundary>
             </div>
           </motion.div>
         );
@@ -342,16 +368,16 @@ export default function RightPanel({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="p-3"
+            className="p-3 relative"
           >
-            {isLoadingSnapshots ? (
-              <div className="flex items-center justify-center py-8">
-                <div
-                  className="animate-spin rounded-full h-6 w-6 border-b-2"
-                  style={{ borderColor: 'var(--color-primary)' }}
-                />
-              </div>
-            ) : snapshots.length > 0 ? (
+            {isLoadingSnapshots && (
+              <LoadingOverlay
+                isLoading={isLoadingSnapshots}
+                message="加载快照列表中..."
+                progress={loadingProgress}
+              />
+            )}
+            {snapshots.length > 0 ? (
               <div className="space-y-2">
                 {snapshots.map((snapshot) => (
                   <motion.button

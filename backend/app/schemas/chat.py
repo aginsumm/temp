@@ -81,7 +81,7 @@ class Relation(RelationBase):
 class GraphNode(BaseModel):
     id: str
     name: str
-    category: str
+    category: EntityType
     value: float = 0.5
     symbolSize: float = 30
     x: Optional[float] = None
@@ -98,7 +98,7 @@ class GraphEdge(BaseModel):
     id: Optional[str] = None
     source: str
     target: str
-    relationType: Optional[str] = None
+    relationType: Optional[RelationType] = None
     value: float = 0.5
     lineStyle: Optional[dict] = None
     
