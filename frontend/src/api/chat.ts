@@ -59,7 +59,7 @@ function transformMessage(data: Record<string, unknown>) {
     role: data.role as 'user' | 'assistant',
     content: data.content as string,
     created_at: data.created_at as string,
-    sources: ((data.sources as any[]) || []) as Source[],
+    sources: ((data.sources as unknown[]) || []) as Source[],
     entities,
     keywords: data.keywords as string[],
     feedback: data.feedback as 'helpful' | 'unclear' | null | undefined,

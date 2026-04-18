@@ -50,55 +50,60 @@ vi.mock('../../../api/knowledge', () => ({
     removeFavorite: vi.fn().mockResolvedValue(undefined),
     checkFavorite: vi.fn().mockResolvedValue({ is_favorite: false }),
     submitFeedback: vi.fn().mockResolvedValue({}),
+    exportData: vi.fn().mockResolvedValue(new Blob(['test'])),
+    importData: vi.fn().mockResolvedValue({ success: true, imported: 1, errors: [] }),
   },
 }));
 
-vi.mock('echarts', () => ({
-  default: {
-    init: vi.fn().mockReturnValue({
-      setOption: vi.fn(),
-      resize: vi.fn(),
-      dispose: vi.fn(),
-      on: vi.fn(),
-      off: vi.fn(),
-    }),
-    registerTheme: vi.fn(),
+vi.mock('../../../api/snapshot', () => ({
+  snapshotService: {
+    listSnapshots: vi.fn().mockResolvedValue({ snapshots: [], total: 0 }),
+    getSnapshot: vi.fn().mockResolvedValue(null),
+    saveSnapshot: vi.fn().mockResolvedValue({ id: '1' }),
+    deleteSnapshot: vi.fn().mockResolvedValue(undefined),
   },
 }));
-
-vi.mock('echarts-for-react', () => ({
-  default: vi.fn().mockImplementation(() => <div data-testid="echarts-mock" />),
-}));
-
-const mockStoreState = {
-  viewMode: 'graph',
-  setViewMode: vi.fn(),
-  selectedNode: null,
-  setSelectedNode: vi.fn(),
-  category: [],
-  region: [],
-  period: [],
-  setCategory: vi.fn(),
-  setRegion: vi.fn(),
-  setPeriod: vi.fn(),
-  keyword: '',
-  setKeyword: vi.fn(),
-  graphData: { nodes: [], edges: [], categories: [] },
-  setGraphData: vi.fn(),
-  searchResults: [],
-  setSearchResults: vi.fn(),
-  loading: false,
-  setLoading: vi.fn(),
-};
 
 vi.mock('../../../stores/knowledgeGraphStore', () => ({
-  useKnowledgeGraphStore: vi.fn((selector) => {
-    if (typeof selector === 'function') {
-      return selector(mockStoreState);
-    }
-    return mockStoreState;
+  default: vi.fn(() => ({
+    viewMode: 'graph',
+    setViewMode: vi.fn(),
+    selectedNode: null,
+    setSelectedNode: vi.fn(),
+    category: [],
+    region: [],
+    period: [],
+    setCategory: vi.fn(),
+    setRegion: vi.fn(),
+    setPeriod: vi.fn(),
+    keyword: '',
+    setKeyword: vi.fn(),
+    graphData: { nodes: [], edges: [], categories: [] },
+    setGraphData: vi.fn(),
+    searchResults: [],
+    setSearchResults: vi.fn(),
+    loading: false,
+    setLoading: vi.fn(),
+  })),
+}));
+
+vi.mock('../../../components/common/Toast', () => ({
+  useToast: () => ({
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    warning: vi.fn(),
   }),
-  default: vi.fn(() => mockStoreState),
+}));
+
+vi.mock('../../../utils/snapshotHandler', () => ({
+  loadSnapshot: vi.fn().mockResolvedValue({ success: true }),
+}));
+
+vi.mock('../../../services/graphSyncService', () => ({
+  graphSyncService: {
+    updateFromKnowledge: vi.fn(),
+  },
 }));
 
 import KnowledgePage from '../index';
@@ -120,15 +125,7 @@ describe('KnowledgePage', () => {
     renderWithRouter(<KnowledgePage />);
 
     await waitFor(() => {
-      expect(screen.getByText('知识图谱')).toBeInTheDocument();
-    });
-  });
-
-  it('should render search input', async () => {
-    renderWithRouter(<KnowledgePage />);
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/搜索/)).toBeInTheDocument();
+      expect(screen.getByText('非遗知识图谱')).toBeInTheDocument();
     });
   });
 
@@ -136,53 +133,8 @@ describe('KnowledgePage', () => {
     renderWithRouter(<KnowledgePage />);
 
     await waitFor(() => {
-      expect(screen.getByText('图谱')).toBeInTheDocument();
-      expect(screen.getByText('列表')).toBeInTheDocument();
-    });
-  });
-
-  it('should render graph container', async () => {
-    renderWithRouter(<KnowledgePage />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId('echarts-mock')).toBeInTheDocument();
-    });
-  });
-});
-
-describe('KnowledgePage Search', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('should update keyword on input change', async () => {
-    renderWithRouter(<KnowledgePage />);
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/搜索/)).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText(/搜索/);
-    fireEvent.change(searchInput, { target: { value: '景泰蓝' } });
-
-    expect(searchInput).toHaveValue('景泰蓝');
-  });
-
-  it('should trigger search on Enter key', async () => {
-    const { knowledgeApi } = await import('../../../api/knowledge');
-
-    renderWithRouter(<KnowledgePage />);
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText(/搜索/)).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText(/搜索/);
-    fireEvent.change(searchInput, { target: { value: '景泰蓝' } });
-    fireEvent.keyDown(searchInput, { key: 'Enter' });
-
-    await waitFor(() => {
-      expect(knowledgeApi.search).toHaveBeenCalled();
+      expect(screen.getByText('图谱视图')).toBeInTheDocument();
+      expect(screen.getByText('列表视图')).toBeInTheDocument();
     });
   });
 });

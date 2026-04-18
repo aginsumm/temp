@@ -60,10 +60,11 @@ export default function KnowledgeGraph() {
   const toast = useToast();
 
   // 防抖搜索查询（500ms 延迟）
-  const debouncedSetSearchQuery = useCallback(
-    debounce((query: string) => {
-      setDebouncedSearchQuery(query);
-    }, 500),
+  const debouncedSetSearchQuery = useMemo(
+    () =>
+      debounce((query: string) => {
+        setDebouncedSearchQuery(query);
+      }, 500),
     []
   );
 
@@ -164,18 +165,28 @@ export default function KnowledgeGraph() {
           color: textColor,
           fontSize: 14,
         },
-        formatter: (params: any) => {
+        formatter: (params: {
+          dataType?: string;
+          data?: {
+            category?: string;
+            value?: number;
+            name?: string;
+            source?: string;
+            target?: string;
+            relationType?: string;
+          };
+        }) => {
           if (params.dataType === 'node' && params.data) {
-            const color = getCategoryColor(params.data.category);
+            const color = getCategoryColor(params.data.category ?? '');
             const value = params.data.value ?? 0.5;
             return `
               <div style="padding: 12px; min-width: 200px;">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                   <div style="width: 12px; height: 12px; border-radius: 50%; background: ${color}; box-shadow: 0 0 10px ${color}"></div>
-                  <strong style="color: var(--color-primary); font-size: 16px;">${params.data.name}</strong>
+                  <strong style="color: var(--color-primary); font-size: 16px;">${params.data.name ?? ''}</strong>
                 </div>
                 <div style="color: var(--color-text-muted); font-size: 13px; margin-bottom: 4px;">
-                  <span style="color: var(--color-text-secondary);">类型:</span> ${getCategoryLabel(params.data.category)}
+                  <span style="color: var(--color-text-secondary);">类型:</span> ${getCategoryLabel(params.data.category ?? '')}
                 </div>
                 <div style="color: var(--color-text-muted); font-size: 13px;">
                   <span style="color: var(--color-text-secondary);">重要性:</span> 
@@ -187,7 +198,7 @@ export default function KnowledgeGraph() {
           return `
             <div style="padding: 12px; min-width: 200px;">
               <div style="color: var(--color-primary); font-size: 14px; margin-bottom: 8px;">
-                ${params.data?.source} → ${params.data?.target}
+                ${params.data?.source ?? ''} → ${params.data?.target ?? ''}
               </div>
               <div style="color: var(--color-text-muted); font-size: 13px;">
                 <span style="color: var(--color-text-secondary);">关系:</span> 
@@ -320,9 +331,13 @@ export default function KnowledgeGraph() {
     chartInstance.current.setOption(option, true);
 
     chartInstance.current.off('click');
-    chartInstance.current.on('click', (params: any) => {
-      if (params.dataType === 'node' && params.data) {
-        const nodeId = params.data.id;
+    chartInstance.current.on('click', (params: unknown) => {
+      const event = params as {
+        dataType?: string;
+        data?: { id?: string } | null;
+      };
+      if (event.dataType === 'node' && event.data && 'id' in event.data) {
+        const nodeId = (event.data as { id: string }).id;
 
         const relatedNodeIds = graphData.edges
           .filter((edge) => edge.source === nodeId || edge.target === nodeId)
@@ -334,9 +349,10 @@ export default function KnowledgeGraph() {
     });
 
     chartInstance.current.off('mouseover');
-    chartInstance.current.on('mouseover', (params: any) => {
-      if (params.dataType === 'node' && params.data) {
-        setHoveredNode(params.data);
+    chartInstance.current.on('mouseover', (params: unknown) => {
+      const event = params as { dataType?: string; data?: unknown };
+      if (event.dataType === 'node' && event.data) {
+        setHoveredNode(event.data as GraphNode);
       }
     });
 
@@ -344,7 +360,15 @@ export default function KnowledgeGraph() {
     chartInstance.current.on('mouseout', () => {
       setHoveredNode(null);
     });
-  }, [graphData, layoutType, selectedNode, highlightedNodes]);
+  }, [
+    graphData,
+    layoutType,
+    selectedNode,
+    highlightedNodes,
+    resolvedMode,
+    setHighlightedNodes,
+    setSelectedNode,
+  ]);
 
   useEffect(() => {
     loadGraphData();
@@ -391,7 +415,7 @@ export default function KnowledgeGraph() {
         categories: chatGraphData.categories?.map((cat) => ({
           name: cat.name,
           itemStyle: {
-            color: (cat as any).baseColor || 'var(--color-primary)',
+            color: (cat as unknown as { baseColor?: string }).baseColor || 'var(--color-primary)',
           },
         })),
       };

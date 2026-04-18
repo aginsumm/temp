@@ -1,0 +1,255 @@
+{
+  "testSummary": {
+    "totalFiles": 13,
+    "totalTests": 84,
+    "passed": 38,
+    "failed": 31,
+    "skipped": 15,
+    "successRate": 45.2,
+    "duration": "58.81s",
+    "date": "2026-04-18",
+    "environment": "jsdom",
+    "framework": "Vitest 1.0.0"
+  },
+  "testFiles": [
+    {
+      "name": "DetailPanel.test.tsx",
+      "path": "src/components/knowledge/DetailPanel/__tests__/DetailPanel.test.tsx",
+      "category": "组件测试",
+      "tests": 7,
+      "passed": 0,
+      "failed": 7,
+      "status": "failed",
+      "coverage": 0,
+      "errors": ["IndexedDB 初始化失败", "mock 配置不完整"],
+      "description": "测试知识详情面板的渲染和交互"
+    },
+    {
+      "name": "ProgressBar.test.tsx",
+      "path": "src/components/common/__tests__/ProgressBar.test.tsx",
+      "category": "组件测试",
+      "tests": 7,
+      "passed": 7,
+      "failed": 0,
+      "status": "passed",
+      "coverage": 95,
+      "errors": [],
+      "description": "测试进度条组件的渲染和状态"
+    },
+    {
+      "name": "ErrorBoundary.test.tsx",
+      "path": "src/components/common/__tests__/ErrorBoundary.test.tsx",
+      "category": "组件测试",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "status": "passed",
+      "coverage": 90,
+      "errors": [],
+      "description": "测试错误边界组件的错误捕获和重试机制"
+    },
+    {
+      "name": "performance.test.ts",
+      "path": "src/utils/__tests__/performance.test.ts",
+      "category": "工具函数测试",
+      "tests": 8,
+      "passed": 8,
+      "failed": 0,
+      "status": "passed",
+      "coverage": 100,
+      "errors": [],
+      "description": "测试防抖、节流和分块处理函数"
+    },
+    {
+      "name": "chatStore.test.ts",
+      "path": "src/stores/__tests__/chatStore.test.ts",
+      "category": "状态管理测试",
+      "tests": 11,
+      "passed": 11,
+      "failed": 0,
+      "status": "passed",
+      "coverage": 85,
+      "errors": [],
+      "description": "测试聊天状态管理的各种操作"
+    },
+    {
+      "name": "UnifiedMessageBubble.test.tsx",
+      "path": "src/tests/UnifiedMessageBubble.test.tsx",
+      "category": "组件测试",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "status": "passed",
+      "coverage": 88,
+      "errors": [],
+      "description": "测试统一消息气泡的渲染和交互"
+    },
+    {
+      "name": "useVoiceInput.test.ts",
+      "path": "src/tests/useVoiceInput.test.ts",
+      "category": "Hook测试",
+      "tests": 6,
+      "passed": 2,
+      "failed": 4,
+      "status": "partial",
+      "coverage": 33,
+      "errors": ["SpeechRecognition mock 不完整", "事件模拟有问题"],
+      "description": "测试语音输入 Hook 的功能"
+    },
+    {
+      "name": "ListView.test.tsx",
+      "path": "src/components/knowledge/ListView/__tests__/ListView.test.tsx",
+      "category": "组件测试",
+      "tests": 5,
+      "passed": 0,
+      "failed": 5,
+      "status": "failed",
+      "coverage": 0,
+      "errors": ["依赖 mock 缺失", "组件渲染失败"],
+      "description": "测试列表视图组件的渲染"
+    },
+    {
+      "name": "KnowledgeGraph.test.tsx",
+      "path": "src/components/knowledge/KnowledgeGraph/__tests__/KnowledgeGraph.test.tsx",
+      "category": "组件测试",
+      "tests": 5,
+      "passed": 0,
+      "failed": 5,
+      "status": "failed",
+      "coverage": 0,
+      "errors": ["echarts mock 不完整", "内存溢出"],
+      "description": "测试知识图谱组件的渲染"
+    },
+    {
+      "name": "services.test.tsx",
+      "path": "tests/unit/services.test.tsx",
+      "category": "服务测试",
+      "tests": 8,
+      "passed": 0,
+      "failed": 8,
+      "status": "failed",
+      "coverage": 0,
+      "errors": ["服务 mock 配置错误"],
+      "description": "测试各种服务的功能"
+    },
+    {
+      "name": "index.test.tsx",
+      "path": "src/pages/Knowledge/__tests__/index.test.tsx",
+      "category": "页面测试",
+      "tests": 5,
+      "passed": 0,
+      "failed": 5,
+      "status": "failed",
+      "coverage": 0,
+      "errors": ["页面组件复杂，mock 困难"],
+      "description": "测试知识页面的渲染"
+    },
+    {
+      "name": "components.test.tsx",
+      "path": "src/components/knowledge/__tests__/components.test.tsx",
+      "category": "组件测试",
+      "tests": 7,
+      "passed": 0,
+      "failed": 7,
+      "status": "failed",
+      "coverage": 0,
+      "errors": ["组件依赖复杂"],
+      "description": "测试知识组件的各种功能"
+    },
+    {
+      "name": "FilterPanel.test.tsx",
+      "path": "src/components/knowledge/FilterPanel/__tests__/FilterPanel.test.tsx",
+      "category": "组件测试",
+      "tests": 5,
+      "passed": 0,
+      "failed": 5,
+      "status": "failed",
+      "coverage": 0,
+      "errors": ["面板组件 mock 失败"],
+      "description": "测试过滤面板组件"
+    }
+  ],
+  "categories": [
+    {
+      "name": "组件测试",
+      "total": 42,
+      "passed": 12,
+      "failed": 30,
+      "successRate": 28.6
+    },
+    {
+      "name": "工具函数测试",
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "successRate": 100
+    },
+    {
+      "name": "状态管理测试",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "successRate": 100
+    },
+    {
+      "name": "Hook测试",
+      "total": 6,
+      "passed": 2,
+      "failed": 4,
+      "successRate": 33.3
+    },
+    {
+      "name": "服务测试",
+      "total": 8,
+      "passed": 0,
+      "failed": 8,
+      "successRate": 0
+    },
+    {
+      "name": "页面测试",
+      "total": 5,
+      "passed": 0,
+      "failed": 5,
+      "successRate": 0
+    }
+  ],
+  "issues": [
+    {
+      "type": "依赖问题",
+      "severity": "高",
+      "description": "IndexedDB 在测试环境中未正确 mock",
+      "affectedFiles": ["DetailPanel.test.tsx"],
+      "solution": "添加 IndexedDB mock 或使用内存数据库"
+    },
+    {
+      "type": "mock问题",
+      "severity": "高",
+      "description": "echarts 库的 mock 不完整，缺少 init 方法",
+      "affectedFiles": ["KnowledgeGraph.test.tsx"],
+      "solution": "完善 echarts mock，添加所有必要的方法"
+    },
+    {
+      "type": "内存问题",
+      "severity": "中",
+      "description": "测试运行时内存溢出，Worker 终止",
+      "affectedFiles": ["KnowledgeGraph.test.tsx", "services.test.tsx"],
+      "solution": "增加 Node.js 内存限制或优化测试配置"
+    },
+    {
+      "type": "配置问题",
+      "severity": "中",
+      "description": "部分测试文件缺少必要的 setup 配置",
+      "affectedFiles": ["ListView.test.tsx", "FilterPanel.test.tsx"],
+      "solution": "统一测试 setup 文件，添加通用 mock"
+    }
+  ],
+  "recommendations": [
+    "完善 echarts、d3 等可视化库的 mock",
+    "添加 IndexedDB 的 mock 实现",
+    "增加 Node.js 内存限制 (--max-old-space-size=4096)",
+    "统一测试 setup 文件，减少重复配置",
+    "为复杂组件添加更多单元测试",
+    "添加集成测试和 E2E 测试",
+    "使用测试覆盖率工具监控代码覆盖率"
+  ]
+}

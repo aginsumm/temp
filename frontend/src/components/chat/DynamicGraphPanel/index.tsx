@@ -65,9 +65,17 @@ export default function DynamicGraphPanel({
   const storeRelations = useChatStore((state) => state.currentRelations);
   const storeKeywords = useChatStore((state) => state.currentKeywords);
 
-  const entities = useStoreData ? storeEntities : propEntities || [];
-  const relations = useStoreData ? storeRelations : propRelations || [];
-  const keywords = useStoreData ? storeKeywords : propKeywords || [];
+  const entities = useMemo(() => {
+    return useStoreData ? storeEntities : propEntities || [];
+  }, [useStoreData, storeEntities, propEntities]);
+
+  const relations = useMemo(() => {
+    return useStoreData ? storeRelations : propRelations || [];
+  }, [useStoreData, storeRelations, propRelations]);
+
+  const keywords = useMemo(() => {
+    return useStoreData ? storeKeywords : propKeywords || [];
+  }, [useStoreData, storeKeywords, propKeywords]);
 
   const toast = useToast();
 

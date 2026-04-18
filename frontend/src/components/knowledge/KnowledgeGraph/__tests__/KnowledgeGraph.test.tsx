@@ -6,21 +6,25 @@ import KnowledgeGraph from '../index';
 import useKnowledgeGraphStore from '../../../../stores/knowledgeGraphStore';
 import { knowledgeApi } from '../../../../api/knowledge';
 
-vi.mock('echarts', () => ({
-  default: {
-    init: vi.fn().mockReturnValue({
-      setOption: vi.fn(),
-      resize: vi.fn(),
-      dispose: vi.fn(),
-      on: vi.fn(),
-      off: vi.fn(),
-    }),
-    registerTheme: vi.fn(),
+vi.mock('../../../../stores/knowledgeGraphStore', () => ({
+  default: vi.fn(() => ({
+    selectedNode: null,
+    highlightedNodes: [],
+    layoutType: 'force',
+    setSelectedNode: vi.fn(),
+    setHighlightedNodes: vi.fn(),
+    setLayoutType: vi.fn(),
+    setGraphData: vi.fn(),
+    graphData: null,
+  })),
+}));
+
+vi.mock('../../../../api/knowledge', () => ({
+  knowledgeApi: {
+    getGraphData: vi.fn(),
   },
 }));
 
-vi.mock('../../../../stores/knowledgeGraphStore');
-vi.mock('../../../../api/knowledge');
 vi.mock('../../../common/Toast', () => ({
   useToast: () => ({
     success: vi.fn(),

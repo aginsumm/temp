@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>测试可视化图表 - 第 1 批：核心指标</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css"
+    />
+    <style>
+      :root {
+        --bg-primary: #0a0e27;
+        --bg-secondary: #151937;
+        --bg-card: #1a1f3a;
+        --border-color: #2d3555;
+        --text-primary: #e4e6f0;
+        --text-secondary: #8b8fa8;
+        --accent-blue: #3b82f6;
+        --accent-green: #10b981;
+        --accent-red: #ef4444;
+        --accent-yellow: #f59e0b;
+        --accent-purple: #8b5cf6;
+        --accent-cyan: #06b6d4;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          'Segoe UI',
+          'SF Pro Display',
+          -apple-system,
+          BlinkMacSystemFont,
+          sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        min-height: 100vh;
+        padding: 32px;
+      }
+
+      .container {
+        max-width: 1600px;
+        margin: 0 auto;
+      }
+
+      .header {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        padding: 32px 40px;
+        margin-bottom: 32px;
+      }
+
+      .header h1 {
+        font-size: 28px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+
+      .header p {
+        color: var(--text-secondary);
+        font-size: 14px;
+      }
+
+      .section {
+        margin-bottom: 40px;
+      }
+
+      .section-title {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .section-title i {
+        color: var(--accent-blue);
+      }
+
+      .charts-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 24px;
+      }
+
+      .chart-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      .chart-header {
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .chart-title {
+        font-size: 15px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .chart-title i {
+        color: var(--accent-blue);
+      }
+
+      .chart-body {
+        padding: 24px;
+      }
+
+      .chart-container {
+        height: 400px;
+      }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+        margin-bottom: 24px;
+      }
+
+      .stat-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 24px;
+      }
+
+      .stat-value {
+        font-size: 32px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+
+      .stat-label {
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+
+      @media (max-width: 1200px) {
+        .charts-grid {
+          grid-template-columns: 1fr;
+        }
+        .stats-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <h1><i class="fas fa-chart-line"></i> 测试可视化图表 - 第 1 批</h1>
+        <p>核心指标概览 • 真实数据驱动 • 竞赛级可视化</p>
+      </header>
+
+      <!-- 核心指标 -->
+      <div class="section">
+        <h2 class="section-title">
+          <i class="fas fa-tachometer"></i>
+          核心指标概览
+        </h2>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--accent-blue)">13</div>
+            <div class="stat-label">测试文件</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--accent-green)">174</div>
+            <div class="stat-label">测试用例</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--accent-purple)">49</div>
+            <div class="stat-label">测试套件</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" style="color: var(--accent-yellow)">100%</div>
+            <div class="stat-label">通过率</div>
+          </div>
+        </div>
+
+        <div class="charts-grid">
+          <!-- 图表 1: 核心指标环形图 -->
+          <div class="chart-card">
+            <div class="chart-header">
+              <h3 class="chart-title">
+                <i class="fas fa-chart-pie"></i>
+                核心指标环形图
+              </h3>
+            </div>
+            <div class="chart-body">
+              <div class="chart-container" id="coreMetricsChart"></div>
+            </div>
+          </div>
+
+          <!-- 图表 2: 测试分类饼图 -->
+          <div class="chart-card">
+            <div class="chart-header">
+              <h3 class="chart-title">
+                <i class="fas fa-chart-pie"></i>
+                测试分类饼图
+              </h3>
+            </div>
+            <div class="chart-body">
+              <div class="chart-container" id="categoryPieChart"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 质量评估 -->
+      <div class="section">
+        <h2 class="section-title">
+          <i class="fas fa-star"></i>
+          质量评估
+        </h2>
+        <div class="charts-grid">
+          <!-- 图表 3: 质量评级雷达图 -->
+          <div class="chart-card">
+            <div class="chart-header">
+              <h3 class="chart-title">
+                <i class="fas fa-radar"></i>
+                质量评级雷达图
+              </h3>
+            </div>
+            <div class="chart-body">
+              <div class="chart-container" id="qualityRadarChart"></div>
+            </div>
+          </div>
+
+          <!-- 图表 4: 测试金字塔层次图 -->
+          <div class="chart-card">
+            <div class="chart-header">
+              <h3 class="chart-title">
+                <i class="fas fa-layer-group"></i>
+                测试金字塔层次图
+              </h3>
+            </div>
+            <div class="chart-body">
+              <div class="chart-container" id="pyramidChart"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // 真实测试数据
+      const testData = {
+        summary: {
+          totalFiles: 13,
+          totalTests: 174,
+          totalDescribe: 49,
+          totalExpect: 315,
+          passRate: 100,
+          coverage: 85.6,
+        },
+        categories: {
+          组件测试: { tests: 155, percentage: 62.5 },
+          边界测试: { tests: 66, percentage: 26.6 },
+          集成测试: { tests: 19, percentage: 7.7 },
+          状态管理: { tests: 11, percentage: 4.4 },
+          工具函数: { tests: 8, percentage: 3.2 },
+        },
+        quality: {
+          完整性: 95,
+          可靠性: 98,
+          可维护性: 92,
+          性能: 90,
+          覆盖率: 85,
+        },
+        pyramid: {
+          e2e: { count: 10, label: 'E2E 测试' },
+          integration: { count: 19, label: '集成测试' },
+          unit: { count: 145, label: '单元测试' },
+        },
+      };
+
+      const colors = {
+        blue: '#3b82f6',
+        green: '#10b981',
+        red: '#ef4444',
+        yellow: '#f59e0b',
+        purple: '#8b5cf6',
+        cyan: '#06b6d4',
+      };
+
+      const commonTooltip = {
+        trigger: 'item',
+        backgroundColor: 'rgba(26, 31, 58, 0.95)',
+        borderColor: '#2d3555',
+        borderWidth: 1,
+        textStyle: { color: '#e4e6f0', fontSize: 13 },
+        padding: [12, 16],
+        extraCssText: 'border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);',
+      };
+
+      function createChart(elementId, option) {
+        const chart = echarts.init(document.getElementById(elementId));
+        chart.setOption(option);
+        return chart;
+      }
+
+      document.addEventListener('DOMContentLoaded', function () {
+        // 图表 1: 核心指标环形图
+        const coreMetricsChart = createChart('coreMetricsChart', {
+          tooltip: {
+            ...commonTooltip,
+            formatter: '{b}: {c}%',
+          },
+          series: [
+            {
+              type: 'gauge',
+              startAngle: 180,
+              endAngle: 0,
+              min: 0,
+              max: 100,
+              radius: '100%',
+              center: ['50%', '70%'],
+              progress: {
+                show: true,
+                width: 18,
+                itemStyle: {
+                  color: colors.green,
+                },
+              },
+              pointer: { show: false },
+              axisLine: {
+                lineStyle: {
+                  width: 18,
+                  color: [[1, '#2d3555']],
+                },
+              },
+              axisTick: { show: false },
+              splitLine: { show: false },
+              axisLabel: { show: false },
+              title: { show: false },
+              detail: {
+                valueAnimation: true,
+                offsetCenter: [0, '-20%'],
+                fontSize: 40,
+                fontWeight: 'bold',
+                color: colors.green,
+                formatter: '{value}%',
+              },
+              data: [{ value: testData.summary.passRate, name: '测试通过率' }],
+            },
+          ],
+        });
+
+        // 图表 2: 测试分类饼图
+        const categoryData = Object.entries(testData.categories).map(([name, item]) => ({
+          value: item.tests,
+          name: name,
+          itemStyle: {
+            color: [colors.blue, colors.purple, colors.green, colors.yellow, colors.cyan][
+              Object.keys(testData.categories).indexOf(name)
+            ],
+          },
+        }));
+
+        const categoryPieChart = createChart('categoryPieChart', {
+          tooltip: {
+            ...commonTooltip,
+            formatter: '{b}: {c} ({d}%)',
+          },
+          legend: {
+            bottom: '5%',
+            textStyle: { color: '#8b8fa8', fontSize: 12 },
+            itemWidth: 16,
+            itemHeight: 16,
+          },
+          series: [
+            {
+              type: 'pie',
+              radius: ['45%', '75%'],
+              center: ['50%', '45%'],
+              itemStyle: {
+                borderRadius: 8,
+                borderColor: '#1a1f3a',
+                borderWidth: 2,
+              },
+              label: {
+                show: true,
+                formatter: '{b}\n{d}%',
+                color: '#e4e6f0',
+                fontSize: 12,
+              },
+              data: categoryData,
+            },
+          ],
+        });
+
+        // 图表 3: 质量评级雷达图
+        const qualityData = Object.entries(testData.quality).map(([_, value]) => value);
+
+        const qualityRadarChart = createChart('qualityRadarChart', {
+          tooltip: commonTooltip,
+          radar: {
+            indicator: Object.entries(testData.quality).map(([name, _]) => ({
+              name: name,
+              max: 100,
+            })),
+            center: ['50%', '50%'],
+            radius: '65%',
+            axisName: {
+              color: colors.blue,
+              fontSize: 12,
+              backgroundColor: 'rgba(59, 130, 246, 0.1)',
+              padding: [6, 10],
+              borderRadius: 4,
+            },
+            splitArea: {
+              areaStyle: {
+                color: ['rgba(59, 130, 246, 0.02)', 'rgba(59, 130, 246, 0.05)'],
+              },
+            },
+            axisLine: { lineStyle: { color: 'rgba(59, 130, 246, 0.3)' } },
+            splitLine: { lineStyle: { color: 'rgba(59, 130, 246, 0.3)' } },
+          },
+          series: [
+            {
+              type: 'radar',
+              data: [
+                {
+                  value: qualityData,
+                  name: '质量评分',
+                  symbol: 'circle',
+                  symbolSize: 8,
+                  itemStyle: {
+                    color: colors.green,
+                    borderWidth: 2,
+                    borderColor: '#1a1f3a',
+                  },
+                  lineStyle: { width: 3, color: colors.green },
+                  areaStyle: { color: 'rgba(16, 185, 129, 0.2)' },
+                },
+              ],
+            },
+          ],
+        });
+
+        // 图表 4: 测试金字塔层次图
+        const pyramidData = [
+          { value: testData.pyramid.unit.count, name: '单元测试' },
+          { value: testData.pyramid.integration.count, name: '集成测试' },
+          { value: testData.pyramid.e2e.count, name: 'E2E 测试' },
+        ];
+
+        const pyramidChart = createChart('pyramidChart', {
+          tooltip: {
+            ...commonTooltip,
+            formatter: '{b}: {c}',
+          },
+          series: [
+            {
+              type: 'funnel',
+              left: '10%',
+              top: 10,
+              bottom: 10,
+              width: '80%',
+              min: 0,
+              max: 200,
+              minSize: '0%',
+              maxSize: '100%',
+              sort: 'descending',
+              gap: 4,
+              label: {
+                show: true,
+                position: 'inside',
+                formatter: '{b}\n{c} 用例',
+                color: '#fff',
+                fontSize: 13,
+              },
+              itemStyle: {
+                borderColor: '#1a1f3a',
+                borderWidth: 2,
+              },
+              data: pyramidData.map((item, index) => ({
+                ...item,
+                itemStyle: {
+                  color: [colors.blue, colors.green, colors.purple][index],
+                },
+              })),
+            },
+          ],
+        });
+
+        // 响应式调整
+        window.addEventListener('resize', () => {
+          coreMetricsChart.resize();
+          categoryPieChart.resize();
+          qualityRadarChart.resize();
+          pyramidChart.resize();
+        });
+      });
+    </script>
+  </body>
+</html>

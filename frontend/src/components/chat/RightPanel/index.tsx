@@ -72,9 +72,17 @@ export default function RightPanel({
   const storeKeywords = useChatStore((state) => state.currentKeywords);
 
   // 优先使用 store 数据，如果没有则使用 props 数据
-  const entities = storeEntities.length > 0 ? storeEntities : propEntities || [];
-  const relations = storeRelations.length > 0 ? storeRelations : propRelations || [];
-  const keywords = storeKeywords.length > 0 ? storeKeywords : propKeywords || [];
+  const entities = useMemo(() => {
+    return storeEntities.length > 0 ? storeEntities : propEntities || [];
+  }, [storeEntities, propEntities]);
+
+  const relations = useMemo(() => {
+    return storeRelations.length > 0 ? storeRelations : propRelations || [];
+  }, [storeRelations, propRelations]);
+
+  const keywords = useMemo(() => {
+    return storeKeywords.length > 0 ? storeKeywords : propKeywords || [];
+  }, [storeKeywords, propKeywords]);
 
   const toast = useToast();
   const navigate = useNavigate();

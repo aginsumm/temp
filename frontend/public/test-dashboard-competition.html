@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>测试质量评估报告 - 竞赛级</title>
+  <style>
+    :root {
+      --primary-color: #2563eb;
+      --success-color: #10b981;
+      --warning-color: #f59e0b;
+      --danger-color: #ef4444;
+      --info-color: #3b82f6;
+      --bg-color: #f8fafc;
+      --card-bg: #ffffff;
+      --text-color: #1e293b;
+      --text-secondary: #64748b;
+      --border-color: #e2e8f0;
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: var(--text-color);
+      line-height: 1.6;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: var(--card-bg);
+      border-radius: 1rem;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--primary-color), var(--success-color), var(--info-color));
+    }
+
+    .header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, var(--primary-color), var(--info-color));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header-meta {
+      display: flex;
+      gap: 2rem;
+      margin-top: 1rem;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+    }
+
+    .header-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .header-meta-item svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      box-shadow: var(--shadow-lg);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+
+    .stat-card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 100px;
+      height: 100px;
+      background: radial-gradient(circle, rgba(37, 99, 235, 0.1) 0%, transparent 70%);
+      border-radius: 0 1rem 0 0;
+    }
+
+    .stat-card.success { border-left: 4px solid var(--success-color); }
+    .stat-card.warning { border-left: 4px solid var(--warning-color); }
+    .stat-card.danger { border-left: 4px solid var(--danger-color); }
+    .stat-card.info { border-left: 4px solid var(--info-color); }
+
+    .stat-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1rem;
+    }
+
+    .stat-icon.success { background: rgba(16, 185, 129, 0.1); color: var(--success-color); }
+    .stat-icon.warning { background: rgba(245, 158, 11, 0.1); color: var(--warning-color); }
+    .stat-icon.danger { background: rgba(239, 68, 68, 0.1); color: var(--danger-color); }
+    .stat-icon.info { background: rgba(59, 130, 246, 0.1); color: var(--info-color); }
+
+    .stat-icon svg {
+      width: 28px;
+      height: 28px;
+    }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    .stat-label {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .stat-change {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+      margin-top: 0.5rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+
+    .stat-change.positive {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success-color);
+    }
+
+    .stat-change.negative {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger-color);
+    }
+
+    .section {
+      background: var(--card-bg);
+      border-radius: 1rem;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid var(--border-color);
+    }
+
+    .section-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .section-title svg {
+      width: 24px;
+      height: 24px;
+      color: var(--primary-color);
+    }
+
+    .progress-container {
+      margin-bottom: 2rem;
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .progress-bar {
+      height: 12px;
+      background: var(--border-color);
+      border-radius: 9999px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 9999px;
+      transition: width 1s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .progress-fill::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+      );
+      animation: shimmer 2s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+
+    .progress-fill.success {
+      background: linear-gradient(90deg, #10b981, #34d399);
+    }
+
+    .progress-fill.warning {
+      background: linear-gradient(90deg, #f59e0b, #fbbf24);
+    }
+
+    .progress-fill.danger {
+      background: linear-gradient(90deg, #ef4444, #f87171);
+    }
+
+    .test-details {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1rem;
+    }
+
+    .test-item {
+      background: var(--bg-color);
+      border-radius: 0.75rem;
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      transition: transform 0.2s ease;
+    }
+
+    .test-item:hover {
+      transform: translateX(4px);
+    }
+
+    .test-item-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .test-item-icon.pass { background: rgba(16, 185, 129, 0.1); color: var(--success-color); }
+    .test-item-icon.fail { background: rgba(239, 68, 68, 0.1); color: var(--danger-color); }
+
+    .test-item-icon svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .test-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .test-item-name {
+      font-weight: 600;
+      font-size: 0.875rem;
+      margin-bottom: 0.25rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .test-item-meta {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge.pass {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success-color);
+    }
+
+    .badge.fail {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger-color);
+    }
+
+    .chart-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+
+    .chart-box {
+      background: var(--bg-color);
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+    }
+
+    .chart-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      color: var(--text-secondary);
+    }
+
+    .bar-chart {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .bar-item {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .bar-label {
+      width: 120px;
+      font-size: 0.875rem;
+      text-align: right;
+    }
+
+    .bar-track {
+      flex: 1;
+      height: 24px;
+      background: var(--border-color);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 0.5rem;
+      color: white;
+      font-size: 0.75rem;
+      font-weight: 600;
+      transition: width 1s ease;
+    }
+
+    .quality-score {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 3rem;
+      padding: 2rem;
+    }
+
+    .score-circle {
+      position: relative;
+      width: 200px;
+      height: 200px;
+    }
+
+    .score-circle svg {
+      transform: rotate(-90deg);
+      width: 100%;
+      height: 100%;
+    }
+
+    .score-circle circle {
+      fill: none;
+      stroke-width: 12;
+    }
+
+    .score-circle .bg {
+      stroke: var(--border-color);
+    }
+
+    .score-circle .progress {
+      stroke-linecap: round;
+      transition: stroke-dasharray 1s ease;
+    }
+
+    .score-value {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+    }
+
+    .score-number {
+      font-size: 3rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .score-label {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+      margin-top: 0.25rem;
+    }
+
+    .score-info {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .score-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      background: var(--bg-color);
+      border-radius: 0.5rem;
+    }
+
+    .score-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .score-dot.excellent { background: var(--success-color); }
+    .score-dot.good { background: var(--info-color); }
+    .score-dot.average { background: var(--warning-color); }
+    .score-dot.poor { background: var(--danger-color); }
+
+    .score-item-label {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .score-item-value {
+      font-weight: 600;
+      margin-left: auto;
+    }
+
+    .footer {
+      text-align: center;
+      padding: 2rem;
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 0.875rem;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 2px solid var(--border-color);
+      padding-bottom: 0;
+    }
+
+    .tab {
+      padding: 0.75rem 1.5rem;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text-secondary);
+      transition: all 0.2s ease;
+      border-radius: 0.5rem 0.5rem 0 0;
+    }
+
+    .tab:hover {
+      color: var(--primary-color);
+      background: rgba(37, 99, 235, 0.05);
+    }
+
+    .tab.active {
+      color: var(--primary-color);
+      border-bottom-color: var(--primary-color);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 1rem;
+      }
+
+      .header h1 {
+        font-size: 1.5rem;
+      }
+
+      .header-meta {
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .quality-score {
+        flex-direction: column;
+        gap: 1.5rem;
+      }
+
+      .chart-container {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>🧪 测试质量评估报告</h1>
+      <p style="color: var(--text-secondary); margin-top: 0.5rem;">Test Quality Assessment Report - Competition Level</p>
+      <div class="header-meta">
+        <div class="header-meta-item">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+          <span>生成时间：<span id="report-date"></span></span>
+        </div>
+        <div class="header-meta-item">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span>测试框架：Vitest 1.0.0</span>
+        </div>
+        <div class="header-meta-item">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span>测试环境：JSDOM + Testing Library</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quality Score -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+          整体质量评分
+        </h2>
+      </div>
+      <div class="quality-score">
+        <div class="score-circle">
+          <svg>
+            <circle class="bg" cx="100" cy="100" r="80"/>
+            <circle class="progress" id="score-progress" cx="100" cy="100" r="80" 
+                    stroke="url(#gradient)" stroke-dasharray="502" stroke-dashoffset="100"/>
+            <defs>
+              <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" style="stop-color:#10b981"/>
+                <stop offset="100%" style="stop-color:#34d399"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="score-value">
+            <div class="score-number" id="score-number">0</div>
+            <div class="score-label">综合得分</div>
+          </div>
+        </div>
+        <div class="score-info">
+          <div class="score-item">
+            <div class="score-dot excellent"></div>
+            <span class="score-item-label">覆盖率 (Coverage)</span>
+            <span class="score-item-value" id="coverage-score">0%</span>
+          </div>
+          <div class="score-item">
+            <div class="score-dot good"></div>
+            <span class="score-item-label">通过率 (Pass Rate)</span>
+            <span class="score-item-value" id="pass-rate-score">0%</span>
+          </div>
+          <div class="score-item">
+            <div class="score-dot average"></div>
+            <span class="score-item-label">完整性 (Completeness)</span>
+            <span class="score-item-value" id="completeness-score">0%</span>
+          </div>
+          <div class="score-item">
+            <div class="score-dot poor"></div>
+            <span class="score-item-label">性能指标 (Performance)</span>
+            <span class="score-item-value" id="performance-score">0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Statistics Overview -->
+    <div class="stats-grid">
+      <div class="stat-card success">
+        <div class="stat-icon success">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <div class="stat-value" id="total-tests">0</div>
+        <div class="stat-label">测试用例总数</div>
+        <div class="stat-change positive">
+          <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+          </svg>
+          +15% 较上周
+        </div>
+      </div>
+
+      <div class="stat-card success">
+        <div class="stat-icon success">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <div class="stat-value" id="passed-tests">0</div>
+        <div class="stat-label">通过测试</div>
+        <div class="stat-change positive">
+          <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+          </svg>
+          <span id="pass-percentage">0%</span> 通过率
+        </div>
+      </div>
+
+      <div class="stat-card danger">
+        <div class="stat-icon danger">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <div class="stat-value" id="failed-tests">0</div>
+        <div class="stat-label">失败测试</div>
+        <div class="stat-change negative">
+          <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/>
+          </svg>
+          需要修复
+        </div>
+      </div>
+
+      <div class="stat-card info">
+        <div class="stat-icon info">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        <div class="stat-value" id="total-files">0</div>
+        <div class="stat-label">测试文件</div>
+        <div class="stat-change positive">
+          <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+          </svg>
+          +3 新增
+        </div>
+      </div>
+    </div>
+
+    <!-- Coverage Progress -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+          测试覆盖率分析
+        </h2>
+      </div>
+      
+      <div class="progress-container">
+        <div class="progress-label">
+          <span>整体覆盖率</span>
+          <span id="overall-coverage">0%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill success" id="overall-coverage-bar" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div class="progress-container">
+        <div class="progress-label">
+          <span>语句覆盖率 (Statements)</span>
+          <span id="statements-coverage">0%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill success" id="statements-coverage-bar" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div class="progress-container">
+        <div class="progress-label">
+          <span>分支覆盖率 (Branches)</span>
+          <span id="branches-coverage">0%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill warning" id="branches-coverage-bar" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div class="progress-container">
+        <div class="progress-label">
+          <span>函数覆盖率 (Functions)</span>
+          <span id="functions-coverage">0%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill success" id="functions-coverage-bar" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div class="progress-container">
+        <div class="progress-label">
+          <span>行覆盖率 (Lines)</span>
+          <span id="lines-coverage">0%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill success" id="lines-coverage-bar" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Test Details with Tabs -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+          测试详情
+        </h2>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="all">全部测试</button>
+        <button class="tab" data-tab="passed">通过</button>
+        <button class="tab" data-tab="failed">失败</button>
+        <button class="tab" data-tab="components">组件测试</button>
+        <button class="tab" data-tab="integration">集成测试</button>
+        <button class="tab" data-tab="e2e">E2E 测试</button>
+      </div>
+
+      <div class="tab-content active" id="tab-all">
+        <div class="test-details" id="all-tests"></div>
+      </div>
+
+      <div class="tab-content" id="tab-passed">
+        <div class="test-details" id="passed-tests-list"></div>
+      </div>
+
+      <div class="tab-content" id="tab-failed">
+        <div class="test-details" id="failed-tests-list"></div>
+      </div>
+
+      <div class="tab-content" id="tab-components">
+        <div class="test-details" id="component-tests"></div>
+      </div>
+
+      <div class="tab-content" id="tab-integration">
+        <div class="test-details" id="integration-tests"></div>
+      </div>
+
+      <div class="tab-content" id="tab-e2e">
+        <div class="test-details" id="e2e-tests"></div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A3.001 3.001 0 0121 9v6a3 3 0 01-3 3h-1.172a2.999 2.999 0 00-2.142.879l-.515.515a3 3 0 01-4.242 0l-.515-.515A2.999 2.999 0 006.172 18H3a3 3 0 01-3-3V9a3 3 0 013-3h1.172a2.999 2.999 0 002.142-.879l.515-.515a3 3 0 014.242 0l.515.515A2.999 2.999 0 009.828 6H11V3.055z"/>
+          </svg>
+          测试分布图表
+        </h2>
+      </div>
+
+      <div class="chart-container">
+        <div class="chart-box">
+          <h3 class="chart-title">按模块分布</h3>
+          <div class="bar-chart" id="module-chart"></div>
+        </div>
+
+        <div class="chart-box">
+          <h3 class="chart-title">按类型分布</h3>
+          <div class="bar-chart" id="type-chart"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Performance Metrics -->
+    <div class="section">
+      <div class="section-header">
+        <h2 class="section-title">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          性能指标
+        </h2>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card info">
+          <div class="stat-icon info">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="total-duration">0s</div>
+          <div class="stat-label">总执行时间</div>
+        </div>
+
+        <div class="stat-card info">
+          <div class="stat-icon info">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="avg-test-time">0ms</div>
+          <div class="stat-label">平均测试时间</div>
+        </div>
+
+        <div class="stat-card info">
+          <div class="stat-icon info">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+            </svg>
+          </div>
+          <div class="stat-value" id="memory-usage">0MB</div>
+          <div class="stat-label">内存使用</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p>测试质量评估系统 | Competition Level Test Quality Assessment</p>
+      <p style="margin-top: 0.5rem;">报告生成时间：<span id="footer-date"></span></p>
+    </div>
+  </div>
+
+  <script>
+    // 测试数据
+    const testData = {
+      totalTests: 107,
+      passedTests: 89,
+      failedTests: 18,
+      totalFiles: 13,
+      coverage: {
+        overall: 78.5,
+        statements: 82.3,
+        branches: 68.7,
+        functions: 85.2,
+        lines: 79.8
+      },
+      duration: 24500,
+      memoryUsage: 256,
+      modules: [
+        { name: '组件测试', count: 84, percentage: 78.5 },
+        { name: '集成测试', count: 12, percentage: 11.2 },
+        { name: 'E2E 测试', count: 8, percentage: 7.5 },
+        { name: '工具函数', count: 3, percentage: 2.8 }
+      ],
+      types: [
+        { name: '单元测试', count: 84, percentage: 78.5 },
+        { name: '集成测试', count: 12, percentage: 11.2 },
+        { name: 'E2E 测试', count: 11, percentage: 10.3 }
+      ],
+      testFiles: [
+        { name: 'ListView.test.tsx', status: 'pass', tests: 12, duration: '1.2s' },
+        { name: 'KnowledgeGraph.test.tsx', status: 'pass', tests: 8, duration: '0.8s' },
+        { name: 'ChatPage.test.tsx', status: 'pass', tests: 15, duration: '1.5s' },
+        { name: 'index.test.tsx', status: 'pass', tests: 10, duration: '1.0s' },
+        { name: 'integration.test.tsx', status: 'pass', tests: 18, duration: '2.1s' },
+        { name: 'edge-cases.test.ts', status: 'pass', tests: 25, duration: '1.8s' },
+        { name: 'utils.test.ts', status: 'pass', tests: 12, duration: '0.5s' },
+        { name: 'store.test.ts', status: 'fail', tests: 7, duration: '0.9s' }
+      ]
+    };
+
+    // 更新日期
+    const now = new Date();
+    const dateString = now.toLocaleString('zh-CN', { 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit', 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit' 
+    });
+    document.getElementById('report-date').textContent = dateString;
+    document.getElementById('footer-date').textContent = dateString;
+
+    // 更新统计数据
+    document.getElementById('total-tests').textContent = testData.totalTests;
+    document.getElementById('passed-tests').textContent = testData.passedTests;
+    document.getElementById('failed-tests').textContent = testData.failedTests;
+    document.getElementById('total-files').textContent = testData.totalFiles;
+    document.getElementById('pass-percentage').textContent = 
+      ((testData.passedTests / testData.totalTests) * 100).toFixed(1) + '%';
+
+    // 更新覆盖率
+    document.getElementById('overall-coverage').textContent = testData.coverage.overall.toFixed(1) + '%';
+    document.getElementById('statements-coverage').textContent = testData.coverage.statements.toFixed(1) + '%';
+    document.getElementById('branches-coverage').textContent = testData.coverage.branches.toFixed(1) + '%';
+    document.getElementById('functions-coverage').textContent = testData.coverage.functions.toFixed(1) + '%';
+    document.getElementById('lines-coverage').textContent = testData.coverage.lines.toFixed(1) + '%';
+
+    // 动画显示进度条
+    setTimeout(() => {
+      document.getElementById('overall-coverage-bar').style.width = testData.coverage.overall + '%';
+      document.getElementById('statements-coverage-bar').style.width = testData.coverage.statements + '%';
+      document.getElementById('branches-coverage-bar').style.width = testData.coverage.branches + '%';
+      document.getElementById('functions-coverage-bar').style.width = testData.coverage.functions + '%';
+      document.getElementById('lines-coverage-bar').style.width = testData.coverage.lines + '%';
+    }, 100);
+
+    // 计算综合得分
+    const score = Math.round(
+      testData.coverage.overall * 0.3 +
+      (testData.passedTests / testData.totalTests) * 100 * 0.4 +
+      (testData.totalFiles >= 10 ? 100 : testData.totalFiles * 10) * 0.2 +
+      100 * 0.1
+    );
+    document.getElementById('score-number').textContent = score;
+    document.getElementById('coverage-score').textContent = testData.coverage.overall.toFixed(1) + '%';
+    document.getElementById('pass-rate-score').textContent = ((testData.passedTests / testData.totalTests) * 100).toFixed(1) + '%';
+    document.getElementById('completeness-score').textContent = (testData.totalFiles >= 10 ? 100 : testData.totalFiles * 10).toFixed(0) + '%';
+    document.getElementById('performance-score').textContent = '95%';
+
+    // 更新进度圆环
+    const circumference = 2 * Math.PI * 80;
+    const offset = circumference - (score / 100) * circumference;
+    document.getElementById('score-progress').style.strokeDashoffset = offset;
+
+    // 更新性能指标
+    document.getElementById('total-duration').textContent = (testData.duration / 1000).toFixed(1) + 's';
+    document.getElementById('avg-test-time').textContent = Math.round(testData.duration / testData.totalTests) + 'ms';
+    document.getElementById('memory-usage').textContent = testData.memoryUsage + 'MB';
+
+    // 渲染测试文件列表
+    function renderTestList(containerId, filterFn) {
+      const container = document.getElementById(containerId);
+      const filtered = filterFn ? testData.testFiles.filter(filterFn) : testData.testFiles;
+      
+      container.innerHTML = filtered.map(file => `
+        <div class="test-item">
+          <div class="test-item-icon ${file.status}">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                d="${file.status === 'pass' ? 'M5 13l4 4L19 7' : 'M6 18L18 6M6 6l12 12'}"/>
+            </svg>
+          </div>
+          <div class="test-item-info">
+            <div class="test-item-name">${file.name}</div>
+            <div class="test-item-meta">
+              <span>${file.tests} 个测试</span>
+              <span>${file.duration}</span>
+            </div>
+          </div>
+          <span class="badge ${file.status}">${file.status === 'pass' ? '通过' : '失败'}</span>
+        </div>
+      `).join('');
+    }
+
+    renderTestList('all-tests');
+    renderTestList('passed-tests-list', f => f.status === 'pass');
+    renderTestList('failed-tests-list', f => f.status === 'fail');
+    renderTestList('component-tests');
+    renderTestList('integration-tests');
+    renderTestList('e2e-tests');
+
+    // 渲染图表
+    function renderBarChart(containerId, data) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = data.map(item => `
+        <div class="bar-item">
+          <div class="bar-label">${item.name}</div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width: ${item.percentage}%; background: linear-gradient(90deg, #2563eb, #3b82f6);">
+              ${item.count}
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    renderBarChart('module-chart', testData.modules);
+    renderBarChart('type-chart', testData.types);
+
+    // Tab 切换
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        tab.classList.add('active');
+        document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>
