@@ -45,10 +45,13 @@ class Message(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     feedback = Column(String(20), nullable=True)
     is_favorite = Column(Boolean, default=False)
+    keywords = Column(String(1024), default="[]")  # JSON 字符串存储关键词列表
 
     session = relationship("Session", back_populates="messages")
     sources = relationship("MessageSource", back_populates="message", cascade="all, delete-orphan")
     entities = relationship("MessageEntity", back_populates="message", cascade="all, delete-orphan")
+    relations = relationship("MessageRelation", back_populates="message", cascade="all, delete-orphan")
+    keyword_records = relationship("MessageKeyword", back_populates="message", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Message {self.id}: {self.role}>"
@@ -79,11 +82,32 @@ class MessageEntity(Base):
     name = Column(String(255), nullable=False)
     type = Column(String(50), nullable=False)
     description = Column(Text, nullable=True)
+    relevance = Column(Integer, default=80)  # 相关性评分 (0-100)
+    url = Column(String(1000), nullable=True)  # 实体 URL
+    metadata_json = Column(String(2048), nullable=True)  # JSON 字符串存储元数据
 
     message = relationship("Message", back_populates="entities")
 
     def __repr__(self):
         return f"<MessageEntity {self.id}: {self.name}>"
+
+
+class MessageRelation(Base):
+    __tablename__ = "message_relations"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    message_id = Column(String(36), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
+    source_entity = Column(String(255), nullable=False)  # 源实体名称
+    target_entity = Column(String(255), nullable=False)  # 目标实体名称
+    relation_type = Column(String(100), nullable=False)  # 关系类型
+    confidence = Column(Integer, default=80)  # 置信度 (0-100)
+    evidence = Column(Text, nullable=True)  # 关系证据
+    bidirectional = Column(Boolean, default=False)  # 是否双向关系
+
+    message = relationship("Message", back_populates="relations")
+
+    def __repr__(self):
+        return f"<MessageRelation {self.id}: {self.source_entity} -> {self.target_entity}>"
 
 
 class MessageKeyword(Base):
@@ -92,6 +116,8 @@ class MessageKeyword(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     message_id = Column(String(36), ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
     keyword = Column(String(100), nullable=False)
+
+    message = relationship("Message", back_populates="keyword_records")
 
     def __repr__(self):
         return f"<MessageKeyword {self.keyword}>"

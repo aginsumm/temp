@@ -24,9 +24,6 @@ interface UnifiedInputAreaProps {
   disabled?: boolean;
   onStop?: () => void;
   autoFocus?: boolean;
-  showFileUpload?: boolean;
-  showVoiceInput?: boolean;
-  showCommandButton?: boolean;
 }
 
 export default function UnifiedInputArea({
@@ -37,9 +34,6 @@ export default function UnifiedInputArea({
   disabled = false,
   onStop,
   autoFocus = false,
-  showFileUpload = true,
-  showVoiceInput = false, // 暂时禁用语音功能
-  showCommandButton = false, // 暂时禁用快捷按钮
 }: UnifiedInputAreaProps) {
   const [inputValue, setInputValue] = useState('');
   const [isFocused, setIsFocused] = useState(false);

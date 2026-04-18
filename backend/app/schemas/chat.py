@@ -51,12 +51,21 @@ class EntityBase(BaseModel):
     name: str
     type: EntityType
     description: Optional[str] = None
+    # Knowledge 模块扩展字段
+    importance: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    region: Optional[str] = None
+    period: Optional[str] = None
+    coordinates: Optional[dict] = None
+    images: Optional[list[str]] = None
+    tags: Optional[list[str]] = None
 
 
 class Entity(EntityBase):
     id: str
     properties: Optional[dict] = None
     relevance: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True

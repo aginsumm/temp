@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as echarts from 'echarts';
-import { knowledgeApi, GraphData, GraphNode } from '../../../api/knowledge';
+import { knowledgeApi, GraphData as KnowledgeGraphData, GraphNode } from '../../../api/knowledge';
 import useKnowledgeGraphStore from '../../../stores/knowledgeGraphStore';
+import { useGraphStore } from '../../../stores/graphStore';
 import { useThemeStore } from '../../../stores/themeStore';
 import {
   ZoomIn,
@@ -21,52 +22,22 @@ import { optimizeGraphData, getTopKNodes, getConnectedNodes } from '../../../uti
 import { debounce } from '../../../utils/performance';
 import { GraphSkeleton } from '../../common/Skeleton';
 import { useToast } from '../../common/Toast';
+import { graphService } from '../../../api/graph';
+import { graphSyncService } from '../../../services/graphSyncService';
 import {
   CATEGORY_COLORS,
   CATEGORY_LABELS,
   getCategoryColor,
   getCategoryLabel,
 } from '../../../constants/categories';
-import type { Entity, Relation } from '../../../types/chat';
-
-function convertEntitiesToGraphData(entities: Entity[], relations: Relation[]): GraphData {
-  const nodes = entities.map((entity) => ({
-    id: entity.id,
-    name: entity.name,
-    category: entity.type,
-    symbolSize: Math.max(20, Math.min(50, (entity.relevance || 0.5) * 50)),
-    value: entity.relevance || 0.5,
-    itemStyle: {
-      color: getCategoryColor(entity.type),
-    },
-    description: entity.description,
-    metadata: entity.metadata,
-  }));
-
-  const edges = relations.map((rel) => ({
-    source: rel.source,
-    target: rel.target,
-    relationType: rel.type,
-    value: rel.confidence || 0.5,
-    lineStyle: {
-      width: 2,
-      curveness: 0.3,
-      opacity: 0.6,
-    },
-  }));
-
-  const categories = Object.values(CATEGORY_LABELS).map((label) => ({
-    name: label,
-  }));
-
-  return { nodes, edges, categories };
-}
+import type { Entity } from '../../../types/chat';
 
 export default function KnowledgeGraph() {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
-  const [rawGraphData, setRawGraphData] = useState<GraphData | null>(null);
+  const [rawGraphData, setRawGraphData] = useState<KnowledgeGraphData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const [viewMode, setViewMode] = useState<'all' | 'top' | 'connected'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -75,9 +46,16 @@ export default function KnowledgeGraph() {
   const [showViewMode, setShowViewMode] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   const { selectedNode, highlightedNodes, layoutType, setSelectedNode, setHighlightedNodes } =
     useKnowledgeGraphStore();
+
+  // 订阅统一的 graphStore
+  const graphStoreEntities = useGraphStore((state) => state.entities);
+  const graphStoreRelations = useGraphStore((state) => state.relations);
+  const graphStoreSource = useGraphStore((state) => state.source);
+
   const { resolvedMode } = useThemeStore();
   const toast = useToast();
 
@@ -269,7 +247,7 @@ export default function KnowledgeGraph() {
                 formatter: '{b}',
                 fontSize: 13,
                 color: textColor,
-                fontWeight: '500',
+                fontWeight: 500 as const,
                 textShadowColor: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.8)',
                 textShadowBlur: 6,
               },
@@ -319,7 +297,7 @@ export default function KnowledgeGraph() {
             },
             label: {
               fontSize: 16,
-              fontWeight: 'bold',
+              fontWeight: 'bold' as const,
             },
           },
           blur: {
@@ -388,6 +366,45 @@ export default function KnowledgeGraph() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphData, layoutType, selectedNode, highlightedNodes]);
 
+  // 监听 graphStore 变化，自动更新图谱
+  useEffect(() => {
+    if (graphStoreEntities.length > 0) {
+      const chatGraphData = graphService.entitiesToGraphData(
+        graphStoreEntities,
+        graphStoreRelations
+      );
+      // 转换为 KnowledgeGraph 使用的 GraphData 格式
+      const knowledgeGraphData: KnowledgeGraphData = {
+        nodes: chatGraphData.nodes.map((node) => ({
+          ...node,
+          itemStyle: {
+            color: node.itemStyle?.color || 'var(--color-primary)',
+          },
+        })),
+        edges: chatGraphData.edges.map((edge) => ({
+          source: edge.source,
+          target: edge.target,
+          relationType: edge.relationType,
+          value: edge.value,
+          lineStyle: edge.lineStyle,
+        })),
+        categories: chatGraphData.categories?.map((cat) => ({
+          name: cat.name,
+          itemStyle: {
+            color: (cat as any).baseColor || 'var(--color-primary)',
+          },
+        })),
+      };
+      setRawGraphData(knowledgeGraphData);
+      if (graphStoreSource === 'chat' || graphStoreSource === 'snapshot') {
+        toast.info(
+          '图谱已更新',
+          `来自${graphStoreSource === 'chat' ? '智能问答' : '快照'}的 ${chatGraphData.nodes.length} 个节点`
+        );
+      }
+    }
+  }, [graphStoreEntities, graphStoreRelations, graphStoreSource, toast]);
+
   useEffect(() => {
     const handleResize = () => {
       if (chartInstance.current) {
@@ -399,25 +416,13 @@ export default function KnowledgeGraph() {
       setIsFullscreen(!!document.fullscreenElement);
     };
 
-    const handleLoadSnapshot = (event: Event) => {
-      const customEvent = event as CustomEvent<{ entities: Entity[]; relations?: Relation[] }>;
-      const { entities, relations } = customEvent.detail;
-      if (entities && entities.length > 0) {
-        const graphData = convertEntitiesToGraphData(entities, relations || []);
-        setRawGraphData(graphData);
-        toast.success('快照已加载', `共 ${graphData.nodes.length} 个节点`);
-      }
-    };
-
     window.addEventListener('resize', handleResize);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    window.addEventListener('loadSnapshot', handleLoadSnapshot);
     return () => {
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      window.removeEventListener('loadSnapshot', handleLoadSnapshot);
     };
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -435,12 +440,45 @@ export default function KnowledgeGraph() {
   const loadGraphData = async () => {
     try {
       setLoading(true);
+      setError(null);
       const data = await knowledgeApi.getGraphData();
+
+      if (!data || !data.nodes) {
+        throw new Error('无效的图谱数据');
+      }
+
+      if (data.nodes.length === 0) {
+        toast.info('数据为空', '图谱中没有找到任何节点');
+      }
+
       setRawGraphData(data);
+      setRetryCount(0);
+
+      // 转换为 Entity 格式并使用 graphSyncService 同步到所有模块
+      const entities = data.nodes.map((node) => ({
+        id: node.id,
+        name: node.name,
+        type: node.category as Entity['type'],
+        relevance: node.value || 0.5,
+        description: node.description as string | undefined,
+        metadata: node.metadata as Entity['metadata'],
+      }));
+
+      graphSyncService.updateFromKnowledge(entities, [], []);
+
       toast.success('知识图谱加载成功', `共 ${data.nodes.length} 个节点`);
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '未知错误';
       console.error('加载图谱数据失败:', error);
-      toast.error('加载失败', '无法加载知识图谱数据');
+      setError(errorMessage);
+
+      if (retryCount < 3) {
+        toast.warning('加载失败', `正在重试 (${retryCount + 1}/3)`);
+        setRetryCount((prev) => prev + 1);
+        setTimeout(() => loadGraphData(), 1000 * (retryCount + 1));
+      } else {
+        toast.error('加载失败', '无法加载知识图谱数据');
+      }
     } finally {
       setLoading(false);
     }
@@ -530,7 +568,7 @@ export default function KnowledgeGraph() {
     return <GraphSkeleton />;
   }
 
-  if (!graphData) {
+  if (error) {
     return (
       <div className="flex items-center justify-center h-full">
         <motion.div
@@ -540,15 +578,15 @@ export default function KnowledgeGraph() {
         >
           <div
             className="w-24 h-24 mx-auto mb-6 rounded-full flex items-center justify-center shadow-lg"
-            style={{ background: 'var(--gradient-primary)' }}
+            style={{ background: 'var(--gradient-error)' }}
           >
             <span className="text-4xl">⚠️</span>
           </div>
           <p className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
-            无法加载图谱数据
+            加载图谱失败
           </p>
-          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            请检查网络连接或稍后重试
+          <p className="text-sm mb-4" style={{ color: 'var(--color-text-muted)' }}>
+            {error}
           </p>
           <motion.button
             onClick={loadGraphData}
@@ -562,6 +600,31 @@ export default function KnowledgeGraph() {
           >
             重试
           </motion.button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!graphData || graphData.nodes.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center"
+        >
+          <div
+            className="w-24 h-24 mx-auto mb-6 rounded-full flex items-center justify-center shadow-lg"
+            style={{ background: 'var(--gradient-info)' }}
+          >
+            <span className="text-4xl">📊</span>
+          </div>
+          <p className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
+            暂无图谱数据
+          </p>
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            请先搜索或添加实体数据
+          </p>
         </motion.div>
       </div>
     );

@@ -622,7 +622,7 @@ class KnowledgeService:
                     "region": e.region,
                     "period": e.period,
                     "coordinates": e.coordinates,
-                    "meta_data": e.meta_data,
+                    "metadata": e.meta_data,
                     "importance": e.importance,
                 }
                 for e in entities
@@ -638,7 +638,7 @@ class KnowledgeService:
                     "target_id": r.target_id,
                     "relation_type": r.relation_type,
                     "weight": r.weight,
-                    "meta_data": r.meta_data,
+                    "metadata": r.meta_data,
                 }
                 for r in relationships
             ]

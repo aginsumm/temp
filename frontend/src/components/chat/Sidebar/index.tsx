@@ -23,6 +23,7 @@ import { useResizablePanel } from '../../../hooks/useResizablePanel';
 import { chatDataService } from '../../../services/chat';
 import { useToast } from '../../common/Toast';
 import type { Session } from '../../../types/chat';
+import { snapshotService } from '../../../api/snapshot';
 
 interface SidebarProps {
   onNewChat: () => void;
@@ -219,7 +220,19 @@ export default function Sidebar({
     onSelectFavorite?.(question);
   };
 
-  const handleSwitchSession = (sessionId: string) => {
+  const handleSwitchSession = async (sessionId: string) => {
+    // 检查新会话的快照数量
+    try {
+      const response = await snapshotService.listSnapshots(sessionId, 1, 1);
+      const snapshotCount = response.total;
+
+      if (snapshotCount > 0) {
+        toast.info('会话快照', `该会话有 ${snapshotCount} 个保存的图谱快照，可在右侧面板查看`);
+      }
+    } catch (error) {
+      console.error('Failed to check snapshots for session:', error);
+    }
+
     onSwitchSession?.(sessionId);
     setContextMenu(null);
   };

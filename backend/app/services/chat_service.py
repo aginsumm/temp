@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 import uuid
 import json
 
-from app.models.chat import Session, Message, MessageSource, MessageEntity, MessageRole
+from app.models.chat import Session, Message, MessageSource, MessageEntity, MessageRelation, MessageRole, MessageKeyword
 from app.schemas.chat import (
     SessionCreate,
     SessionUpdate,
@@ -14,6 +14,7 @@ from app.schemas.chat import (
     ChatMessageResponse,
     Source,
     Entity,
+    Relation,
 )
 
 
@@ -100,13 +101,17 @@ class MessageService:
         sources: Optional[list[Source]] = None,
         entities: Optional[list[Entity]] = None,
         keywords: Optional[list[str]] = None,
+        relations: Optional[list[Relation]] = None,
     ) -> Message:
+        keywords_json = json.dumps(keywords) if keywords else "[]"
+        
         message = Message(
             id=str(uuid.uuid4()),
             session_id=session_id,
             role=role,
             content=content,
             created_at=datetime.utcnow(),
+            keywords=keywords_json,
         )
         self.db.add(message)
         await self.db.flush()
@@ -126,14 +131,46 @@ class MessageService:
 
         if entities:
             for entity in entities:
+                metadata_str = None
+                if entity.properties:
+                    try:
+                        metadata_str = json.dumps(entity.properties)
+                    except:
+                        pass
+                
                 msg_entity = MessageEntity(
                     id=str(uuid.uuid4()),
                     message_id=message.id,
                     name=entity.name,
                     type=entity.type.value if hasattr(entity.type, "value") else entity.type,
                     description=entity.description,
+                    relevance=int((entity.relevance or 0.8) * 100),
+                    metadata_json=metadata_str,
                 )
                 self.db.add(msg_entity)
+
+        if relations:
+            for relation in relations:
+                msg_relation = MessageRelation(
+                    id=str(uuid.uuid4()),
+                    message_id=message.id,
+                    source_entity=relation.source,
+                    target_entity=relation.target,
+                    relation_type=relation.type.value if hasattr(relation.type, "value") else relation.type,
+                    confidence=int((relation.confidence or 0.8) * 100),
+                    evidence=relation.evidence,
+                    bidirectional=relation.bidirectional or False,
+                )
+                self.db.add(msg_relation)
+
+        if keywords:
+            for keyword in keywords:
+                msg_keyword = MessageKeyword(
+                    id=str(uuid.uuid4()),
+                    message_id=message.id,
+                    keyword=keyword,
+                )
+                self.db.add(msg_keyword)
 
         await self.db.execute(
             update(Session)

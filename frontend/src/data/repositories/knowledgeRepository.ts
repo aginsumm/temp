@@ -25,7 +25,7 @@ function cachedToEntity(cached: CachedEntity): KnowledgeEntityBase {
     region: cached.region,
     period: cached.period,
     coordinates: cached.coordinates,
-    meta_data: cached.meta_data,
+    metadata: cached.metadata,
     importance: cached.importance,
     created_at: cached.created_at,
     updated_at: cached.updated_at,
@@ -41,7 +41,7 @@ function entityToCached(entity: KnowledgeEntityBase): CachedEntity {
     region: entity.region,
     period: entity.period,
     coordinates: entity.coordinates,
-    meta_data: entity.meta_data,
+    metadata: entity.metadata,
     importance: entity.importance,
     created_at: entity.created_at,
     updated_at: entity.updated_at,
@@ -56,7 +56,7 @@ function cachedToRelationship(cached: CachedRelationship): KnowledgeRelationship
     target_id: cached.target_id,
     relation_type: cached.relation_type,
     weight: cached.weight,
-    meta_data: cached.meta_data,
+    metadata: cached.metadata,
     created_at: cached.created_at,
   };
 }
@@ -68,7 +68,7 @@ function relationshipToCached(rel: KnowledgeRelationship): CachedRelationship {
     target_id: rel.target_id,
     relation_type: rel.relation_type,
     weight: rel.weight,
-    meta_data: rel.meta_data,
+    metadata: rel.metadata,
     created_at: rel.created_at,
     cachedAt: Date.now(),
   };

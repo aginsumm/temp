@@ -21,16 +21,19 @@ CATEGORY_COLORS: Dict[str, str] = {c["value"]: c["color"] for c in CATEGORY_CONF
 CATEGORY_LABELS: Dict[str, str] = {c["value"]: c["label"] for c in CATEGORY_CONFIG}
 
 RELATION_TYPES: List[Dict[str, str]] = [
-    {"value": "传承", "label": "传承"},
-    {"value": "创作", "label": "创作"},
-    {"value": "包含", "label": "包含"},
-    {"value": "产地", "label": "产地"},
-    {"value": "时期", "label": "时期"},
-    {"value": "使用", "label": "使用"},
-    {"value": "相关", "label": "相关"},
-    {"value": "属于", "label": "属于"},
-    {"value": "材料", "label": "材料"},
+    {"value": "inherits", "label": "传承"},
+    {"value": "origin", "label": "发源地"},
+    {"value": "creates", "label": "创作"},
+    {"value": "flourished_in", "label": "兴盛于"},
+    {"value": "located_in", "label": "位于"},
+    {"value": "uses_material", "label": "使用材料"},
+    {"value": "has_pattern", "label": "包含纹样"},
+    {"value": "related_to", "label": "相关"},
+    {"value": "influenced_by", "label": "受影响于"},
+    {"value": "contains", "label": "包含"},
 ]
+
+RELATION_TYPE_LABELS: Dict[str, str] = {r["value"]: r["label"] for r in RELATION_TYPES}
 
 
 def get_category_color(entity_type: str) -> str:
@@ -39,6 +42,10 @@ def get_category_color(entity_type: str) -> str:
 
 def get_category_label(entity_type: str) -> str:
     return CATEGORY_LABELS.get(entity_type, entity_type)
+
+
+def get_relation_label(relation_type: str) -> str:
+    return RELATION_TYPE_LABELS.get(relation_type, relation_type)
 
 
 def get_graph_categories() -> List[Dict]:

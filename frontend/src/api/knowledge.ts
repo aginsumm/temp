@@ -2,14 +2,15 @@ import { mockKnowledgeService } from '../data/mockServices/mockKnowledgeService'
 import { apiAdapterManager } from '../data/apiAdapter';
 import { Entity as ChatEntity } from '../types/chat';
 import type { KnowledgeEntityFull } from '../data/models';
+import { withRetry } from '../utils/retry';
 
-const API_BASE = '/knowledge';
+const API_BASE = '/api/v1/knowledge';
 
 export interface Entity extends ChatEntity {
   region?: string;
   period?: string;
   coordinates?: { lat: number; lng: number };
-  meta_data?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   importance: number;
   created_at: string;
   updated_at: string;
@@ -24,7 +25,7 @@ export interface EntityCreate {
   region?: string;
   period?: string;
   coordinates?: { lat: number; lng: number };
-  meta_data?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   importance?: number;
 }
 
@@ -34,7 +35,7 @@ export interface EntityUpdate {
   region?: string;
   period?: string;
   coordinates?: { lat: number; lng: number };
-  meta_data?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   importance?: number;
 }
 
@@ -43,13 +44,13 @@ export interface RelationshipCreate {
   target_id: string;
   relation_type: string;
   weight?: number;
-  meta_data?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface RelationshipUpdate {
   relation_type?: string;
   weight?: number;
-  meta_data?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 export const knowledgeApi = {
@@ -61,11 +62,15 @@ export const knowledgeApi = {
     }
 
     try {
-      const response = await apiAdapterManager.request<Entity>({
-        method: 'POST',
-        url: `${API_BASE}/entity`,
-        data,
-      });
+      const response = await withRetry(
+        () =>
+          apiAdapterManager.request<Entity>({
+            method: 'POST',
+            url: `${API_BASE}/entity`,
+            data,
+          }),
+        'createEntity'
+      );
       return response.data;
     } catch (error) {
       console.warn('API unavailable, creating entity locally');
@@ -504,7 +509,7 @@ export interface Relationship {
   target_id: string;
   relation_type: string;
   weight: number;
-  meta_data?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   created_at: string;
 }
 

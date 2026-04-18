@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Session, Message, MessageVersion } from '../types/chat';
+import type { Session, Message, MessageVersion, Entity, Relation } from '../types/chat';
 import { networkStatusService, type ConnectionMode } from '../services/networkStatus';
 import { chatRepository } from '../data/repositories/chatRepository';
 import { dataInitializer } from '../data/dataInitializer';
@@ -21,6 +21,11 @@ interface ChatState {
   networkMode: ConnectionMode;
   pendingSyncCount: number;
   isDataLoaded: boolean;
+
+  // 图谱数据状态
+  currentEntities: Entity[];
+  currentRelations: Relation[];
+  currentKeywords: string[];
 
   initializeData: () => Promise<void>;
   loadSessionsFromDB: () => Promise<void>;
@@ -72,6 +77,13 @@ interface ChatState {
     totalMessages: number;
     oldestSession: string | null;
   };
+
+  // 图谱数据管理方法
+  setCurrentEntities: (entities: Entity[]) => void;
+  setCurrentRelations: (relations: Relation[]) => void;
+  setCurrentKeywords: (keywords: string[]) => void;
+  updateGraphData: (entities?: Entity[], relations?: Relation[], keywords?: string[]) => void;
+  clearGraphData: () => void;
 }
 
 const pruneMessages = (messages: Message[]): Message[] => {
@@ -125,6 +137,11 @@ export const useChatStore = create<ChatState>()(
       networkMode: 'checking',
       pendingSyncCount: 0,
       isDataLoaded: false,
+
+      // 图谱数据初始状态
+      currentEntities: [],
+      currentRelations: [],
+      currentKeywords: [],
 
       initializeData: async () => {
         if (get().isDataLoaded) return;
@@ -1042,6 +1059,33 @@ export const useChatStore = create<ChatState>()(
                 ).id
               : null,
         };
+      },
+
+      // 图谱数据管理方法
+      setCurrentEntities: (entities) => {
+        set({ currentEntities: entities });
+      },
+
+      setCurrentRelations: (relations) => {
+        set({ currentRelations: relations });
+      },
+
+      setCurrentKeywords: (keywords) => {
+        set({ currentKeywords: keywords });
+      },
+
+      updateGraphData: (entities, relations, keywords) => {
+        const updates: Partial<ChatState> = {};
+        if (entities) updates.currentEntities = entities;
+        if (relations) updates.currentRelations = relations;
+        if (keywords) updates.currentKeywords = keywords;
+        if (Object.keys(updates).length > 0) {
+          set(updates);
+        }
+      },
+
+      clearGraphData: () => {
+        set({ currentEntities: [], currentRelations: [], currentKeywords: [] });
       },
     }),
     {

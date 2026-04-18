@@ -11,6 +11,7 @@ import {
   Network,
   History,
   Bookmark,
+  ExternalLink,
 } from 'lucide-react';
 import { useUIStore, MIN_RIGHT_PANEL_WIDTH, MAX_RIGHT_PANEL_WIDTH } from '../../../stores/uiStore';
 import { useResizablePanel } from '../../../hooks/useResizablePanel';
@@ -21,6 +22,9 @@ import { useToast } from '../../common/Toast';
 import ConfirmDialog from '../../common/ConfirmDialog';
 import { LoadingOverlay } from '../../common/ProgressBar';
 import type { Entity, Relation, GraphSnapshot } from '../../../types/chat';
+import { useNavigate } from 'react-router-dom';
+import { useChatStore } from '../../../stores/chatStore';
+import { graphSyncService } from '../../../services/graphSyncService';
 
 interface Keyword {
   text: string;
@@ -42,9 +46,9 @@ interface RightPanelProps {
 type TabType = 'keywords' | 'graph' | 'history';
 
 export default function RightPanel({
-  keywords = [],
-  entities = [],
-  relations = [],
+  keywords: propKeywords,
+  entities: propEntities,
+  relations: propRelations,
   sessionId,
   messageId,
   onKeywordClick,
@@ -62,7 +66,18 @@ export default function RightPanel({
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState<number | undefined>(undefined);
 
+  // 从 chatStore 获取图谱数据
+  const storeEntities = useChatStore((state) => state.currentEntities);
+  const storeRelations = useChatStore((state) => state.currentRelations);
+  const storeKeywords = useChatStore((state) => state.currentKeywords);
+
+  // 优先使用 store 数据，如果没有则使用 props 数据
+  const entities = storeEntities.length > 0 ? storeEntities : propEntities || [];
+  const relations = storeRelations.length > 0 ? storeRelations : propRelations || [];
+  const keywords = storeKeywords.length > 0 ? storeKeywords : propKeywords || [];
+
   const toast = useToast();
+  const navigate = useNavigate();
 
   // 监听快照加载事件
   useEffect(() => {
@@ -178,15 +193,14 @@ export default function RightPanel({
         onLoadSnapshot(fullSnapshot);
       }
 
-      // 同时发送全局事件，确保其他组件也能响应
-      const event = new CustomEvent('loadSnapshot', {
-        detail: {
-          snapshot: fullSnapshot,
-          entities: fullSnapshot.entities,
-          relations: fullSnapshot.relations,
-        },
-      });
-      window.dispatchEvent(event);
+      // 使用 graphSyncService 同步图谱数据到所有模块
+      graphSyncService.updateFromChat(
+        fullSnapshot.entities,
+        fullSnapshot.relations,
+        fullSnapshot.keywords,
+        fullSnapshot.session_id,
+        fullSnapshot.message_id
+      );
 
       toast.success('加载成功', '已恢复快照数据');
     } catch (error) {
@@ -203,6 +217,50 @@ export default function RightPanel({
       setPendingSnapshot(null);
     }
   }, [pendingSnapshot, onLoadSnapshot, toast]);
+
+  const handleViewInKnowledgePage = useCallback(
+    async (snapshot: GraphSnapshot) => {
+      try {
+        const fullSnapshot = await snapshotService.getSnapshot(snapshot.id);
+        if (!fullSnapshot) {
+          toast.error('加载失败', '快照数据不存在');
+          return;
+        }
+
+        // 存储快照数据到 sessionStorage，供知识图谱页面使用
+        sessionStorage.setItem(
+          'pendingSnapshot',
+          JSON.stringify({
+            snapshot: fullSnapshot,
+            entities: fullSnapshot.entities,
+            relations: fullSnapshot.relations,
+            keywords: fullSnapshot.keywords,
+          })
+        );
+
+        // 跳转到知识图谱页面
+        navigate('/knowledge');
+
+        // 延迟发送事件，确保页面已经加载
+        setTimeout(() => {
+          const event = new CustomEvent('loadSnapshot', {
+            detail: {
+              snapshot: fullSnapshot,
+              entities: fullSnapshot.entities,
+              relations: fullSnapshot.relations,
+              keywords: fullSnapshot.keywords,
+            },
+          });
+          window.dispatchEvent(event);
+          toast.success('跳转成功', '请在知识图谱页面查看快照');
+        }, 500);
+      } catch (error) {
+        console.error('Failed to view snapshot in knowledge page:', error);
+        toast.error('跳转失败', '无法跳转到知识图谱页面');
+      }
+    },
+    [navigate, toast]
+  );
 
   const cancelLoadSnapshot = useCallback(() => {
     setShowConfirmDialog(false);
@@ -380,43 +438,74 @@ export default function RightPanel({
             {snapshots.length > 0 ? (
               <div className="space-y-2">
                 {snapshots.map((snapshot) => (
-                  <motion.button
+                  <motion.div
                     key={snapshot.id}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => handleSnapshotClick(snapshot)}
-                    className="w-full p-3 rounded-lg text-left transition-all"
-                    style={{
-                      background: 'var(--color-surface)',
-                      border: '1px solid var(--color-border-light)',
-                    }}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="w-full"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <p
-                          className="text-xs font-medium truncate"
-                          style={{ color: 'var(--color-text-primary)' }}
-                        >
-                          {snapshot.title || '未命名快照'}
-                        </p>
-                        <p
-                          className="text-[11px] mt-1"
-                          style={{ color: 'var(--color-text-muted)' }}
-                        >
-                          {snapshot.entities.length} 个实体 · {snapshot.relations.length} 个关系
-                        </p>
-                        <p
-                          className="text-[10px] mt-1"
-                          style={{ color: 'var(--color-text-muted)', opacity: 0.7 }}
-                        >
-                          {new Date(snapshot.created_at).toLocaleString('zh-CN')}
-                        </p>
+                    <div
+                      className="w-full p-3 rounded-lg text-left transition-all"
+                      style={{
+                        background: 'var(--color-surface)',
+                        border: '1px solid var(--color-border-light)',
+                      }}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p
+                            className="text-xs font-medium truncate"
+                            style={{ color: 'var(--color-text-primary)' }}
+                          >
+                            {snapshot.title || '未命名快照'}
+                          </p>
+                          <p
+                            className="text-[11px] mt-1"
+                            style={{ color: 'var(--color-text-muted)' }}
+                          >
+                            {snapshot.entities.length} 个实体 · {snapshot.relations.length} 个关系
+                          </p>
+                          <p
+                            className="text-[10px] mt-1"
+                            style={{ color: 'var(--color-text-muted)', opacity: 0.7 }}
+                          >
+                            {new Date(snapshot.created_at).toLocaleString('zh-CN')}
+                          </p>
+                        </div>
+                        {snapshot.is_shared && (
+                          <Bookmark size={12} style={{ color: 'var(--color-primary)' }} />
+                        )}
                       </div>
-                      {snapshot.is_shared && (
-                        <Bookmark size={12} style={{ color: 'var(--color-primary)' }} />
-                      )}
                     </div>
-                  </motion.button>
+                    <div className="flex gap-2 mt-2">
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => handleSnapshotClick(snapshot)}
+                        className="flex-1 px-3 py-2 rounded-lg text-xs transition-all"
+                        style={{
+                          background: 'var(--gradient-primary)',
+                          color: 'var(--color-text-inverse)',
+                        }}
+                      >
+                        加载到当前页面
+                      </motion.button>
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => handleViewInKnowledgePage(snapshot)}
+                        className="flex-1 px-3 py-2 rounded-lg text-xs transition-all flex items-center justify-center gap-1"
+                        style={{
+                          background: 'var(--color-surface)',
+                          color: 'var(--color-text-secondary)',
+                          border: '1px solid var(--color-border)',
+                        }}
+                      >
+                        <ExternalLink size={12} />
+                        知识图谱查看
+                      </motion.button>
+                    </div>
+                  </motion.div>
                 ))}
               </div>
             ) : (

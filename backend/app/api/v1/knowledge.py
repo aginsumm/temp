@@ -12,6 +12,7 @@ from app.core.constants import (
     get_graph_categories,
 )
 from app.services.knowledge_service import KnowledgeService
+from app.services.llm_service import llm_service
 from app.schemas.knowledge import (
     Entity,
     EntityCreate,
@@ -36,6 +37,22 @@ from app.schemas.knowledge import (
     ExportRequest,
     ImportRequest,
 )
+
+
+class LLMSearchRequest(BaseModel):
+    query: str
+    search_type: str = "hybrid"
+    entity_types: Optional[list[str]] = None
+    regions: Optional[list[str]] = None
+    periods: Optional[list[str]] = None
+    top_k: int = 20
+    include_explanation: bool = False
+
+
+class LLMSearchResponse(BaseModel):
+    results: list[Entity]
+    search_time_ms: int
+    explanation: Optional[str] = None
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["knowledge"])
 
@@ -297,6 +314,65 @@ async def find_path(
         entities = list(result.scalars().all())
 
     return PathResponse(paths=paths, entities=entities)
+
+
+@router.post("/llm-search", response_model=LLMSearchResponse, summary="LLM 智能搜索")
+async def llm_intelligent_search(
+    request: LLMSearchRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
+    """
+    使用 LLM 进行智能搜索，支持自然语言理解和语义搜索
+    """
+    import time
+    start_time = time.time()
+    
+    service = KnowledgeService(db)
+    
+    try:
+        # 使用 LLM 解析查询意图
+        query_analysis = await llm_service.analyze_query(request.query)
+        
+        # 根据分析结果进行搜索
+        entities = await service.semantic_search(
+            query=request.query,
+            entity_types=request.entity_types or query_analysis.get("entity_types"),
+            regions=request.regions or query_analysis.get("regions"),
+            periods=request.periods or query_analysis.get("periods"),
+            top_k=request.top_k,
+        )
+        
+        search_time_ms = int((time.time() - start_time) * 1000)
+        
+        explanation = None
+        if request.include_explanation:
+            explanation = f"搜索到 {len(entities)} 个相关实体，耗时 {search_time_ms}ms"
+        
+        return LLMSearchResponse(
+            results=entities,
+            search_time_ms=search_time_ms,
+            explanation=explanation,
+        )
+        
+    except Exception as e:
+        # 降级到普通搜索
+        logger.warning(f"LLM search failed, using fallback: {e}")
+        
+        # 使用基础搜索作为降级方案
+        entities = await service.search_entities(
+            query=request.query,
+            entity_types=request.entity_types,
+            top_k=request.top_k,
+        )
+        
+        search_time_ms = int((time.time() - start_time) * 1000)
+        
+        return LLMSearchResponse(
+            results=entities,
+            search_time_ms=search_time_ms,
+            explanation=f"使用基础搜索（LLM 搜索不可用），找到 {len(entities)} 个实体",
+        )
 
 
 @router.get("/stats", response_model=StatsResponse, summary="获取图谱统计数据")

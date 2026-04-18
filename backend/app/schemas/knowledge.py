@@ -10,8 +10,11 @@ class EntityBase(BaseModel):
     region: Optional[str] = Field(None, description="所属地域")
     period: Optional[str] = Field(None, description="所属时期")
     coordinates: Optional[Dict[str, float]] = Field(None, description="地理坐标")
-    meta_data: Optional[Dict[str, Any]] = Field(None, description="额外元数据")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="额外元数据", alias="meta_data")
     importance: Optional[float] = Field(0.0, description="重要性评分")
+
+    class Config:
+        populate_by_name = True
 
 
 class EntityCreate(EntityBase):
@@ -24,8 +27,11 @@ class EntityUpdate(BaseModel):
     region: Optional[str] = None
     period: Optional[str] = None
     coordinates: Optional[Dict[str, float]] = None
-    meta_data: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = Field(None, alias="meta_data")
     importance: Optional[float] = None
+
+    class Config:
+        populate_by_name = True
 
 
 class Entity(EntityBase):
@@ -42,7 +48,10 @@ class RelationshipBase(BaseModel):
     target_id: str = Field(..., description="目标实体ID")
     relation_type: str = Field(..., description="关系类型")
     weight: Optional[float] = Field(1.0, description="关系权重")
-    meta_data: Optional[Dict[str, Any]] = Field(None, description="额外元数据")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="额外元数据", alias="meta_data")
+
+    class Config:
+        populate_by_name = True
 
 
 class RelationshipCreate(RelationshipBase):
@@ -54,7 +63,10 @@ class RelationshipUpdate(BaseModel):
     target_id: Optional[str] = None
     relation_type: Optional[str] = None
     weight: Optional[float] = None
-    meta_data: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = Field(None, alias="meta_data")
+
+    class Config:
+        populate_by_name = True
 
 
 class Relationship(RelationshipBase):

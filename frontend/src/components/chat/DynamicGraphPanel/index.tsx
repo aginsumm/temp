@@ -14,30 +14,15 @@ import {
 } from 'lucide-react';
 import { graphService } from '../../../api/graph';
 import { snapshotService } from '../../../api/snapshot';
-import ErrorBoundary from '../../common/ErrorBoundary';
 import { useToast } from '../../common/Toast';
 import { useThemeStore } from '../../../stores/themeStore';
+import { useChatStore } from '../../../stores/chatStore';
+import { CATEGORY_COLORS, CATEGORY_LABELS } from '../../../constants/categories';
 import type { Entity, Relation, GraphNode, EntityType } from '../../../types/chat';
 
-const ENTITY_COLORS: Record<EntityType, string> = {
-  inheritor: '#FF6B6B',
-  technique: '#4ECDC4',
-  work: '#45B7D1',
-  pattern: '#96CEB4',
-  region: '#FFEAA7',
-  period: '#DDA0DD',
-  material: '#98D8C8',
-};
+const ENTITY_COLORS: Record<EntityType, string> = CATEGORY_COLORS;
 
-const ENTITY_LABELS: Record<EntityType, string> = {
-  inheritor: '传承人',
-  technique: '技艺',
-  work: '作品',
-  pattern: '纹样',
-  region: '地区',
-  period: '时期',
-  material: '材料',
-};
+const ENTITY_LABELS: Record<EntityType, string> = CATEGORY_LABELS;
 
 interface DynamicGraphPanelProps {
   entities?: Entity[];
@@ -50,12 +35,13 @@ interface DynamicGraphPanelProps {
   height?: number | string;
   showControls?: boolean;
   showSaveButton?: boolean;
+  useStoreData?: boolean; // 是否直接使用 chatStore 的数据
 }
 
 export default function DynamicGraphPanel({
-  entities = [],
-  relations = [],
-  keywords = [],
+  entities: propEntities,
+  relations: propRelations,
+  keywords: propKeywords,
   sessionId,
   messageId,
   onSaveSnapshot,
@@ -63,6 +49,7 @@ export default function DynamicGraphPanel({
   height = 280,
   showControls = true,
   showSaveButton = true,
+  useStoreData = false,
 }: DynamicGraphPanelProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
@@ -72,6 +59,16 @@ export default function DynamicGraphPanel({
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
 
   const { resolvedMode } = useThemeStore();
+
+  // 根据 useStoreData 决定使用 props 还是 store 的数据
+  const storeEntities = useChatStore((state) => state.currentEntities);
+  const storeRelations = useChatStore((state) => state.currentRelations);
+  const storeKeywords = useChatStore((state) => state.currentKeywords);
+
+  const entities = useStoreData ? storeEntities : propEntities || [];
+  const relations = useStoreData ? storeRelations : propRelations || [];
+  const keywords = useStoreData ? storeKeywords : propKeywords || [];
+
   const toast = useToast();
 
   const graphData = useMemo(() => {
@@ -102,72 +99,99 @@ export default function DynamicGraphPanel({
         trigger: 'item',
         backgroundColor: isDark ? '#1e293b' : '#ffffff',
         borderColor: borderColor,
-        borderWidth: 1,
+        borderWidth: 2,
         textStyle: {
           color: textColor,
-          fontSize: 12,
+          fontSize: 14,
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         formatter: (params: any) => {
-          if (params.dataType === 'node') {
+          if (params.dataType === 'node' && params.data) {
             const category = params.data.category as EntityType;
             const color = ENTITY_COLORS[category] || '#666666';
+            const value = params.data.value ?? 0.5;
             return `
-              <div style="padding: 8px; min-width: 150px;">
-                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-                  <div style="width: 10px; height: 10px; border-radius: 50%; background: ${color};"></div>
-                  <strong style="font-size: 14px;">${params.data.name}</strong>
+              <div style="padding: 12px; min-width: 200px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                  <div style="width: 12px; height: 12px; border-radius: 50%; background: ${color}; box-shadow: 0 0 10px ${color}"></div>
+                  <strong style="color: var(--color-primary); font-size: 16px;">${params.data.name}</strong>
                 </div>
-                <div style="font-size: 11px; color: ${isDark ? '#94a3b8' : '#64748b'};">
-                  类型: ${ENTITY_LABELS[category] || params.data.category}
+                <div style="color: var(--color-text-muted); font-size: 13px; margin-bottom: 4px;">
+                  <span style="color: var(--color-text-secondary);">类型:</span> ${ENTITY_LABELS[category] || params.data.category}
                 </div>
-                ${params.data.description ? `<div style="font-size: 11px; color: ${isDark ? '#94a3b8' : '#64748b'}; margin-top: 4px;">${params.data.description.slice(0, 50)}...</div>` : ''}
+                <div style="color: var(--color-text-muted); font-size: 13px;">
+                  <span style="color: var(--color-text-secondary);">重要性:</span> 
+                  <span style="color: var(--color-warning); font-weight: bold;">${(value * 100).toFixed(0)}%</span>
+                </div>
+                ${params.data.description ? `<div style="color: var(--color-text-secondary); font-size: 13px; margin-top: 4px;">${params.data.description.slice(0, 80)}...</div>` : ''}
               </div>
             `;
           }
-          return '';
+          return `
+            <div style="padding: 12px; min-width: 200px;">
+              <div style="color: var(--color-primary); font-size: 14px; margin-bottom: 8px;">
+                ${params.data?.source} → ${params.data?.target}
+              </div>
+              <div style="color: var(--color-text-muted); font-size: 13px;">
+                <span style="color: var(--color-text-secondary);">关系:</span> 
+                <span style="color: var(--color-success); font-weight: bold;">${params.data?.relationType || '关联'}</span>
+              </div>
+            </div>
+          `;
         },
       },
-      animationDuration: 1000,
+      animationDuration: 1500,
       animationEasingUpdate: 'quinticInOut',
       series: [
         {
           type: 'graph',
           layout: 'force',
-          data: graphData.nodes.map((node) => ({
-            ...node,
-            itemStyle: {
-              color: ENTITY_COLORS[node.category] || '#666666',
-              borderColor: selectedNode?.id === node.id ? '#fbbf24' : '#ffffff',
-              borderWidth: selectedNode?.id === node.id ? 3 : 2,
-              shadowBlur: 10,
-              shadowColor: ENTITY_COLORS[node.category] || '#666666',
-            },
-            label: {
-              show: true,
-              position: 'bottom',
-              distance: 5,
-              formatter: '{b}',
-              fontSize: 11,
-              color: textColor,
-              fontWeight: 500,
-            },
-          })),
+          data: graphData.nodes.map((node) => {
+            const isSelected = selectedNode?.id === node.id;
+            const color = ENTITY_COLORS[node.category] || '#666666';
+
+            return {
+              ...node,
+              symbolSize: node.symbolSize || 30,
+              itemStyle: {
+                ...node.itemStyle,
+                color: color,
+                borderColor: isSelected ? 'var(--color-warning)' : 'var(--color-border)',
+                borderWidth: isSelected ? 4 : 2,
+                shadowBlur: 15,
+                shadowColor: color,
+                shadowOffsetX: 0,
+                shadowOffsetY: 0,
+              },
+              label: {
+                show: true,
+                position: 'bottom',
+                distance: 8,
+                formatter: '{b}',
+                fontSize: 13,
+                color: textColor,
+                fontWeight: 500 as const,
+                textShadowColor: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+                textShadowBlur: 6,
+              },
+            };
+          }),
           links: graphData.edges.map((edge) => ({
             source: edge.source,
             target: edge.target,
             lineStyle: {
-              color: edge.lineStyle?.color || '#94a3b8',
+              color: edge.lineStyle?.color || 'var(--color-border)',
               width: edge.lineStyle?.width || 2,
-              curveness: 0.2,
-              opacity: 0.6,
+              curveness: 0.3,
+              opacity: 0.5,
             },
           })),
           roam: true,
           draggable: true,
           focusNodeAdjacency: true,
           force: {
-            repulsion: 300,
-            edgeLength: [80, 150],
+            repulsion: 1500,
+            edgeLength: [100, 200],
             gravity: 0.1,
             friction: 0.6,
             layoutAnimation: true,
@@ -175,10 +199,16 @@ export default function DynamicGraphPanel({
           emphasis: {
             focus: 'adjacency',
             lineStyle: {
-              width: 4,
+              width: 5,
+              color: 'var(--color-primary)',
             },
             itemStyle: {
-              shadowBlur: 20,
+              shadowBlur: 40,
+              shadowColor: 'var(--color-shadow-glow)',
+            },
+            label: {
+              fontSize: 16,
+              fontWeight: 'bold',
             },
           },
           blur: {
@@ -190,7 +220,8 @@ export default function DynamicGraphPanel({
             },
           },
           lineStyle: {
-            curveness: 0.2,
+            color: 'var(--color-border)',
+            curveness: 0.3,
             opacity: 0.5,
           },
         },
@@ -200,6 +231,7 @@ export default function DynamicGraphPanel({
     chartInstance.current.setOption(option, true);
 
     chartInstance.current.off('click');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     chartInstance.current.on('click', (params: any) => {
       if (params.dataType === 'node') {
         const entity = entities.find((e) => e.id === params.data.id);
@@ -211,6 +243,7 @@ export default function DynamicGraphPanel({
     });
 
     chartInstance.current.off('mouseover');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     chartInstance.current.on('mouseover', (params: any) => {
       if (params.dataType === 'node') {
         setHoveredNode(params.data);
@@ -251,7 +284,7 @@ export default function DynamicGraphPanel({
     };
 
     // 监听快照加载事件
-    const handleSnapshotLoaded = (_event: CustomEvent) => {
+    const handleSnapshotLoaded = () => {
       // 快照数据会通过 props 自动更新，这里只需要重新渲染
       setTimeout(() => {
         renderGraph();
@@ -260,14 +293,62 @@ export default function DynamicGraphPanel({
 
     window.addEventListener('resize', handleResize);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     window.addEventListener('loadSnapshot' as any, handleSnapshotLoaded as any);
 
     return () => {
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       window.removeEventListener('loadSnapshot' as any, handleSnapshotLoaded as any);
     };
   }, [renderGraph]);
+
+  // 当图谱数据变化时，自动保存到 sessionStorage
+  useEffect(() => {
+    if (graphData.nodes.length > 0 && sessionId) {
+      try {
+        const graphState = {
+          entities,
+          relations,
+          keywords,
+          sessionId,
+          timestamp: Date.now(),
+        };
+        sessionStorage.setItem(`graphState_${sessionId}`, JSON.stringify(graphState));
+      } catch (error) {
+        console.warn('Failed to save graph state to sessionStorage:', error);
+      }
+    }
+  }, [entities, relations, keywords, sessionId, graphData.nodes.length]);
+
+  // 页面加载时恢复图谱状态
+  useEffect(() => {
+    if (sessionId && !entities.length) {
+      try {
+        const savedState = sessionStorage.getItem(`graphState_${sessionId}`);
+        if (savedState) {
+          const {
+            entities: savedEntities,
+            relations: savedRelations,
+            keywords: savedKeywords,
+          } = JSON.parse(savedState);
+
+          // 检查是否是同一个会话的图谱状态
+          const event = new CustomEvent('restoreGraphState', {
+            detail: {
+              entities: savedEntities,
+              relations: savedRelations,
+              keywords: savedKeywords,
+            },
+          });
+          window.dispatchEvent(event);
+        }
+      } catch (error) {
+        console.warn('Failed to restore graph state from sessionStorage:', error);
+      }
+    }
+  }, [sessionId, entities.length]);
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -284,6 +365,7 @@ export default function DynamicGraphPanel({
 
   const handleZoomIn = () => {
     if (chartInstance.current) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const option = chartInstance.current.getOption() as any;
       const zoom = (option.series[0].zoom || 1) * 1.2;
       chartInstance.current.setOption({
@@ -294,6 +376,7 @@ export default function DynamicGraphPanel({
 
   const handleZoomOut = () => {
     if (chartInstance.current) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const option = chartInstance.current.getOption() as any;
       const zoom = (option.series[0].zoom || 1) / 1.2;
       chartInstance.current.setOption({

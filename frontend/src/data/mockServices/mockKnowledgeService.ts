@@ -114,7 +114,7 @@ const MOCK_RELATIONSHIPS: KnowledgeRelationship[] = [
     id: 'rel_1',
     source_id: 'entity_2',
     target_id: 'entity_1',
-    relation_type: '传承',
+    relation_type: 'inherits',
     weight: 1,
     created_at: new Date().toISOString(),
   },
@@ -122,7 +122,7 @@ const MOCK_RELATIONSHIPS: KnowledgeRelationship[] = [
     id: 'rel_2',
     source_id: 'entity_4',
     target_id: 'entity_3',
-    relation_type: '传承',
+    relation_type: 'inherits',
     weight: 1,
     created_at: new Date().toISOString(),
   },
@@ -130,7 +130,7 @@ const MOCK_RELATIONSHIPS: KnowledgeRelationship[] = [
     id: 'rel_3',
     source_id: 'entity_6',
     target_id: 'entity_5',
-    relation_type: '传承',
+    relation_type: 'inherits',
     weight: 1,
     created_at: new Date().toISOString(),
   },
@@ -138,7 +138,7 @@ const MOCK_RELATIONSHIPS: KnowledgeRelationship[] = [
     id: 'rel_4',
     source_id: 'entity_8',
     target_id: 'entity_7',
-    relation_type: '传承',
+    relation_type: 'inherits',
     weight: 1,
     created_at: new Date().toISOString(),
   },
@@ -146,7 +146,7 @@ const MOCK_RELATIONSHIPS: KnowledgeRelationship[] = [
     id: 'rel_5',
     source_id: 'entity_1',
     target_id: 'entity_5',
-    relation_type: '相关',
+    relation_type: 'related_to',
     weight: 0.5,
     created_at: new Date().toISOString(),
   },
@@ -154,7 +154,7 @@ const MOCK_RELATIONSHIPS: KnowledgeRelationship[] = [
     id: 'rel_6',
     source_id: 'entity_3',
     target_id: 'entity_7',
-    relation_type: '相关',
+    relation_type: 'related_to',
     weight: 0.5,
     created_at: new Date().toISOString(),
   },
@@ -282,7 +282,8 @@ class MockKnowledgeService {
 
     const relationships_by_type: Record<string, number> = {};
     relationships.forEach((rel) => {
-      relationships_by_type[rel.relation_type] = (relationships_by_type[rel.relation_type] || 0) + 1;
+      relationships_by_type[rel.relation_type] =
+        (relationships_by_type[rel.relation_type] || 0) + 1;
     });
 
     const entities = await knowledgeRepository.getAllEntities();
@@ -310,7 +311,7 @@ class MockKnowledgeService {
       region: entity.region,
       period: entity.period,
       coordinates: entity.coordinates,
-      meta_data: entity.meta_data,
+      metadata: entity.metadata,
       importance: entity.importance || 3,
       images: entity.images,
       tags: entity.tags,
@@ -353,9 +354,9 @@ class MockKnowledgeService {
       id: `rel_${Date.now()}`,
       source_id: relationship.source_id || '',
       target_id: relationship.target_id || '',
-      relation_type: relationship.relation_type || '相关',
+      relation_type: relationship.relation_type || 'related_to',
       weight: relationship.weight || 1,
-      meta_data: relationship.meta_data,
+      metadata: relationship.metadata,
       created_at: new Date().toISOString(),
     };
     await knowledgeRepository.saveRelationship(newRelationship);

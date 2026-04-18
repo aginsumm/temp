@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiAdapterManager } from '../data/apiAdapter';
 import type {
   Entity,
   Relation,
@@ -8,35 +8,11 @@ import type {
   EntityType,
   RelationType,
 } from '../types/chat';
+import { entitiesToGraphData as convertEntitiesToGraphData } from '../utils/graphConverter';
+import { withRetry } from '../utils/retry';
+import { DataValidator } from '../utils/dataValidator';
 
-const getEntityColor = (type: EntityType): string => {
-  const colors: Record<EntityType, string> = {
-    inheritor: '#FF6B6B',
-    technique: '#4ECDC4',
-    work: '#45B7D1',
-    pattern: '#96CEB4',
-    region: '#FFEAA7',
-    period: '#DDA0DD',
-    material: '#98D8C8',
-  };
-  return colors[type] || '#666666';
-};
-
-const getRelationColor = (type: RelationType): string => {
-  const colors: Record<RelationType, string> = {
-    inherits: '#FF6B6B',
-    origin: '#4ECDC4',
-    creates: '#45B7D1',
-    flourished_in: '#96CEB4',
-    located_in: '#FFEAA7',
-    uses_material: '#DDA0DD',
-    has_pattern: '#98D8C8',
-    related_to: '#888888',
-    influenced_by: '#FFB6C1',
-    contains: '#87CEEB',
-  };
-  return colors[type] || '#888888';
-};
+const API_BASE = '/api/v1/graph';
 
 export interface EntityWithRelations extends Entity {
   relations?: Array<{
@@ -93,72 +69,8 @@ class GraphService {
     relations?: Relation[],
     options?: { maxNodes?: number; minRelevance?: number }
   ): GraphData {
-    let filteredEntities = entities;
-
-    if (options?.minRelevance) {
-      filteredEntities = entities.filter((e) => (e.relevance || 1) >= options.minRelevance!);
-    }
-
-    if (options?.maxNodes && filteredEntities.length > options.maxNodes) {
-      filteredEntities = filteredEntities
-        .sort((a, b) => (b.relevance || 0) - (a.relevance || 0))
-        .slice(0, options.maxNodes);
-    }
-
-    const nodes: GraphNode[] = filteredEntities.map((entity) => ({
-      id: entity.id,
-      name: entity.name,
-      category: entity.type,
-      symbolSize: this.calculateNodeSize(entity.relevance || 1),
-      value: entity.relevance || 1,
-      description: entity.description,
-      metadata: entity.metadata,
-      itemStyle: {
-        color: getEntityColor(entity.type),
-        borderColor: '#ffffff',
-        borderWidth: 2,
-      },
-    }));
-
-    const edges: GraphEdge[] = [];
-    if (relations) {
-      const entityIds = new Set(filteredEntities.map((e) => e.id));
-      relations.forEach((relation, index) => {
-        if (entityIds.has(relation.source) && entityIds.has(relation.target)) {
-          edges.push({
-            id: relation.id || `edge_${index}`,
-            source: relation.source,
-            target: relation.target,
-            relationType: relation.type,
-            value: relation.confidence || 1,
-            lineStyle: {
-              color: getRelationColor(relation.type),
-              width: Math.max(1, (relation.confidence || 1) * 3),
-              curveness: 0.3,
-              opacity: 0.6,
-            },
-          });
-        }
-      });
-    }
-
-    const categories = this.getCategories(filteredEntities);
-
-    return { nodes, edges, categories };
-  }
-
-  private calculateNodeSize(relevance: number): number {
-    const minSize = 20;
-    const maxSize = 50;
-    return minSize + (maxSize - minSize) * Math.min(1, relevance);
-  }
-
-  private getCategories(entities: Entity[]): Array<{ name: EntityType; baseColor: string }> {
-    const typeSet = new Set<EntityType>(entities.map((e) => e.type));
-    return Array.from(typeSet).map((type) => ({
-      name: type,
-      baseColor: getEntityColor(type),
-    }));
+    // 使用统一的转换函数
+    return convertEntitiesToGraphData(entities, relations, options);
   }
 
   async getGraphData(sessionId: string, messageId?: string): Promise<GraphData> {
@@ -170,19 +82,47 @@ class GraphService {
 
     try {
       const endpoint = messageId
-        ? `/graph/session/${sessionId}/message/${messageId}`
-        : `/graph/session/${sessionId}`;
+        ? `${API_BASE}/session/${sessionId}/message/${messageId}`
+        : `${API_BASE}/session/${sessionId}/data`;
 
-      const response = await apiClient.get<{
-        nodes: GraphNode[];
-        edges: GraphEdge[];
-        categories?: Array<{ name: EntityType; baseColor: string }>;
-      }>(endpoint);
+      const response = await withRetry(
+        () =>
+          apiAdapterManager.request<{
+            nodes: GraphNode[];
+            edges: GraphEdge[];
+            categories?: Array<{ name: EntityType; baseColor: string }>;
+          }>({
+            method: 'GET',
+            url: endpoint,
+          }),
+        'getGraphData'
+      );
+
+      // 数据验证和清理
+      const validation = DataValidator.validateGraphData(
+        response.data.nodes || [],
+        response.data.edges || []
+      );
+
+      if (!validation.valid) {
+        console.warn('Graph data validation failed:', validation.errors);
+      }
+
+      const sanitized = DataValidator.sanitizeGraphData(
+        response.data.nodes || [],
+        response.data.edges || []
+      );
+
+      if (sanitized.removedNodes > 0 || sanitized.removedEdges > 0) {
+        console.warn(
+          `Removed ${sanitized.removedNodes} invalid nodes and ${sanitized.removedEdges} invalid edges`
+        );
+      }
 
       const graphData: GraphData = {
-        nodes: response.nodes || [],
-        edges: response.edges || [],
-        categories: response.categories,
+        nodes: sanitized.nodes,
+        edges: sanitized.edges,
+        categories: response.data.categories,
       };
 
       this.setCache(cacheKey, graphData);
@@ -195,8 +135,15 @@ class GraphService {
 
   async getEntityDetails(entityId: string): Promise<EntityWithRelations | null> {
     try {
-      const response = await apiClient.get<EntityWithRelations>(`/graph/entity/${entityId}`);
-      return response;
+      const response = await withRetry(
+        () =>
+          apiAdapterManager.request<EntityWithRelations>({
+            method: 'GET',
+            url: `${API_BASE}/entity/${entityId}`,
+          }),
+        'getEntityDetails'
+      );
+      return response.data;
     } catch (error) {
       console.warn('Failed to fetch entity details:', error);
       return null;
@@ -205,11 +152,16 @@ class GraphService {
 
   async searchEntities(query: string, types?: EntityType[]): Promise<Entity[]> {
     try {
-      const response = await apiClient.post<Entity[]>('/graph/search', {
-        query,
-        types,
-      });
-      return response;
+      const response = await withRetry(
+        () =>
+          apiAdapterManager.request<Entity[]>({
+            method: 'POST',
+            url: `${API_BASE}/search`,
+            data: { query, types },
+          }),
+        'searchEntities'
+      );
+      return response.data;
     } catch (error) {
       console.warn('Failed to search entities:', error);
       return [];
@@ -218,10 +170,16 @@ class GraphService {
 
   async getRelatedEntities(entityId: string, depth: number = 1): Promise<Entity[]> {
     try {
-      const response = await apiClient.get<Entity[]>(`/graph/entity/${entityId}/related`, {
-        params: { depth },
-      });
-      return response;
+      const response = await withRetry(
+        () =>
+          apiAdapterManager.request<Entity[]>({
+            method: 'GET',
+            url: `${API_BASE}/entity/${entityId}/related`,
+            params: { depth },
+          }),
+        'getRelatedEntities'
+      );
+      return response.data;
     } catch (error) {
       console.warn('Failed to fetch related entities:', error);
       return [];
@@ -233,10 +191,15 @@ class GraphService {
     targetId: string
   ): Promise<Array<{ entity: Entity; relation?: Relation }>> {
     try {
-      const response = await apiClient.get<Array<{ entity: Entity; relation?: Relation }>>(
-        `/graph/path/${sourceId}/${targetId}`
+      const response = await withRetry(
+        () =>
+          apiAdapterManager.request<Array<{ entity: Entity; relation?: Relation }>>({
+            method: 'GET',
+            url: `${API_BASE}/path/${sourceId}/${targetId}`,
+          }),
+        'getEntityPath'
       );
-      return response;
+      return response.data;
     } catch (error) {
       console.warn('Failed to find entity path:', error);
       return [];

@@ -58,18 +58,29 @@ class LLMService:
         self.error_counts["consecutive"] += 1
         self.error_counts["last_error_time"] = datetime.utcnow()
         
-        # 连续错误 5 次后进入降级状态
-        if self.error_counts["consecutive"] >= 5:
-            self.is_degraded = True
-            self.degraded_since = datetime.utcnow()
-            print("LLM service entering degraded state")
+        # 连续错误 3 次后进入降级状态（降低阈值）
+        if self.error_counts["consecutive"] >= 3:
+            if not self.is_degraded:
+                self.is_degraded = True
+                self.degraded_since = datetime.utcnow()
+                print("LLM service entering degraded state")
 
     def _record_success(self):
         """记录成功"""
+        # 重置连续错误计数
+        was_degraded = self.is_degraded
         self.error_counts["consecutive"] = 0
+        
+        # 如果之前处于降级状态，重置回主模型
         if self.is_degraded:
             self._reset_model()
             print("LLM service recovered from degraded state")
+        
+        # 每成功 10 次，减少总错误计数（防止错误计数无限累积）
+        if self.error_counts["total"] > 10:
+            self.error_counts["total"] = max(0, self.error_counts["total"] - 1)
+        
+        return was_degraded
 
     async def _execute_with_retry(self, func, *args, **kwargs):
         """带重试的执行"""
@@ -83,11 +94,19 @@ class LLMService:
                     print(f"Retry attempt {attempt + 1}, waiting {delay}s")
                     await asyncio.sleep(delay)
                     
-                    # 切换到备用模型
+                    # 切换到备用模型（只在第一次重试时切换）
                     if attempt == 1:
                         self._switch_to_fallback()
                 
-                return await func(*args, **kwargs)
+                result = await func(*args, **kwargs)
+                
+                # 成功后记录并重置模型
+                if attempt > 0:  # 如果是重试后成功
+                    was_degraded = self._record_success()
+                    if was_degraded:
+                        print(f"Successfully recovered after {attempt} retries")
+                
+                return result
             except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as e:
                 last_exception = e
                 self._record_error()
@@ -146,9 +165,11 @@ class LLMService:
                     response.raise_for_status()
                     data = response.json()
                     self._record_success()
-                    return data["output"]["choices"][0]["message"]["content"]
-            finally:
-                pass
+                    result = data["output"]["choices"][0]["message"]["content"]
+                    return result
+            except Exception as e:
+                # 让外层的 _execute_with_retry 处理错误记录
+                raise
 
         try:
             return await self._execute_with_retry(_do_chat)
@@ -422,19 +443,20 @@ class LLMService:
                         target_id = entity_map.get(target_name)
                         
                         if source_id and target_id:
-                            relation_type = r.get("type", "related_to")
+                            relation_type_str = r.get("type", "related_to")
                             valid_types = [
                                 "inherits", "origin", "creates", "flourished_in",
                                 "located_in", "uses_material", "has_pattern", "related_to"
                             ]
-                            if relation_type not in valid_types:
-                                relation_type = "related_to"
+                            if relation_type_str not in valid_types:
+                                relation_type_str = "related_to"
                             
+                            from app.schemas.chat import RelationType
                             relations.append(Relation(
                                 id=f"relation_{i}_{hash(source_id + target_id)}",
                                 source=source_id,
                                 target=target_id,
-                                type=relation_type,
+                                type=RelationType(relation_type_str),
                                 confidence=r.get("confidence", 0.8),
                             ))
                     return relations
@@ -541,6 +563,95 @@ class LLMService:
                 ))
         
         return relations
+
+    async def analyze_query(self, query: str) -> dict:
+        """
+        分析用户查询，提取意图和过滤条件
+        返回：{"entity_types": [], "regions": [], "periods": [], "keywords": []}
+        """
+        if not self.api_key:
+            return self._mock_query_analysis(query)
+        
+        try:
+            prompt = f"""分析以下查询的意图，提取关键信息：
+
+查询：{query}
+
+请分析并返回以下信息（JSON 格式）：
+{{
+  "entity_types": ["可能的实体类型"],
+  "regions": ["提到的地区"],
+  "periods": ["提到的时期"],
+  "keywords": ["关键词"],
+  "intent": "查询意图描述"
+}}
+
+只返回 JSON，不要其他内容："""
+
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
+
+            payload = {
+                "model": "qwen-turbo",
+                "input": {"messages": [{"role": "user", "content": prompt}]},
+                "parameters": {
+                    "result_format": "message",
+                },
+            }
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    self.base_url,
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+                content = data["output"]["choices"][0]["message"]["content"]
+                
+                json_match = re.search(r'\{[\s\S]*\}', content)
+                if json_match:
+                    return json.loads(json_match.group())
+        except Exception as e:
+            print(f"Query analysis error: {e}")
+        
+        return self._mock_query_analysis(query)
+
+    def _mock_query_analysis(self, query: str) -> dict:
+        """模拟查询分析"""
+        # 简单的关键词匹配
+        entity_types = []
+        regions = []
+        periods = []
+        keywords = query.split()
+        
+        # 简单规则匹配
+        if any(kw in query for kw in ["技艺", "工艺", "技法"]):
+            entity_types.append("technique")
+        if any(kw in query for kw in ["作品", "代表作", "雕刻"]):
+            entity_types.append("work")
+        if any(kw in query for kw in ["传承人", "人物", "大师"]):
+            entity_types.append("person")
+        
+        if "武汉" in query:
+            regions.append("武汉")
+        if "湖北" in query:
+            regions.append("湖北")
+        
+        if "明清" in query:
+            periods.append("明清")
+        if "现代" in query:
+            periods.append("现代")
+        
+        return {
+            "entity_types": entity_types,
+            "regions": regions,
+            "periods": periods,
+            "keywords": keywords,
+            "intent": "知识图谱搜索",
+        }
 
 
 llm_service = LLMService()

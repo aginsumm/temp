@@ -484,7 +484,7 @@ export default function DetailPanel() {
           </motion.div>
         )}
 
-        {entity.meta_data && Object.keys(entity.meta_data).length > 0 && (
+        {entity.metadata && Object.keys(entity.metadata).length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -498,7 +498,7 @@ export default function DetailPanel() {
               属性
             </h3>
             <div className="space-y-2">
-              {Object.entries(entity.meta_data).map(([key, value]) => (
+              {Object.entries(entity.metadata).map(([key, value]) => (
                 <div
                   key={key}
                   className="flex justify-between items-center px-4 py-2 rounded-lg"

@@ -24,7 +24,7 @@ interface Entity {
   period?: string;
   importance: number;
   coordinates?: { lat: number; lng: number };
-  meta_data?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at: string;
   images?: string[];
@@ -41,7 +41,7 @@ const mockEntity: Entity = {
   period: '明清',
   importance: 0.95,
   coordinates: { lat: 39.9042, lng: 116.4074 },
-  meta_data: {
+  metadata: {
     history: '起源于元代，盛行于明清',
     features: '色彩鲜艳，图案精美',
   },

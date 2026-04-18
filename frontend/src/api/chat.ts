@@ -10,6 +10,7 @@ import type {
   Entity,
   EntityType,
   Source,
+  Relation,
 } from '../types/chat';
 
 function transformSession(data: Record<string, unknown>): Session {
@@ -85,7 +86,7 @@ export const chatApi = {
     try {
       const response = await apiAdapterManager.request<ChatResponse>({
         method: 'POST',
-        url: '/chat/message',
+        url: '/api/v1/chat/message',
         data: {
           session_id: request.session_id,
           content: request.content,
@@ -111,8 +112,13 @@ export const chatApi = {
   sendMessageStream: async (
     request: ChatRequest,
     onChunk: (chunk: string) => void,
-    onComplete: (response: ChatResponse) => void
+    onComplete: (response: ChatResponse) => void,
+    onEntities?: (entities: Entity[]) => void,
+    onKeywords?: (keywords: string[]) => void,
+    onRelations?: (relations: Relation[]) => void
   ): Promise<void> => {
+    const STREAM_TIMEOUT = 60000; // 60秒超时
+
     if (apiAdapterManager.shouldUseLocal()) {
       await mockChatService.sendMessageStream(
         request.session_id,
@@ -133,6 +139,11 @@ export const chatApi = {
       return;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort(new Error('Stream request timeout'));
+    }, STREAM_TIMEOUT);
+
     try {
       const token = localStorage.getItem('token') || '';
       const headers: Record<string, string> = {
@@ -150,6 +161,7 @@ export const chatApi = {
           content: request.content,
           message_type: request.message_type || 'text',
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -159,14 +171,29 @@ export const chatApi = {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let lastResponse: ChatResponse | null = null;
+      let lastActivityTime = Date.now();
 
       if (reader) {
         let done = false;
         while (!done) {
-          const { done: readerDone, value } = await reader.read();
+          const readPromise = reader.read();
+
+          const result = await Promise.race([
+            readPromise,
+            new Promise<{ done: boolean; value?: Uint8Array }>((_, reject) => {
+              setTimeout(() => {
+                if (Date.now() - lastActivityTime > STREAM_TIMEOUT) {
+                  reject(new Error('Stream read timeout'));
+                }
+              }, STREAM_TIMEOUT);
+            }),
+          ]);
+
+          const { done: readerDone, value } = result;
           done = readerDone;
           if (done) break;
 
+          lastActivityTime = Date.now();
           const chunk = decoder.decode(value, { stream: true });
           const lines = chunk.split('\n');
 
@@ -174,24 +201,60 @@ export const chatApi = {
             if (line.startsWith('data: ')) {
               try {
                 const data = JSON.parse(line.slice(6));
-                if (data.type === 'content') {
+                if (data.type === 'content_chunk' || data.type === 'content') {
                   onChunk(data.content);
+                } else if (data.type === 'entities') {
+                  // 处理实体数据
+                  const entities = data.entities || [];
+                  onEntities?.(entities);
+                } else if (data.type === 'keywords') {
+                  // 处理关键词数据
+                  const keywords = data.keywords || [];
+                  onKeywords?.(keywords);
+                } else if (data.type === 'relations') {
+                  // 处理关系数据
+                  const relations = data.relations || [];
+                  onRelations?.(relations);
                 } else if (data.type === 'complete') {
-                  lastResponse = data.response;
+                  lastResponse = {
+                    message_id: data.message_id,
+                    content: data.content,
+                    role: 'assistant',
+                    sources: data.sources || [],
+                    entities: data.entities || [],
+                    keywords: data.keywords || [],
+                    relations: data.relations || [],
+                    created_at: new Date().toISOString(),
+                  };
+                } else if (data.type === 'error') {
+                  throw new Error(data.message || 'Stream error');
                 }
-              } catch {
-                console.warn('Failed to parse SSE data:', line);
+              } catch (parseError) {
+                if (parseError instanceof Error && parseError.message !== 'Stream error') {
+                  console.warn('Failed to parse SSE data:', line);
+                } else {
+                  throw parseError;
+                }
               }
             }
           }
         }
       }
 
+      clearTimeout(timeoutId);
       if (lastResponse) {
         onComplete(lastResponse);
       }
     } catch (error) {
-      console.warn('Stream API unavailable, using local mock response');
+      clearTimeout(timeoutId);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      if (errorMessage.includes('abort') || errorMessage.includes('timeout')) {
+        console.warn('Stream request timed out, falling back to local response');
+      } else {
+        console.warn('Stream API unavailable, using local mock response');
+      }
+
       await mockChatService.sendMessageStream(
         request.session_id,
         request.content,
@@ -227,7 +290,7 @@ export const chatApi = {
     try {
       const response = await apiAdapterManager.request<SessionListResponse>({
         method: 'GET',
-        url: '/session',
+        url: '/api/v1/session',
         params: { page, page_size: pageSize },
       });
       return {
@@ -257,7 +320,7 @@ export const chatApi = {
     try {
       const response = await apiAdapterManager.request<Record<string, unknown>>({
         method: 'POST',
-        url: '/session',
+        url: '/api/v1/session',
         data: { title },
       });
       return transformSession(response.data);
@@ -275,7 +338,7 @@ export const chatApi = {
     try {
       await apiAdapterManager.request({
         method: 'DELETE',
-        url: `/session/${sessionId}`,
+        url: `/api/v1/session/${sessionId}`,
       });
     } catch (error) {
       console.warn('API unavailable for deleting session, using local');
@@ -302,7 +365,7 @@ export const chatApi = {
     try {
       const response = await apiAdapterManager.request<Record<string, unknown>>({
         method: 'PUT',
-        url: `/session/${sessionId}`,
+        url: `/api/v1/session/${sessionId}`,
         data: updates,
       });
       return transformSession(response.data);
@@ -336,7 +399,7 @@ export const chatApi = {
     try {
       const response = await apiAdapterManager.request<MessageListResponse>({
         method: 'GET',
-        url: `/session/${sessionId}/messages`,
+        url: `/api/v1/session/${sessionId}/messages`,
         params: { page, page_size: pageSize },
       });
       return {

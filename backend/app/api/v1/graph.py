@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, distinct
 from typing import Optional, List
 import uuid
 import json
@@ -9,6 +10,7 @@ from app.core.database import get_db
 from app.core.auth import get_current_user
 from app.schemas.chat import Entity, Relation, GraphData, GraphNode, GraphEdge
 from app.services.graph_service import GraphSnapshotService
+from app.models.chat import MessageEntity, Message, MessageRelation
 from pydantic import BaseModel
 
 
@@ -394,4 +396,65 @@ async def get_session_graph_data(
         "edges": [e.model_dump() for e in edges],
         "entities": [e.model_dump() for e in unique_entities],
         "keywords": unique_keywords[:20],
+    }
+
+
+@router.get("/graph/stats")
+async def get_graph_stats(
+    session_id: Optional[str] = Query(None, description="会话 ID，如果提供则只统计该会话的数据"),
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user),
+):
+    """获取图谱统计信息"""
+    # 基础查询
+    entity_query = select(func.count(MessageEntity.id))
+    relation_query = select(func.count(MessageRelation.id))
+    
+    if session_id:
+        # 获取会话的消息 ID 列表
+        message_ids_result = await db.execute(
+            select(Message.id).where(Message.session_id == session_id)
+        )
+        message_ids = [row[0] for row in message_ids_result.all()]
+        
+        if message_ids:
+            entity_query = entity_query.where(MessageEntity.message_id.in_(message_ids))
+            relation_query = relation_query.where(MessageRelation.message_id.in_(message_ids))
+        else:
+            # 会话没有消息
+            return {
+                "total_entities": 0,
+                "total_relations": 0,
+                "entities_by_type": {},
+                "relations_by_type": {},
+            }
+    
+    # 执行统计查询
+    total_entities_result = await db.execute(entity_query)
+    total_entities = total_entities_result.scalar() or 0
+    
+    total_relations_result = await db.execute(relation_query)
+    total_relations = total_relations_result.scalar() or 0
+    
+    # 按类型统计实体
+    type_query = select(MessageEntity.type, func.count(MessageEntity.id)).group_by(MessageEntity.type)
+    if session_id and message_ids:
+        type_query = type_query.where(MessageEntity.message_id.in_(message_ids))
+    
+    type_result = await db.execute(type_query)
+    entities_by_type = {row[0]: row[1] for row in type_result.all()}
+    
+    # 按类型统计关系
+    rel_type_query = select(MessageRelation.relation_type, func.count(MessageRelation.id)).group_by(MessageRelation.relation_type)
+    if session_id and message_ids:
+        rel_type_query = rel_type_query.where(MessageRelation.message_id.in_(message_ids))
+    
+    rel_type_result = await db.execute(rel_type_query)
+    relations_by_type = {row[0]: row[1] for row in rel_type_result.all()}
+    
+    return {
+        "total_entities": total_entities,
+        "total_relations": total_relations,
+        "entities_by_type": entities_by_type,
+        "relations_by_type": relations_by_type,
     }

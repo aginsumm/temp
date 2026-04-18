@@ -75,7 +75,7 @@ export interface KnowledgeEntityFull {
   region?: string;
   period?: string;
   coordinates?: { lat: number; lng: number };
-  meta_data?: Record<string, any>;
+  metadata?: Record<string, any>;
   importance: number;
   created_at: string;
   updated_at: string;
@@ -87,7 +87,7 @@ export interface Relationship {
   target_id: string;
   relation_type: string;
   weight: number;
-  meta_data?: Record<string, any>;
+  metadata?: Record<string, any>;
   created_at: string;
 }
 

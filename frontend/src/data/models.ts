@@ -8,7 +8,7 @@ export interface KnowledgeEntityBase {
   region?: string;
   period?: string;
   coordinates?: { lat: number; lng: number };
-  meta_data?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   importance: number;
   images?: string[];
   tags?: string[];
@@ -29,7 +29,7 @@ export interface KnowledgeRelationship {
   target_id: string;
   relation_type: string;
   weight: number;
-  meta_data?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   created_at: string;
 }
 

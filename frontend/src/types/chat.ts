@@ -59,6 +59,20 @@ export interface Entity {
     category?: string;
   };
   properties?: Record<string, unknown>;
+  // Knowledge 模块扩展字段
+  importance?: number;
+  region?: string;
+  period?: string;
+  coordinates?: {
+    lat: number;
+    lng: number;
+  };
+  images?: string[];
+  tags?: string[];
+  created_at?: string;
+  updated_at?: string;
+  aliases?: string[];
+  external_ids?: Record<string, string>;
 }
 
 export type EntityType =
@@ -126,6 +140,7 @@ export interface ChatResponse {
   sources?: Source[];
   entities?: Entity[];
   keywords?: string[];
+  relations?: Relation[];
   created_at: string;
 }
 

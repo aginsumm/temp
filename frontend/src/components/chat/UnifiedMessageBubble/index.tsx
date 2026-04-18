@@ -22,7 +22,6 @@ import {
 import { useThemeStore } from '../../../stores/themeStore';
 import { useToast } from '../../common/Toast';
 import VersionSwitcher from '../VersionSwitcher';
-import { useChatStore } from '../../../stores/chatStore';
 import type { Message } from '../../../types/chat';
 
 interface UnifiedMessageBubbleProps {
@@ -138,6 +137,7 @@ export default function UnifiedMessageBubble({
   onDelete,
   onSwitchVersion,
   onEditAndRegenerate,
+  onSyncVersionForGroup,
   isHistorical = false,
   isLast = false,
   isStreaming: isStreamingProp = false,

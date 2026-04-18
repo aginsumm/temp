@@ -2,8 +2,10 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useChatStore, pruneVersions } from '../../stores/chatStore';
+import { useGraphStore } from '../../stores/graphStore';
 import { useUIStore } from '../../stores/uiStore';
 import { chatDataService } from '../../services/chat';
+import { graphSyncService } from '../../services/graphSyncService';
 import { useToast } from '../../components/common/Toast';
 import type {
   Entity,
@@ -134,14 +136,46 @@ export default function EnhancedChatPage() {
         // 在 initializeData 完成后重新获取最新的 sessions
         const fetchedSessions = useChatStore.getState().sessions;
 
-        if (sessionId && fetchedSessions.some((s) => s.id === sessionId)) {
-          await switchSess(sessionId);
-        } else if (fetchedSessions.length > 0) {
-          const firstSessionId = fetchedSessions[0].id;
-          await switchSess(firstSessionId);
-        } else {
+        let targetSessionId = sessionId;
+
+        if (!targetSessionId && fetchedSessions.length > 0) {
+          targetSessionId = fetchedSessions[0].id;
+        } else if (!targetSessionId) {
           const newSession = await createSession();
-          await switchSess(newSession.id);
+          targetSessionId = newSession.id;
+        }
+
+        if (targetSessionId && fetchedSessions.some((s) => s.id === targetSessionId)) {
+          await switchSess(targetSessionId);
+
+          // 恢复该会话的图谱快照（如果存在）
+          try {
+            const savedGraphState = sessionStorage.getItem(`graphState_${targetSessionId}`);
+            if (savedGraphState) {
+              const { entities, relations, keywords, filters } = JSON.parse(savedGraphState);
+
+              if (entities && entities.length > 0) {
+                setCurrentEntities(entities);
+                if (keywords) setCurrentKeywords(keywords);
+                if (relations) setCurrentRelations(relations);
+
+                // 触发全局事件通知其他组件
+                const event = new CustomEvent('restoreGraphState', {
+                  detail: {
+                    entities,
+                    relations,
+                    keywords,
+                    filters,
+                  },
+                });
+                window.dispatchEvent(event);
+
+                console.log('Restored graph state from sessionStorage');
+              }
+            }
+          } catch (error) {
+            console.warn('Failed to restore graph state:', error);
+          }
         }
 
         setIsInitialized(true);
@@ -262,9 +296,24 @@ export default function EnhancedChatPage() {
       if (entities) setCurrentEntities(entities);
       if (keywords) setCurrentKeywords(keywords);
       if (relations) setCurrentRelations(relations);
+
+      // 同时更新 chatStore 中的图谱数据
+      useChatStore.getState().updateGraphData(entities, relations, keywords);
+
+      // 使用 graphSyncService 更新图谱数据，确保知识图谱板块也能收到数据
+      if (entities && entities.length > 0) {
+        graphSyncService.updateFromChat(
+          entities,
+          relations || [],
+          keywords || [],
+          sessionId,
+          undefined
+        );
+      }
+
       console.debug('Graph data updated:', { entities, keywords, sources, relations });
     },
-    []
+    [sessionId]
   );
 
   // ========== 辅助函数：加载快照 ==========
@@ -280,6 +329,18 @@ export default function EnhancedChatPage() {
       if (snapshot.relations && snapshot.relations.length > 0) {
         setCurrentRelations(snapshot.relations);
       }
+
+      // 更新统一的 graphStore
+      useGraphStore
+        .getState()
+        .updateGraphData(
+          snapshot.entities,
+          snapshot.relations,
+          snapshot.keywords,
+          snapshot.session_id,
+          snapshot.message_id,
+          'snapshot'
+        );
 
       // 通过全局事件通知其他组件（如知识图谱）
       const event = new CustomEvent('loadSnapshot', {

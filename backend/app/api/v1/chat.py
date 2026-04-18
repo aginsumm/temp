@@ -174,6 +174,7 @@ async def send_message(
             sources=sources,
             entities=entities,
             keywords=keywords,
+            relations=relations,
         )
 
         return ChatMessageResponse(
@@ -297,6 +298,7 @@ async def send_message_stream(
                     sources=sources,
                     entities=entities,
                     keywords=keywords,
+                    relations=relations,
                 )
                 message_id = ai_message.id
             except Exception as db_error:
