@@ -460,56 +460,103 @@ class ChatRepository {
     return aiMessage;
   }
 
-  async sendMessageStream(
+ async sendMessageStream(
     sessionId: string,
     content: string,
     onChunk: (chunk: string) => void,
     onComplete: (message: Message) => void,
     onError?: (error: Error) => void
   ): Promise<() => void> {
-    let aborted = false;
+    const userMessage: Message = {
+      id: generateId(),
+      session_id: sessionId,
+      role: 'user',
+      content,
+      created_at: new Date().toISOString(),
+      keywords: [],
+      entities: [],
+      sources: [],
+    };
+    await this.addMessage(userMessage);
+    let isAborted = false;
 
-    const processStream = async () => {
+    (async () => {
       try {
-        const aiContent = generateHeritageResponse(content);
-        const keywords = extractKeywords(content);
-        const entities = extractEntities(content);
-        const sources = generateSources(content);
+        const token = localStorage.getItem('token') || '';
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const words = aiContent.split('');
-        for (let i = 0; i < words.length && !aborted; i++) {
-          await new Promise((resolve) => setTimeout(resolve, 30));
-          onChunk(words[i]);
+        // 🌟 强行请求真实的流式接口
+        const response = await fetch(`http://localhost:8000/api/v1/chat/stream`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            session_id: sessionId,
+            content: content,
+            message_type: 'text'
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`HTTP error! status: ${response.status}, body: ${errText}`);
         }
 
-        if (!aborted) {
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let lastResponse: any = null;
+
+        if (reader) {
+          while (!isAborted) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              if (trimmedLine && trimmedLine.startsWith('data: ')) {
+                try {
+                  const jsonStr = trimmedLine.substring(6);
+                  if (jsonStr === '[DONE]') continue; 
+                  
+                  const data = JSON.parse(jsonStr);
+                  if (data.type === 'content_chunk' || data.type === 'content') {
+                    onChunk(data.content);
+                  } else if (data.type === 'complete') {
+                    lastResponse = data.response || data;
+                  }
+                } catch (e) {
+                  // 忽略不完整的 JSON 块解析错误
+                }
+              }
+            }
+          }
+        }
+
+        if (lastResponse && !isAborted) {
           const aiMessage: Message = {
-            id: `msg_${Date.now()}_assistant`,
+            id: lastResponse.message_id || lastResponse.id || generateId(),
             session_id: sessionId,
             role: 'assistant',
-            content: aiContent,
-            keywords,
-            entities,
-            sources,
-            created_at: new Date().toISOString(),
+            content: lastResponse.content || '',
+            created_at: lastResponse.created_at || new Date().toISOString(),
+            sources: lastResponse.sources || [],
+            entities: lastResponse.entities || [],
+            keywords: lastResponse.keywords || []
           };
-
+          await this.addMessage(aiMessage);
           onComplete(aiMessage);
         }
       } catch (error) {
-        if (onError && !aborted) {
-          onError(error instanceof Error ? error : new Error(String(error)));
-        }
+        console.error('🔥 真实流式请求彻底报错:', error);
+        if (onError && !isAborted) onError(error as Error);
       }
-    };
+    })();
 
-    processStream();
-
-    return () => {
-      aborted = true;
-    };
+    return () => { isAborted = true; };
   }
-
   async submitFeedback(messageId: string, feedback: 'helpful' | 'unclear'): Promise<void> {
     await this.updateMessage(messageId, { feedback });
   }

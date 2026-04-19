@@ -70,18 +70,18 @@ function transformMessage(data: Record<string, unknown>) {
 
 export const chatApi = {
   sendMessage: async (request: ChatRequest): Promise<ChatResponse> => {
-    if (apiAdapterManager.shouldUseLocal()) {
-      const aiMessage = await mockChatService.sendMessage(request.session_id, request.content);
-      return {
-        message_id: aiMessage.id,
-        content: aiMessage.content,
-        role: 'assistant',
-        sources: (aiMessage.sources || []) as Source[],
-        entities: (aiMessage.entities || []) as Entity[],
-        keywords: aiMessage.keywords || [],
-        created_at: aiMessage.created_at,
-      };
-    }
+    // if (apiAdapterManager.shouldUseLocal()) {
+    //   const aiMessage = await mockChatService.sendMessage(request.session_id, request.content);
+    //   return {
+    //     message_id: aiMessage.id,
+    //     content: aiMessage.content,
+    //     role: 'assistant',
+    //     sources: (aiMessage.sources || []) as Source[],
+    //     entities: (aiMessage.entities || []) as Entity[],
+    //     keywords: aiMessage.keywords || [],
+    //     created_at: aiMessage.created_at,
+    //   };
+    // }
 
     try {
       const response = await apiAdapterManager.request<ChatResponse>({
@@ -95,17 +95,8 @@ export const chatApi = {
       });
       return response.data;
     } catch (error) {
-      console.warn('API unavailable, using local mock response');
-      const aiMessage = await mockChatService.sendMessage(request.session_id, request.content);
-      return {
-        message_id: aiMessage.id,
-        content: aiMessage.content,
-        role: 'assistant',
-        sources: (aiMessage.sources || []) as Source[],
-        entities: (aiMessage.entities || []) as Entity[],
-        keywords: aiMessage.keywords || [],
-        created_at: aiMessage.created_at,
-      };
+      console.error('🔥 普通接口请求失败，拒绝使用假数据！', error);
+      throw error; // 强行抛出错误，绝对不返回假数据
     }
   },
 
@@ -117,33 +108,6 @@ export const chatApi = {
     onKeywords?: (keywords: string[]) => void,
     onRelations?: (relations: Relation[]) => void
   ): Promise<void> => {
-    const STREAM_TIMEOUT = 60000; // 60秒超时
-
-    if (apiAdapterManager.shouldUseLocal()) {
-      await mockChatService.sendMessageStream(
-        request.session_id,
-        request.content,
-        onChunk,
-        (aiMessage) => {
-          onComplete({
-            message_id: aiMessage.id,
-            content: aiMessage.content,
-            role: 'assistant',
-            sources: (aiMessage.sources || []) as Source[],
-            entities: (aiMessage.entities || []) as Entity[],
-            keywords: aiMessage.keywords || [],
-            created_at: aiMessage.created_at,
-          });
-        }
-      );
-      return;
-    }
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort(new Error('Stream request timeout'));
-    }, STREAM_TIMEOUT);
-
     try {
       const token = localStorage.getItem('token') || '';
       const headers: Record<string, string> = {
@@ -153,7 +117,10 @@ export const chatApi = {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`/api/v1/chat/stream`, {
+      // 🚨 终极核心修改：绕过所有代理和拦截器，直接强行请求后端的真实完整地址！
+      const baseUrl = 'http://localhost:8000/api/v1'; 
+      
+      const response = await fetch(`${baseUrl}/chat/stream`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -164,6 +131,7 @@ export const chatApi = {
         signal: controller.signal,
       });
 
+      // 如果后端没返回成功状态，直接抛出错误，进入 catch
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -229,12 +197,8 @@ export const chatApi = {
                 } else if (data.type === 'error') {
                   throw new Error(data.message || 'Stream error');
                 }
-              } catch (parseError) {
-                if (parseError instanceof Error && parseError.message !== 'Stream error') {
-                  console.warn('Failed to parse SSE data:', line);
-                } else {
-                  throw parseError;
-                }
+              } catch {
+                console.warn('Failed to parse SSE data:', line);
               }
             }
           }
@@ -245,16 +209,9 @@ export const chatApi = {
       if (lastResponse) {
         onComplete(lastResponse);
       }
+
     } catch (error) {
-      clearTimeout(timeoutId);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-      if (errorMessage.includes('abort') || errorMessage.includes('timeout')) {
-        console.warn('Stream request timed out, falling back to local response');
-      } else {
-        console.warn('Stream API unavailable, using local mock response');
-      }
-
+      console.warn('Stream API unavailable, using local mock response');
       await mockChatService.sendMessageStream(
         request.session_id,
         request.content,

@@ -44,6 +44,7 @@ export default function UnifiedInputArea({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isSendingRef = useRef(false); // 🌟 新增：防止双击连发的锁
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -142,28 +143,26 @@ export default function UnifiedInputArea({
   );
 
   const handleSend = useCallback(() => {
-    if (
-      (inputValue.trim() || uploadedFiles.length > 0) &&
-      !disabled &&
-      !isLoading &&
-      charCount <= MAX_CHARS
-    ) {
-      const result = onSend(inputValue.trim(), {
-        files: uploadedFiles.length > 0 ? uploadedFiles : undefined,
-      });
-      if (result instanceof Promise) {
-        result.catch((error) => {
-          console.error('Error sending message:', error);
-        });
-      }
-      setInputValue('');
-      setCharCount(0);
-      setUploadedFiles([]);
+    const finalContent = inputValue.trim();
+    if ((!finalContent && uploadedFiles.length === 0) || disabled || isLoading || isSendingRef.current) return;
+    
+    isSendingRef.current = true;
+    const result = onSend(finalContent, { files: uploadedFiles.length > 0 ? uploadedFiles : undefined });
+    
+    if (result instanceof Promise) {
+      result.finally(() => { isSendingRef.current = false; });
+    } else {
+      setTimeout(() => { isSendingRef.current = false; }, 100);
     }
+    
+    setInputValue('');
+    setCharCount(0);
+    setUploadedFiles([]);
   }, [inputValue, uploadedFiles, disabled, isLoading, charCount, onSend]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // 🌟 拦截中文输入法回车误触
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSend();
     }
