@@ -49,6 +49,11 @@ export default function ProgressBar({
       >
         <motion.div
           className="h-full rounded-full"
+          role="progressbar"
+          aria-valuenow={Math.round(clampedProgress)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={label ?? '进度'}
           initial={{ width: 0 }}
           animate={{ width: `${clampedProgress}%` }}
           transition={{ duration: 0.3, ease: 'easeOut' }}

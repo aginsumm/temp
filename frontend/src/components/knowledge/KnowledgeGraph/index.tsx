@@ -370,6 +370,9 @@ export default function KnowledgeGraph() {
     setSelectedNode,
   ]);
 
+  const renderGraphRef = useRef(renderGraph);
+  renderGraphRef.current = renderGraph;
+
   useEffect(() => {
     loadGraphData();
     return () => {
@@ -450,7 +453,7 @@ export default function KnowledgeGraph() {
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
-      renderGraph();
+      renderGraphRef.current();
     });
 
     observer.observe(document.documentElement, {
@@ -459,7 +462,7 @@ export default function KnowledgeGraph() {
     });
 
     return () => observer.disconnect();
-  }, [renderGraph]);
+  }, []);
 
   const loadGraphData = async () => {
     try {

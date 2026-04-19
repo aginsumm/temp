@@ -5,7 +5,7 @@ import axios, {
   AxiosError,
   InternalAxiosRequestConfig,
 } from 'axios';
-import { v4 as uuidv4 } from 'uuid';
+import { randomId } from '../utils/randomId';
 
 interface RequestDeduplicationConfig {
   enabled: boolean;
@@ -265,7 +265,7 @@ class EnhancedApiClient {
     this.instance.interceptors.request.use(
       (config: InternalAxiosRequestConfig) => {
         config.headers = config.headers || {};
-        config.headers[this.requestIdHeader] = uuidv4();
+        config.headers[this.requestIdHeader] = randomId();
 
         const token = this.getToken();
         if (token) {

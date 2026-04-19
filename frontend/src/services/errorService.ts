@@ -1,5 +1,5 @@
 import { AxiosError } from 'axios';
-import { v4 as uuidv4 } from 'uuid';
+import { randomId } from '../utils/randomId';
 
 export enum ErrorSeverity {
   LOW = 'low',
@@ -165,7 +165,7 @@ class ErrorService {
     const userMessage = this.generateUserMessage(error, category);
 
     const appError: AppError = {
-      id: uuidv4(),
+      id: randomId(),
       message: error instanceof Error ? error.message : String(error),
       category,
       severity,

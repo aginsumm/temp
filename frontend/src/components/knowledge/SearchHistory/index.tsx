@@ -367,6 +367,7 @@ export default function SearchHistory({
                   return (
                     <motion.div
                       key={item.id}
+                      data-testid={`search-history-item-${item.id}`}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.03 }}
