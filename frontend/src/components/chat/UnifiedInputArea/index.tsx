@@ -144,41 +144,24 @@ export default function UnifiedInputArea({
 
   const handleSend = useCallback(() => {
     const finalContent = inputValue.trim();
+    if ((!finalContent && uploadedFiles.length === 0) || disabled || isLoading || isSendingRef.current) return;
     
-    // 🌟 核心拦截：内容为空、加载中、或正在发送中，一律不准发！
-    if (
-      (!finalContent && uploadedFiles.length === 0) ||
-      disabled ||
-      isLoading ||
-      charCount > MAX_CHARS ||
-      isSendingRef.current
-    ) {
-      return;
-    }
-
-    isSendingRef.current = true; // 马上上锁，防止连发
-
-    const result = onSend(finalContent, {
-      files: uploadedFiles.length > 0 ? uploadedFiles : undefined,
-    });
-
+    isSendingRef.current = true;
+    const result = onSend(finalContent, { files: uploadedFiles.length > 0 ? uploadedFiles : undefined });
+    
     if (result instanceof Promise) {
-      result.catch((error) => {
-        console.error('Error sending message:', error);
-      }).finally(() => {
-        isSendingRef.current = false; // 发送结束，解锁
-      });
+      result.finally(() => { isSendingRef.current = false; });
     } else {
-      setTimeout(() => { isSendingRef.current = false; }, 100); // 解锁
+      setTimeout(() => { isSendingRef.current = false; }, 100);
     }
-
+    
     setInputValue('');
     setCharCount(0);
     setUploadedFiles([]);
   }, [inputValue, uploadedFiles, disabled, isLoading, charCount, onSend]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // 🌟 核心拦截：加上 !e.nativeEvent.isComposing，防止中文打字按回车时误发送！
+    // 🌟 拦截中文输入法回车误触
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSend();

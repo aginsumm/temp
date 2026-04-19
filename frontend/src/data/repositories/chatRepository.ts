@@ -460,7 +460,7 @@ class ChatRepository {
     return aiMessage;
   }
 
-  async sendMessageStream(
+ async sendMessageStream(
     sessionId: string,
     content: string,
     onChunk: (chunk: string) => void,
@@ -473,12 +473,11 @@ class ChatRepository {
       role: 'user',
       content,
       created_at: new Date().toISOString(),
-      keywords: extractKeywords(content),
-      entities: extractEntities(content),
+      keywords: [],
+      entities: [],
       sources: [],
     };
     await this.addMessage(userMessage);
-
     let isAborted = false;
 
     (async () => {
@@ -487,8 +486,8 @@ class ChatRepository {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        // 🌟 1. 改为请求后端切实存在的非流式接口
-        const response = await fetch(`http://localhost:8000/api/v1/chat/message`, {
+        // 🌟 强行请求真实的流式接口
+        const response = await fetch(`http://localhost:8000/api/v1/chat/stream`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -498,45 +497,66 @@ class ChatRepository {
           })
         });
 
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`HTTP error! status: ${response.status}, body: ${errText}`);
+        }
 
-        // 🌟 2. 直接解析完整的 JSON 响应，不再傻乎乎地去等流式数据
-        const result = await response.json();
-        
-        if (!isAborted) {
-          // 为了让界面看起来像是在打字（即使后端是一次性返回的），我们在前端模拟一下打字机效果
-          const fullText = result.content || '';
-          const words = fullText.split('');
-          
-          for (let i = 0; i < words.length && !isAborted; i++) {
-            await new Promise(resolve => setTimeout(resolve, 20)); // 每 20 毫秒吐出一个字
-            onChunk(words[i]);
-          }
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let lastResponse: any = null;
 
-          if (!isAborted) {
-            const aiMessage: Message = {
-              id: result.message_id || generateId(),
-              session_id: sessionId,
-              role: 'assistant',
-              content: fullText,
-              created_at: result.created_at || new Date().toISOString(),
-              sources: result.sources || [],
-              entities: result.entities || [],
-              keywords: result.keywords || []
-            };
-            await this.addMessage(aiMessage);
-            onComplete(aiMessage);
+        if (reader) {
+          while (!isAborted) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n');
+
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              if (trimmedLine && trimmedLine.startsWith('data: ')) {
+                try {
+                  const jsonStr = trimmedLine.substring(6);
+                  if (jsonStr === '[DONE]') continue; 
+                  
+                  const data = JSON.parse(jsonStr);
+                  if (data.type === 'content_chunk' || data.type === 'content') {
+                    onChunk(data.content);
+                  } else if (data.type === 'complete') {
+                    lastResponse = data.response || data;
+                  }
+                } catch (e) {
+                  // 忽略不完整的 JSON 块解析错误
+                }
+              }
+            }
           }
         }
+
+        if (lastResponse && !isAborted) {
+          const aiMessage: Message = {
+            id: lastResponse.message_id || lastResponse.id || generateId(),
+            session_id: sessionId,
+            role: 'assistant',
+            content: lastResponse.content || '',
+            created_at: lastResponse.created_at || new Date().toISOString(),
+            sources: lastResponse.sources || [],
+            entities: lastResponse.entities || [],
+            keywords: lastResponse.keywords || []
+          };
+          await this.addMessage(aiMessage);
+          onComplete(aiMessage);
+        }
       } catch (error) {
-        console.error('🔥 请求失败:', error);
+        console.error('🔥 真实流式请求彻底报错:', error);
         if (onError && !isAborted) onError(error as Error);
       }
     })();
 
     return () => { isAborted = true; };
   }
-
   async submitFeedback(messageId: string, feedback: 'helpful' | 'unclear'): Promise<void> {
     await this.updateMessage(messageId, { feedback });
   }

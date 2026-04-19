@@ -144,20 +144,20 @@ class ApiAdapterManager {
     // 👇🌟🌟🌟 终极安检门：拦截一切导致 Bug 的空消息和假消息 🌟🌟🌟👇
     if (config.url && config.url.includes('/chat/message')) {
       
-      // 1. 拦截前端自作多情的带有 _streaming 的幽灵请求
-      if (config.url.includes('_streaming')) {
-        console.warn("🛑 已拦截临时流式ID同步:", config.url);
-        return { data: {} as T, status: 200, headers: {} };
-      }
+      // 👇🌟 拦截所有发往废弃接口的请求 🌟👇
+    if (config.url && config.url.includes('/chat/message')) {
+      console.warn("🛑 后端已删除 /chat/message 接口，已拦截废弃的同步请求");
+      return { data: {} as T, status: 200, headers: {} }; // 假装成功，让同步器闭嘴，消除 404
+    }
 
-      // 2. 拦截被 syncManager 盲目推送的空内容请求！(这是解决英文预设的关键)
-      if (config.method === 'POST' && config.data) {
-        const payloadContent = (config.data as any).content;
-        if (payloadContent === undefined || payloadContent === null || payloadContent.trim() === '') {
-          console.warn("🛑 拦截了导致双重回复的空消息请求！已丢弃。");
-          return { data: {} as T, status: 200, headers: {} }; // 假装成功，让同步器闭嘴
-        }
-      }
+      // // 2. 拦截被 syncManager 盲目推送的空内容请求！(这是解决英文预设的关键)
+      // if (config.method === 'POST' && config.data) {
+      //   const payloadContent = (config.data as any).content;
+      //   if (payloadContent === undefined || payloadContent === null || payloadContent.trim() === '') {
+      //     console.warn("🛑 拦截了导致双重回复的空消息请求！已丢弃。");
+      //     return { data: {} as T, status: 200, headers: {} }; // 假装成功，让同步器闭嘴
+      //   }
+      // }
     }
     // 👆🌟🌟🌟 拦截结束 🌟🌟🌟👆
 
