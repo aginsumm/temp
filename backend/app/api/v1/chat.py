@@ -27,7 +27,7 @@ from app.schemas.chat import (
 )
 from app.services.chat_service import SessionService, MessageService
 from app.services.llm_service import llm_service
-from app.models.chat import MessageRole
+from app.models.chat import Session, Message,MessageRole
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 logger = logging.getLogger(__name__)
@@ -139,13 +139,27 @@ async def send_message(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ):
+# 👇 加入这一行超级显眼的监控
+    print(f"\n{'='*40}\n🚨 收到前端消息: {request.content}\n{'='*40}\n")
     session_service = SessionService(db)
     message_service = MessageService(db)
 
     try:
         session = await session_service.get_session(request.session_id)
         if not session:
-            raise HTTPException(status_code=404, detail="会话不存在")
+            #raise HTTPException(status_code=404, detail="会话不存在")
+            # 🚨 终极兼容补丁：如果前端发来一个不存在的会话 ID，后端直接帮它建一个！
+            print(f"⚠️ 发现未知的会话 ID: {request.session_id}，正在自动创建...")
+            new_session = Session(
+                id=request.session_id,
+                user_id=user_id,
+                title="新对话",
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(new_session)
+            await db.flush()
+            session = new_session
 
         user_message = await message_service.create_message(
             session_id=request.session_id,
@@ -200,6 +214,8 @@ async def send_message_stream(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(get_current_user),
 ):
+# 👇 加入这一行超级显眼的监控
+    print(f"\n{'='*40}\n🌊 收到流式消息: {request.content}\n{'='*40}\n")
     session_service = SessionService(db)
     message_service = MessageService(db)
 
@@ -421,7 +437,9 @@ async def create_session(
     try:
         session_service = SessionService(db)
         session = await session_service.create_session(user_id, data)
-        return SessionSchema.model_validate(session)
+        # 🌟 修复格式化问题
+        parsed_data = parse_session_tags(session)
+        return SessionSchema(**parsed_data)
     except Exception as e:
         logger.error(f"Error creating session: {e}")
         raise HTTPException(status_code=500, detail=f"创建会话失败: {str(e)}")

@@ -10,7 +10,8 @@ from app.schemas.chat import Entity, EntityType, Relation
 
 class LLMService:
     def __init__(self):
-        self.api_key = settings.DASHSCOPE_API_KEY
+        #self.api_key = settings.DASHSCOPE_API_KEY
+        self.api_key = "sk-5b939a7e67bc446ba034fce32893a51f"
         self.base_url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
         
         # 降级策略配置
@@ -135,6 +136,10 @@ class LLMService:
         context: Optional[list[dict]] = None,
         stream: bool = False,
     ) -> str:
+    # 🌟 强行写入 API Key (注意这里的双引号一定要有)
+        self.api_key = "sk-5b939a7e67bc446ba034fce32893a51f"
+        print(f"\n🚀 正在发射普通请求！当前 Key: {self.api_key}\n")
+        
         if not self.api_key:
             return self._mock_response(message)
 
@@ -162,6 +167,10 @@ class LLMService:
                         headers=headers,
                         json=payload,
                     )
+                    # 🌟 2. 强行拦截并打印阿里云的报错（如果有的话）
+                    if response.status_code != 200:
+                        print(f"\n🚨 阿里云拒绝了请求！报错信息: HTTP {response.status_code} - {response.text}\n")
+
                     response.raise_for_status()
                     data = response.json()
                     self._record_success()
@@ -182,6 +191,9 @@ class LLMService:
         message: str,
         context: Optional[list[dict]] = None,
     ) -> AsyncGenerator[str, None]:
+    # 🌟 强行写入 API Key
+        self.api_key = "sk-5b939a7e67bc446ba034fce32893a51f"
+        print(f"\n🚀 正在发射！当前使用的 Key 是: {self.api_key}\n")
         if not self.api_key:
             for char in self._mock_response(message):
                 yield char
@@ -213,6 +225,12 @@ class LLMService:
                     headers=headers,
                     json=payload,
                 ) as response:
+                #👇 请在这里插入下面这 4 行代码！
+                    if response.status_code != 200:
+                        err_msg = await response.aread()
+                        print(f"\n🚨 阿里云真实报错信息: HTTP {response.status_code} - {err_msg.decode('utf-8')}\n")
+                        raise Exception("API 请求失败")
+                    # 👆 插入结束
                     async for line in response.aiter_lines():
                         if line.startswith("data:"):
                             data = json.loads(line[5:])

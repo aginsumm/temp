@@ -51,7 +51,7 @@ async def login(user_data: UserLogin, db: AsyncSession = Depends(get_db)):
             raise HTTPException(status_code=400, detail="密码错误")
         return {
             "message": "登录成功",
-            "access_token": "mock-token-for-now", 
+            "access_token": str(user.id), 
             "user": {
                 "id": str(user.id),  
                 "username": user.username,

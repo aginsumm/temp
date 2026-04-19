@@ -46,6 +46,9 @@ async def get_db():
 async def init_db():
     #from app.models.entity import Entity
     from app.models.user import User
+    import app.models.chat
+    import app.models.knowledge
+    import app.models.graph
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     from app.utils.init_sample_data import init_sample_data

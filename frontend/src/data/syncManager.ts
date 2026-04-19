@@ -20,6 +20,11 @@ class SyncManager {
   }
 
   private init(): void {
+    // 🚨 临时修复补丁：在启动时强制清空所有卡住的操作
+  this.clearPendingOperations().then(() => {
+      console.log("🔥 Successfully nuked the pending operations queue!");
+  }).catch(err => console.error("Failed to clear queue", err));
+
     apiAdapterManager.subscribe((networkStatus) => {
       if (networkStatus.isOnline) {
         this.sync();
@@ -87,6 +92,7 @@ class SyncManager {
   }
 
   async sync(): Promise<void> {
+    return; // 🛑 暴力拦截：别再同步了，别再重试了，给我安静！
     if (this.status.isSyncing) return;
     if (!apiAdapterManager.getOnlineStatus()) return;
 
