@@ -6,7 +6,7 @@ import { apiAdapterManager } from '../data/apiAdapter';
 import { syncManager } from '../data/syncManager';
 import type { FavoriteItem, FeedbackItem } from '../data/models';
 
-type ViewMode = 'graph' | 'list' | 'map' | 'timeline';
+type ViewMode = 'graph' | 'list';
 type LayoutType = 'force' | 'circular' | 'hierarchical';
 type SortBy = 'relevance' | 'name' | 'date';
 
@@ -23,8 +23,6 @@ interface GraphState {
 interface FilterState {
   category: string;
   keyword: string;
-  region: string[];
-  period: string[];
   sortBy: SortBy;
 }
 
@@ -47,8 +45,6 @@ interface KnowledgeGraphStore extends GraphState, FilterState, UserInteractionSt
 
   setCategory: (category: string) => void;
   setKeyword: (keyword: string) => void;
-  setRegion: (region: string[]) => void;
-  setPeriod: (period: string[]) => void;
   setSortBy: (sortBy: SortBy) => void;
 
   resetFilter: () => void;
@@ -82,8 +78,6 @@ const useKnowledgeGraphStore = create<KnowledgeGraphStore>()(
       detailPanelCollapsed: false,
       category: 'all',
       keyword: '',
-      region: [],
-      period: [],
       sortBy: 'relevance',
 
       setViewMode: (mode) => set({ viewMode: mode }),
@@ -110,18 +104,12 @@ const useKnowledgeGraphStore = create<KnowledgeGraphStore>()(
 
       setKeyword: (keyword) => set({ keyword }),
 
-      setRegion: (region) => set({ region }),
-
-      setPeriod: (period) => set({ period }),
-
       setSortBy: (sortBy) => set({ sortBy }),
 
       resetFilter: () =>
         set({
           category: 'all',
           keyword: '',
-          region: [],
-          period: [],
           sortBy: 'relevance',
         }),
 

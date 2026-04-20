@@ -1,18 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import {
-  X,
-  MapPin,
-  Clock,
-  Star,
-  Share2,
-  Bookmark,
-  Copy,
-  Check,
-  Volume2,
-  Tag,
-  FileText,
-} from 'lucide-react';
+import { X, Star, Share2, Bookmark, Copy, Check, Volume2, Tag, FileText } from 'lucide-react';
 import { knowledgeApi, Entity, Relationship } from '../../../api/knowledge';
 import useKnowledgeGraphStore from '../../../stores/knowledgeGraphStore';
 import { useToast } from '../../common/Toast';
@@ -418,68 +406,6 @@ export default function DetailPanel() {
                   +{entity.tags.length - 5} 更多
                 </button>
               )}
-            </div>
-          </motion.div>
-        )}
-
-        {entity.region && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="flex items-start gap-4 rounded-xl p-4 transition-all group"
-            style={{
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-            }}
-          >
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg"
-              style={{ background: 'var(--gradient-primary)' }}
-            >
-              <MapPin size={20} style={{ color: 'var(--color-text-inverse)' }} />
-            </div>
-            <div className="flex-1">
-              <h3
-                className="text-sm font-semibold mb-1 transition-colors"
-                style={{ color: 'var(--color-text-secondary)' }}
-              >
-                地域
-              </h3>
-              <p className="text-sm transition-colors" style={{ color: 'var(--color-text-muted)' }}>
-                {entity.region}
-              </p>
-            </div>
-          </motion.div>
-        )}
-
-        {entity.period && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35 }}
-            className="flex items-start gap-4 rounded-xl p-4 transition-all group"
-            style={{
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-            }}
-          >
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg"
-              style={{ background: 'var(--gradient-secondary)' }}
-            >
-              <Clock size={20} style={{ color: 'var(--color-text-inverse)' }} />
-            </div>
-            <div className="flex-1">
-              <h3
-                className="text-sm font-semibold mb-1 transition-colors"
-                style={{ color: 'var(--color-text-secondary)' }}
-              >
-                时期
-              </h3>
-              <p className="text-sm transition-colors" style={{ color: 'var(--color-text-muted)' }}>
-                {entity.period}
-              </p>
             </div>
           </motion.div>
         )}

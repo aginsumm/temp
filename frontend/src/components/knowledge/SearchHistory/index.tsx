@@ -11,8 +11,6 @@ export interface SearchHistoryItem {
   keyword: string;
   filters: {
     category?: string;
-    region?: string[];
-    period?: string[];
   };
   resultCount: number;
   timestamp: number;
@@ -24,8 +22,6 @@ interface ServerHistoryItem {
   keyword: string;
   filters?: {
     category?: string;
-    region?: string[];
-    period?: string[];
   };
   result_count?: number;
   created_at: string;
@@ -184,20 +180,6 @@ export default function SearchHistory({
       badges.push({
         label: CATEGORY_LABELS[filters.category] || filters.category,
         colorKey: 'primary',
-      });
-    }
-
-    if (filters.region && filters.region.length > 0) {
-      badges.push({
-        label: filters.region.length === 1 ? filters.region[0] : `${filters.region.length}地域`,
-        colorKey: 'secondary',
-      });
-    }
-
-    if (filters.period && filters.period.length > 0) {
-      badges.push({
-        label: filters.period.length === 1 ? filters.period[0] : `${filters.period.length}时期`,
-        colorKey: 'accent',
       });
     }
 

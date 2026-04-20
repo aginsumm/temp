@@ -93,6 +93,7 @@ export default function RightPanel({
       const customEvent = event as CustomEvent<GraphSnapshot>;
       if (onLoadSnapshot && customEvent.detail) {
         onLoadSnapshot(customEvent.detail);
+        // 使用函数形式，避免依赖 toast 对象
         toast.success('快照已加载', '请在图谱标签页查看');
       }
     };
@@ -101,7 +102,8 @@ export default function RightPanel({
     return () => {
       window.removeEventListener('loadSnapshot', handleLoadSnapshot);
     };
-  }, [onLoadSnapshot, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onLoadSnapshot]);
 
   const { isResizing, handleMouseDown } = useResizablePanel({
     initialWidth: rightPanelWidth,
@@ -170,13 +172,15 @@ export default function RightPanel({
       setIsLoadingSnapshots(false);
       setTimeout(() => setLoadingProgress(undefined), 300);
     }
-  }, [sessionId, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'history' && sessionId) {
       loadSnapshots();
     }
-  }, [activeTab, sessionId, loadSnapshots]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, sessionId]);
 
   const handleSnapshotClick = useCallback(async (snapshot: GraphSnapshot) => {
     setPendingSnapshot(snapshot);

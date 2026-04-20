@@ -5,31 +5,13 @@ import { knowledgeApi, GraphData as KnowledgeGraphData, GraphNode } from '../../
 import useKnowledgeGraphStore from '../../../stores/knowledgeGraphStore';
 import { useGraphStore } from '../../../stores/graphStore';
 import { useThemeStore } from '../../../stores/themeStore';
-import {
-  ZoomIn,
-  ZoomOut,
-  RotateCcw,
-  Maximize2,
-  Search,
-  Filter,
-  Download,
-  RefreshCw,
-  X,
-  ChevronDown,
-  Layers,
-} from 'lucide-react';
-import { optimizeGraphData, getTopKNodes, getConnectedNodes } from '../../../utils/graphOptimizer';
-import { debounce } from '../../../utils/performance';
+import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { optimizeGraphData } from '../../../utils/graphOptimizer';
 import { GraphSkeleton } from '../../common/Skeleton';
 import { useToast } from '../../common/Toast';
 import { graphService } from '../../../api/graph';
 import { graphSyncService } from '../../../services/graphSyncService';
-import {
-  CATEGORY_COLORS,
-  CATEGORY_LABELS,
-  getCategoryColor,
-  getCategoryLabel,
-} from '../../../constants/categories';
+import { getCategoryColor, getCategoryLabel } from '../../../constants/categories';
 import type { Entity } from '../../../types/chat';
 
 export default function KnowledgeGraph() {
@@ -39,13 +21,6 @@ export default function KnowledgeGraph() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
-  const [viewMode, setViewMode] = useState<'all' | 'top' | 'connected'>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [showViewMode, setShowViewMode] = useState(false);
-  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
   const { selectedNode, highlightedNodes, layoutType, setSelectedNode, setHighlightedNodes } =
@@ -59,90 +34,11 @@ export default function KnowledgeGraph() {
   const { resolvedMode } = useThemeStore();
   const toast = useToast();
 
-  // 防抖搜索查询（500ms 延迟）
-  const debouncedSetSearchQuery = useMemo(
-    () =>
-      debounce((query: string) => {
-        setDebouncedSearchQuery(query);
-      }, 500),
-    []
-  );
-
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    debouncedSetSearchQuery(e.target.value);
-  };
-
   const graphData = useMemo(() => {
     if (!rawGraphData) return null;
 
-    let optimized = optimizeGraphData(rawGraphData);
-
-    // 自动切换到 Top K 模式如果节点过多
-    if (optimized.nodes.length > 200 && viewMode === 'all') {
-      console.info(`节点数量过多 (${optimized.nodes.length})，自动切换到 Top K 模式`);
-      setViewMode('top');
-      optimized = getTopKNodes(optimized, 100);
-    }
-
-    if (selectedCategories.size > 0) {
-      const filteredNodes = optimized.nodes.filter((node) => selectedCategories.has(node.category));
-      const filteredNodeIds = new Set(filteredNodes.map((n) => n.id));
-
-      const filteredEdges = optimized.edges.filter(
-        (edge) => filteredNodeIds.has(edge.source) && filteredNodeIds.has(edge.target)
-      );
-
-      const connectedNodeIds = new Set<string>();
-      filteredEdges.forEach((edge) => {
-        connectedNodeIds.add(edge.source);
-        connectedNodeIds.add(edge.target);
-      });
-
-      const nodesWithEdges = filteredNodes.filter((node) => connectedNodeIds.has(node.id));
-
-      optimized = {
-        ...optimized,
-        nodes: nodesWithEdges,
-        edges: filteredEdges,
-      };
-    }
-
-    // 使用防抖后的搜索查询
-    if (debouncedSearchQuery) {
-      const query = debouncedSearchQuery.toLowerCase();
-      const matchedNodes = optimized.nodes.filter((node) =>
-        node.name.toLowerCase().includes(query)
-      );
-      const matchedNodeIds = new Set(matchedNodes.map((n) => n.id));
-
-      const relatedNodeIds = new Set(matchedNodeIds);
-      optimized.edges.forEach((edge) => {
-        if (matchedNodeIds.has(edge.source)) {
-          relatedNodeIds.add(edge.target);
-        }
-        if (matchedNodeIds.has(edge.target)) {
-          relatedNodeIds.add(edge.source);
-        }
-      });
-
-      optimized = {
-        ...optimized,
-        nodes: optimized.nodes.filter((node) => relatedNodeIds.has(node.id)),
-        edges: optimized.edges.filter(
-          (edge) => relatedNodeIds.has(edge.source) && relatedNodeIds.has(edge.target)
-        ),
-      };
-    }
-
-    if (viewMode === 'top' && optimized.nodes.length > 50) {
-      optimized = getTopKNodes(optimized, 50);
-    } else if (viewMode === 'connected' && selectedNode) {
-      optimized = getConnectedNodes(rawGraphData, selectedNode, 2);
-    }
-
-    return optimized;
-  }, [rawGraphData, viewMode, selectedNode, debouncedSearchQuery, selectedCategories]);
+    return optimizeGraphData(rawGraphData);
+  }, [rawGraphData]);
 
   const renderGraph = useCallback(() => {
     if (!chartInstance.current || !graphData) return;
@@ -240,13 +136,17 @@ export default function KnowledgeGraph() {
 
             return {
               ...node,
-              symbolSize: node.symbolSize || 30,
+              symbolSize: (value: number) => {
+                // 根据节点值动态调整大小，范围 15-45（更紧凑适宜）
+                const normalizedValue = Math.max(0, Math.min(1, value || 0.5));
+                return 15 + normalizedValue * 30;
+              },
               itemStyle: {
                 ...node.itemStyle,
                 color: color,
                 borderColor: isSelected ? 'var(--color-warning)' : 'var(--color-border)',
-                borderWidth: isSelected ? 4 : 2,
-                shadowBlur: isHighlighted ? 30 : 15,
+                borderWidth: isSelected ? 3 : 1.5,
+                shadowBlur: isHighlighted ? 25 : 10,
                 shadowColor: color,
                 shadowOffsetX: 0,
                 shadowOffsetY: 0,
@@ -254,13 +154,13 @@ export default function KnowledgeGraph() {
               label: {
                 show: true,
                 position: 'bottom',
-                distance: 8,
+                distance: 6,
                 formatter: '{b}',
-                fontSize: 13,
+                fontSize: 12,
                 color: textColor,
                 fontWeight: 500 as const,
                 textShadowColor: isDark ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.8)',
-                textShadowBlur: 6,
+                textShadowBlur: 4,
               },
             };
           }),
@@ -290,9 +190,9 @@ export default function KnowledgeGraph() {
           draggable: true,
           focusNodeAdjacency: true,
           force: {
-            repulsion: 1500,
-            edgeLength: [100, 200],
-            gravity: 0.1,
+            repulsion: 1200,
+            edgeLength: [80, 150],
+            gravity: 0.08,
             friction: 0.6,
             layoutAnimation: true,
           },
@@ -423,14 +323,17 @@ export default function KnowledgeGraph() {
         })),
       };
       setRawGraphData(knowledgeGraphData);
+      // 只在来源变化时显示提示，避免重复显示
       if (graphStoreSource === 'chat' || graphStoreSource === 'snapshot') {
+        // 使用函数形式，避免依赖 toast 对象
         toast.info(
           '图谱已更新',
           `来自${graphStoreSource === 'chat' ? '智能问答' : '快照'}的 ${chatGraphData.nodes.length} 个节点`
         );
       }
     }
-  }, [graphStoreEntities, graphStoreRelations, graphStoreSource, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphStoreEntities, graphStoreRelations, graphStoreSource]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -540,55 +443,7 @@ export default function KnowledgeGraph() {
       });
       setSelectedNode(null);
       setHighlightedNodes([]);
-      setSearchQuery('');
-      setSelectedCategories(new Set());
-      setViewMode('all');
     }
-  };
-
-  const handleFullscreen = () => {
-    if (chartRef.current) {
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      } else {
-        chartRef.current.requestFullscreen();
-      }
-    }
-  };
-
-  const handleExport = () => {
-    if (chartInstance.current) {
-      const bgColor =
-        typeof window !== 'undefined'
-          ? getComputedStyle(document.documentElement).getPropertyValue('--color-surface').trim() ||
-            '#1e293b'
-          : '#1e293b';
-      const url = chartInstance.current.getDataURL({
-        type: 'png',
-        pixelRatio: 2,
-        backgroundColor: bgColor,
-      });
-      const link = document.createElement('a');
-      link.download = `knowledge-graph-${Date.now()}.png`;
-      link.href = url;
-      link.click();
-      toast.success('导出成功', '图谱已保存为图片');
-    }
-  };
-
-  const toggleCategory = (category: string) => {
-    const newCategories = new Set(selectedCategories);
-    if (newCategories.has(category)) {
-      newCategories.delete(category);
-    } else {
-      newCategories.add(category);
-    }
-    setSelectedCategories(newCategories);
-  };
-
-  const clearFilters = () => {
-    setSelectedCategories(new Set());
-    setSearchQuery('');
   };
 
   if (loading) {
@@ -713,25 +568,19 @@ export default function KnowledgeGraph() {
       <motion.div
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
-        className="absolute top-6 right-6 flex flex-col gap-2"
+        className="absolute top-4 right-4 flex gap-2"
       >
         {[
           { icon: ZoomIn, label: '放大', onClick: handleZoomIn },
           { icon: ZoomOut, label: '缩小', onClick: handleZoomOut },
           { icon: RotateCcw, label: '重置', onClick: handleReset },
-          { icon: Maximize2, label: isFullscreen ? '退出全屏' : '全屏', onClick: handleFullscreen },
-          { icon: Download, label: '导出', onClick: handleExport },
-          { icon: RefreshCw, label: '刷新', onClick: loadGraphData },
-        ].map((item, index) => (
+        ].map((item) => (
           <motion.button
             key={item.label}
-            initial={{ opacity: 0, scale: 0 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.1 * index }}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
             onClick={item.onClick}
-            className="w-12 h-12 backdrop-blur-xl rounded-xl flex items-center justify-center transition-all"
+            className="w-9 h-9 backdrop-blur-xl rounded-lg flex items-center justify-center transition-all"
             style={{
               background: 'var(--color-surface)',
               border: '1px solid var(--color-border)',
@@ -739,167 +588,9 @@ export default function KnowledgeGraph() {
             }}
             title={item.label}
           >
-            <item.icon size={20} />
+            <item.icon size={16} />
           </motion.button>
         ))}
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="absolute top-6 left-6 flex flex-col gap-3"
-      >
-        <div className="relative">
-          <Search
-            size={18}
-            className="absolute left-4 top-1/2 -translate-y-1/2"
-            style={{ color: 'var(--color-text-muted)' }}
-          />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={handleSearchChange}
-            placeholder="搜索节点..."
-            className="w-64 pl-11 pr-4 py-3 backdrop-blur-xl rounded-xl focus:outline-none transition-all"
-            style={{
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-              color: 'var(--color-text-primary)',
-            }}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              <X size={16} />
-            </button>
-          )}
-        </div>
-
-        <motion.button
-          onClick={() => setShowFilters(!showFilters)}
-          className="flex items-center gap-2 px-4 py-3 backdrop-blur-xl rounded-xl transition-all"
-          style={{
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            color: 'var(--color-text-secondary)',
-          }}
-        >
-          <Filter size={18} />
-          <span>筛选</span>
-          <ChevronDown
-            size={16}
-            className={`transition-transform ${showFilters ? 'rotate-180' : ''}`}
-          />
-        </motion.button>
-
-        <motion.button
-          onClick={() => setShowViewMode(!showViewMode)}
-          className="flex items-center gap-2 px-4 py-3 backdrop-blur-xl rounded-xl transition-all"
-          style={{
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            color: 'var(--color-text-secondary)',
-          }}
-        >
-          <Layers size={18} />
-          <span>视图模式</span>
-          <ChevronDown
-            size={16}
-            className={`transition-transform ${showViewMode ? 'rotate-180' : ''}`}
-          />
-        </motion.button>
-
-        <AnimatePresence>
-          {showViewMode && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="backdrop-blur-xl rounded-xl p-3 overflow-hidden"
-              style={{
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-              }}
-            >
-              <div className="flex flex-col gap-2">
-                {[
-                  { mode: 'all' as const, label: '全部节点', desc: '显示所有节点' },
-                  { mode: 'top' as const, label: '重要节点', desc: '显示前50个重要节点' },
-                  { mode: 'connected' as const, label: '关联节点', desc: '显示选中节点的关联' },
-                ].map((item) => (
-                  <button
-                    key={item.mode}
-                    onClick={() => {
-                      setViewMode(item.mode);
-                      setShowViewMode(false);
-                    }}
-                    className="px-3 py-2 rounded-lg text-left transition-all"
-                    style={{
-                      background:
-                        viewMode === item.mode
-                          ? 'var(--gradient-primary)'
-                          : 'var(--color-background-tertiary)',
-                      color:
-                        viewMode === item.mode
-                          ? 'var(--color-text-inverse)'
-                          : 'var(--color-text-primary)',
-                    }}
-                  >
-                    <div className="text-sm font-medium">{item.label}</div>
-                    <div className="text-xs opacity-70">{item.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {showFilters && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="backdrop-blur-xl rounded-xl p-4 overflow-hidden"
-              style={{
-                background: 'var(--color-surface)',
-                border: '1px solid var(--color-border)',
-              }}
-            >
-              <div className="flex flex-wrap gap-2 mb-3">
-                {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => toggleCategory(key)}
-                    className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
-                    style={{
-                      background: selectedCategories.has(key)
-                        ? CATEGORY_COLORS[key as keyof typeof CATEGORY_COLORS]
-                        : 'var(--color-background-tertiary)',
-                      color: selectedCategories.has(key)
-                        ? 'var(--color-text-inverse)'
-                        : 'var(--color-text-secondary)',
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {selectedCategories.size > 0 && (
-                <button
-                  onClick={clearFilters}
-                  className="text-xs transition-colors"
-                  style={{ color: 'var(--color-text-muted)' }}
-                >
-                  清除筛选
-                </button>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
       </motion.div>
 
       <AnimatePresence>

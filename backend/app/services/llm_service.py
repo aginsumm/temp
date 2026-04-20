@@ -13,6 +13,13 @@ class LLMService:
         self.api_key = settings.DASHSCOPE_API_KEY
         self.base_url = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
         
+        # 检查 API 配置
+        if not self.api_key:
+            print("⚠️  WARNING: DASHSCOPE_API_KEY not configured, using MOCK mode")
+            print("📝 Set DASHSCOPE_API_KEY in .env file to enable real AI services")
+        else:
+            print(f"✅ LLM Service initialized with API key: {self.api_key[:8]}...")
+        
         # 降级策略配置
         self.max_retries = 3
         self.retry_delays = [1, 2, 4]  # 指数退避
@@ -136,6 +143,7 @@ class LLMService:
         stream: bool = False,
     ) -> str:
         if not self.api_key:
+            print(f"🔸 MOCK MODE: Using fake response for: {message[:50]}...")
             return self._mock_response(message)
 
         messages = context or []
@@ -156,6 +164,7 @@ class LLMService:
             }
 
             try:
+                print(f"🔵 Calling DashScope API with model: {self._get_current_model()}")
                 async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
                     response = await client.post(
                         self.base_url,
@@ -166,9 +175,11 @@ class LLMService:
                     data = response.json()
                     self._record_success()
                     result = data["output"]["choices"][0]["message"]["content"]
+                    print(f"✅ LLM response received ({len(result)} chars)")
                     return result
             except Exception as e:
                 # 让外层的 _execute_with_retry 处理错误记录
+                print(f"❌ LLM API error: {e}")
                 raise
 
         try:
