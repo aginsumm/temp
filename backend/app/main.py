@@ -25,7 +25,16 @@ app = FastAPI(
     version=settings.APP_VERSION,
     lifespan=lifespan,
 )
-
+@app.on_event("startup")
+async def print_routes():
+    print("\n" + "="*50)
+    print("🚀 当前后端真实注册的接口清单：")
+    for route in app.routes:
+        # 只打印我们关心的业务接口，过滤掉一些内置的
+        if hasattr(route, "methods") and "api" in route.path:
+            methods = ",".join(route.methods)
+            print(f"[{methods}]  {route.path}")
+    print("="*50 + "\n")
 # 2. 确保存放头像的文件夹存在
 os.makedirs("static/avatars", exist_ok=True)
 
@@ -41,7 +50,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(chat.router,prefix="/api/v1", tags=["chat"])
+app.include_router(chat.router, tags=["chat"])
 app.include_router(knowledge.router, tags=["knowledge"])
 app.include_router(favorite.router, tags=["favorites"])
 app.include_router(user.router, prefix="/api/v1", tags=["user"])

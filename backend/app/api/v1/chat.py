@@ -206,7 +206,19 @@ async def send_message_stream(
     try:
         session = await session_service.get_session(request.session_id)
         if not session:
-            raise HTTPException(status_code=404, detail="会话不存在")
+            # 🚨 给流式接口也加上自动创建会话的补丁
+            print(f"⚠️ 流式接口发现未知的会话 ID: {request.session_id}，正在自动创建...")
+            from app.models.chat import Session
+            new_session = Session(
+                id=request.session_id,
+                user_id=user_id,
+                title="新对话",
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(new_session)
+            await db.flush()
+            session = new_session
 
         user_message = await message_service.create_message(
             session_id=request.session_id,
