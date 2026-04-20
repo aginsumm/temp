@@ -12,7 +12,7 @@ import uuid
 import os
 
 # 内部只保留模块名 user
-router = APIRouter(prefix="/user", tags=["user"])
+router = APIRouter(prefix="/api/v1/user", tags=["user"])
 
 from sqlalchemy.exc import IntegrityError
 

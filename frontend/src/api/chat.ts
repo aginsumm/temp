@@ -86,7 +86,7 @@ export const chatApi = {
     try {
       const response = await apiAdapterManager.request<ChatResponse>({
         method: 'POST',
-        url: '/api/v1/chat/message',
+        url: '/chat/message',
         data: {
           session_id: request.session_id,
           content: request.content,
@@ -95,8 +95,8 @@ export const chatApi = {
       });
       return response.data;
     } catch (error) {
-      console.error('🔥 普通接口请求失败，拒绝使用假数据！', error);
-      throw error; // 强行抛出错误，绝对不返回假数据
+      console.error('API error in sendMessage:', error);
+      throw error;
     }
   },
 
@@ -117,9 +117,10 @@ export const chatApi = {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      // 🚨 终极核心修改：绕过所有代理和拦截器，直接强行请求后端的真实完整地址！
-      const baseUrl = 'http://localhost:8000/api/v1'; 
-      
+      // ✅ 使用环境变量配置的 API 地址
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+      const controller = new AbortController();
+
       const response = await fetch(`${baseUrl}/chat/stream`, {
         method: 'POST',
         headers,
@@ -209,7 +210,6 @@ export const chatApi = {
       if (lastResponse) {
         onComplete(lastResponse);
       }
-
     } catch (error) {
       console.warn('Stream API unavailable, using local mock response');
       await mockChatService.sendMessageStream(

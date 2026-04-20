@@ -44,7 +44,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -53,7 +53,7 @@ app.add_middleware(
 app.include_router(chat.router, tags=["chat"])
 app.include_router(knowledge.router, tags=["knowledge"])
 app.include_router(favorite.router, tags=["favorites"])
-app.include_router(user.router, prefix="/api/v1", tags=["user"])
+app.include_router(user.router, tags=["user"])
 app.include_router(graph.router, tags=["graph"])
 
 
