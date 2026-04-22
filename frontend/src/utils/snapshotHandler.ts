@@ -44,11 +44,11 @@ export function extractFiltersFromSnapshot(snapshot: GraphSnapshot): {
     categories.add(entity.type);
 
     if (entity.metadata?.region) {
-      regions.add(entity.metadata.region);
+      regions.add(entity.metadata.region as string);
     }
 
     if (entity.metadata?.period) {
-      periods.add(entity.metadata.period);
+      periods.add(entity.metadata.period as string);
     }
 
     // 也检查 Knowledge 实体的字段

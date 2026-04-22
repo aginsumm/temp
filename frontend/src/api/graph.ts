@@ -5,9 +5,10 @@ import type {
   GraphData,
   GraphNode,
   GraphEdge,
+  GraphCategory,
   EntityType,
   RelationType,
-} from '../types/chat';
+} from '../types/graph';
 import { entitiesToGraphData as convertEntitiesToGraphData } from '../utils/graphConverter';
 import { withRetry } from '../utils/retry';
 import { DataValidator } from '../utils/dataValidator';
@@ -229,7 +230,10 @@ class GraphService {
     }
 
     if (filter.relationTypes && filter.relationTypes.length > 0) {
-      filteredEdges = filteredEdges.filter((e) => filter.relationTypes!.includes(e.relationType));
+      filteredEdges = filteredEdges.filter((e) => {
+        const edgeType = e.relationType as string;
+        return filter.relationTypes!.includes(edgeType as RelationType);
+      });
     }
 
     return {
@@ -262,15 +266,12 @@ class GraphService {
 
     const allCategories = graphs
       .flatMap((g) => g.categories || [])
-      .reduce(
-        (acc, cat) => {
-          if (!acc.find((c) => c.name === cat.name)) {
-            acc.push(cat);
-          }
-          return acc;
-        },
-        [] as Array<{ name: EntityType; baseColor: string }>
-      );
+      .reduce((acc, cat) => {
+        if (!acc.find((c) => c.name === cat.name)) {
+          acc.push(cat);
+        }
+        return acc;
+      }, [] as GraphCategory[]);
 
     return {
       nodes: Array.from(nodeMap.values()),

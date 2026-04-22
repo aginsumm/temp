@@ -154,7 +154,7 @@ class LLMSearchService {
     if (regions && regions.length > 0) {
       filteredEntities = filteredEntities.filter((e) =>
         e.region || e.metadata?.region
-          ? regions.includes(e.region || e.metadata?.region || '')
+          ? regions.includes((e.region || e.metadata?.region) as string)
           : false
       );
     }
@@ -162,7 +162,7 @@ class LLMSearchService {
     if (periods && periods.length > 0) {
       filteredEntities = filteredEntities.filter((e) =>
         e.period || e.metadata?.period
-          ? periods.includes(e.period || e.metadata?.period || '')
+          ? periods.includes((e.period || e.metadata?.period) as string)
           : false
       );
     }

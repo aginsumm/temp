@@ -197,22 +197,6 @@ export default function EnhancedChatPage() {
     }
   }, [messages, autoScroll]);
 
-  // 当消息变化时，自动更新图谱数据（显示最新消息的图谱）
-  useEffect(() => {
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage.role === 'assistant' && lastMessage.entities) {
-        graphSyncService.updateFromChat(
-          lastMessage.entities,
-          lastMessage.relations || [],
-          lastMessage.keywords || [],
-          currentSessionId || undefined,
-          lastMessage.id
-        );
-      }
-    }
-  }, [messages, currentSessionId]);
-
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -300,6 +284,12 @@ export default function EnhancedChatPage() {
   // ========== 辅助函数：更新图谱数据 ==========
   const updateGraphData = useCallback(
     (entities?: Entity[], keywords?: string[], sources?: Source[], relations?: Relation[]) => {
+      console.log('🔵 updateGraphData 被调用:', {
+        entities: entities?.length || 0,
+        relations: relations?.length || 0,
+        keywords: keywords?.length || 0,
+      });
+
       if (entities && entities.length > 0) {
         graphSyncService.updateFromChat(
           entities,
@@ -308,6 +298,7 @@ export default function EnhancedChatPage() {
           currentSessionId || undefined,
           undefined
         );
+        console.log('✅ graphSyncService.updateFromChat 已调用');
       }
 
       console.debug('Graph data updated:', { entities, keywords, sources, relations });
@@ -318,7 +309,6 @@ export default function EnhancedChatPage() {
   // ========== 辅助函数：加载快照 ==========
   const handleLoadSnapshot = useCallback(
     (snapshot: GraphSnapshot) => {
-      // 更新所有图谱数据
       graphSyncService.updateFromSnapshot(
         snapshot.entities || [],
         snapshot.relations || [],
@@ -327,7 +317,6 @@ export default function EnhancedChatPage() {
         snapshot.message_id
       );
 
-      // 通过全局事件通知其他组件（如知识图谱）
       const event = new CustomEvent('loadSnapshot', {
         detail: {
           entities: snapshot.entities,
@@ -336,10 +325,8 @@ export default function EnhancedChatPage() {
         },
       });
       window.dispatchEvent(event);
-
-      toast.success('快照已加载', '请在图谱标签页查看');
     },
-    [toast]
+    []
   );
 
   // ========== 核心函数：流式响应处理 ==========
@@ -726,6 +713,31 @@ export default function EnhancedChatPage() {
       useGraphStore.getState().clearGraphData();
 
       await switchSession(sid);
+
+      // 切换后自动恢复新会话的图谱数据（从最后一条 AI 消息）
+      setTimeout(() => {
+        const newMessages = useChatStore.getState().messagesBySession[sid] || [];
+        if (newMessages.length > 0) {
+          const lastMessage = newMessages[newMessages.length - 1];
+          if (
+            lastMessage.role === 'assistant' &&
+            lastMessage.entities &&
+            lastMessage.entities.length > 0
+          ) {
+            graphSyncService.updateFromChat(
+              lastMessage.entities,
+              lastMessage.relations || [],
+              lastMessage.keywords || [],
+              sid,
+              lastMessage.id
+            );
+            console.log('✅ 切换会话后自动恢复图谱数据:', {
+              entities: lastMessage.entities.length,
+              relations: lastMessage.relations?.length || 0,
+            });
+          }
+        }
+      }, 100);
     },
     [currentSessionId, switchSession]
   );

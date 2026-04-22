@@ -5,14 +5,14 @@ import { knowledgeApi, GraphData as KnowledgeGraphData, GraphNode } from '../../
 import useKnowledgeGraphStore from '../../../stores/knowledgeGraphStore';
 import { useGraphStore } from '../../../stores/graphStore';
 import { useThemeStore } from '../../../stores/themeStore';
-import { ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
-import { optimizeGraphData } from '../../../utils/graphOptimizer';
+import { ZoomIn, ZoomOut, RotateCcw, Activity, Minimize2, Smartphone } from 'lucide-react';
+import { graphOptimizer } from '../../../utils/graphOptimizer';
 import { GraphSkeleton } from '../../common/Skeleton';
 import { useToast } from '../../common/Toast';
 import { graphService } from '../../../api/graph';
 import { graphSyncService } from '../../../services/graphSyncService';
 import { getCategoryColor, getCategoryLabel } from '../../../constants/categories';
-import type { Entity, RelationType } from '../../../types/chat';
+import type { Entity, EntityType, RelationType } from '../../../types/graph';
 
 export default function KnowledgeGraph() {
   const chartRef = useRef<HTMLDivElement>(null);
@@ -25,6 +25,8 @@ export default function KnowledgeGraph() {
   const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [, setIsFullscreen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMobileControls, setShowMobileControls] = useState(false);
 
   const { selectedNode, highlightedNodes, layoutType, setSelectedNode, setHighlightedNodes } =
     useKnowledgeGraphStore();
@@ -36,11 +38,132 @@ export default function KnowledgeGraph() {
 
   const { resolvedMode } = useThemeStore();
   const toast = useToast();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_zoomLevel] = useState(1);
+  const [performanceStats, setPerformanceStats] = useState<{
+    fps: number;
+    nodeCount: number;
+    lodLevel: number;
+  } | null>(null);
+
+  // 监听 graphStore 变化，自动更新图谱
+  // 只处理来自 chat 或 snapshot 的更新，避免与 loadGraphData 的本地加载冲突
+  useEffect(() => {
+    // 忽略来自 knowledge 源的更新（已经通过 loadGraphData 直接加载）
+    if (graphStoreSource === 'knowledge') {
+      return;
+    }
+
+    console.log('🔵 KnowledgeGraph 监听到 graphStore 变化:', {
+      source: graphStoreSource,
+      entities: graphStoreEntities.length,
+      relations: graphStoreRelations.length,
+    });
+
+    if (graphStoreEntities.length > 0) {
+      const chatGraphData = graphService.entitiesToGraphData(
+        graphStoreEntities,
+        graphStoreRelations
+      );
+      console.log('✅ graphService.entitiesToGraphData 转换完成:', {
+        nodes: chatGraphData.nodes.length,
+        edges: chatGraphData.edges.length,
+      });
+
+      const knowledgeGraphData: KnowledgeGraphData = {
+        nodes: chatGraphData.nodes.map(
+          (node: {
+            id: string;
+            name: string;
+            category: string;
+            itemStyle?: { color?: string };
+          }) => ({
+            ...node,
+            itemStyle: {
+              color: node.itemStyle?.color || 'var(--color-primary)',
+            },
+          })
+        ),
+        edges: chatGraphData.edges.map(
+          (edge: {
+            source: string;
+            target: string;
+            relationType?: string;
+            value?: number;
+            lineStyle?: unknown;
+          }) => ({
+            source: edge.source,
+            target: edge.target,
+            relationType: edge.relationType,
+            value: edge.value,
+            lineStyle: edge.lineStyle as
+              | { width?: number; curveness?: number; opacity?: number }
+              | undefined,
+          })
+        ),
+        categories: chatGraphData.categories?.map((cat: { name: string }) => ({
+          name: cat.name,
+          itemStyle: {
+            color: (cat as unknown as { baseColor?: string }).baseColor || 'var(--color-primary)',
+          },
+        })),
+      };
+
+      setRawGraphData(knowledgeGraphData);
+      console.log('✅ setRawGraphData 已调用，图谱数据已更新');
+    }
+  }, [graphStoreEntities, graphStoreRelations, graphStoreSource]);
+
+  // 初始化性能优化器
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+
+    graphOptimizer.updateConfig({
+      enableLOD: true,
+      enableViewportCulling: true,
+      enableProgressiveLoading: true,
+      enablePerformanceMonitoring: true,
+      autoAdjustLOD: true,
+      maxVisibleNodes: window.innerWidth < 768 ? 500 : 1000,
+      chunkSize: window.innerWidth < 768 ? 50 : 100,
+      cullingMargin: window.innerWidth < 768 ? 100 : 200,
+    });
+
+    graphOptimizer.startMonitoring(
+      () => rawGraphData?.nodes.length || 0,
+      () => rawGraphData?.edges.length || 0
+    );
+
+    return () => {
+      graphOptimizer.stopMonitoring();
+      graphOptimizer.dispose();
+      window.removeEventListener('resize', checkMobile);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const graphData = useMemo(() => {
     if (!rawGraphData) return null;
 
-    return optimizeGraphData(rawGraphData);
+    // 使用新的性能优化器
+    const result = graphOptimizer.optimize(rawGraphData);
+
+    // 更新性能统计
+    const metrics = graphOptimizer.getPerformanceMetrics();
+    if (metrics) {
+      setPerformanceStats({
+        fps: metrics.fps,
+        nodeCount: result.optimizedNodeCount,
+        lodLevel: metrics.lodLevel,
+      });
+    }
+
+    return result.optimizedData;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawGraphData]);
 
   const renderGraph = useCallback(() => {
@@ -52,6 +175,8 @@ export default function KnowledgeGraph() {
     const borderColor = 'var(--color-border)';
     const tooltipBg = isDark ? 'var(--color-surface)' : 'var(--color-surface)';
     const legendColor = 'var(--color-text-secondary)';
+
+    const nodeCount = graphData.nodes.length;
 
     const option = {
       backgroundColor: bgColor,
@@ -126,12 +251,15 @@ export default function KnowledgeGraph() {
         itemHeight: 14,
         itemGap: 12,
       },
-      animationDuration: 1500,
+      animation: nodeCount < 200,
+      animationDuration: nodeCount < 200 ? 1500 : 0,
       animationEasingUpdate: 'quinticInOut' as const,
       series: [
         {
           type: 'graph',
           layout: layoutType,
+          progressive: 400,
+          progressiveThreshold: 1000,
           data: graphData.nodes.map((node) => {
             const isSelected = selectedNode === node.id;
             const isHighlighted = highlightedNodes.includes(node.id);
@@ -140,7 +268,6 @@ export default function KnowledgeGraph() {
 
             return {
               ...node,
-              // 根据节点值动态调整大小，范围 15-45（更紧凑适宜）
               symbolSize: 15 + normalizedValue * 30,
               itemStyle: {
                 ...node.itemStyle,
@@ -153,7 +280,7 @@ export default function KnowledgeGraph() {
                 shadowOffsetY: 0,
               },
               label: {
-                show: true,
+                show: nodeCount < 150,
                 position: 'bottom',
                 distance: 6,
                 formatter: '{b}',
@@ -188,14 +315,14 @@ export default function KnowledgeGraph() {
             name: getCategoryLabel(c.name),
           })),
           roam: true,
-          draggable: true,
+          draggable: nodeCount < 300,
           focusNodeAdjacency: true,
           force: {
             repulsion: 1200,
             edgeLength: [80, 150],
             gravity: 0.08,
             friction: 0.6,
-            layoutAnimation: true,
+            layoutAnimation: nodeCount < 200,
           },
           emphasis: {
             focus: 'adjacency',
@@ -229,38 +356,52 @@ export default function KnowledgeGraph() {
       ],
     };
 
-    chartInstance.current.setOption(option, true);
+    chartInstance.current.setOption(option, { notMerge: true, lazyUpdate: nodeCount > 100 });
 
-    chartInstance.current.off('click');
-    chartInstance.current.on('click', (params: unknown) => {
-      const event = params as {
-        dataType?: string;
-        data?: { id?: string } | null;
-      };
-      if (event.dataType === 'node' && event.data && 'id' in event.data) {
-        const nodeId = (event.data as { id: string }).id;
+    // 安全地移除和添加事件监听器，避免内存泄漏
+    if (chartInstance.current) {
+      chartInstance.current.off('click');
+      chartInstance.current.on('click', (params: unknown) => {
+        const event = params as {
+          dataType?: string;
+          data?: { id?: string; name?: string; category?: string } | null;
+        };
+        if (event.dataType === 'node' && event.data && 'id' in event.data) {
+          const nodeId = (event.data as { id: string }).id;
+          const nodeName = (event.data as { name?: string }).name || '';
+          const nodeCategory = (event.data as { category?: string }).category || '';
 
-        const relatedNodeIds = graphData.edges
-          .filter((edge) => edge.source === nodeId || edge.target === nodeId)
-          .map((edge) => (edge.source === nodeId ? edge.target : edge.source));
+          const relatedNodeIds = graphData.edges
+            .filter((edge) => edge.source === nodeId || edge.target === nodeId)
+            .map((edge) => (edge.source === nodeId ? edge.target : edge.source));
 
-        setHighlightedNodes([nodeId, ...relatedNodeIds]);
-        setSelectedNode(nodeId);
-      }
-    });
+          setHighlightedNodes([nodeId, ...relatedNodeIds]);
+          setSelectedNode(nodeId);
 
-    chartInstance.current.off('mouseover');
-    chartInstance.current.on('mouseover', (params: unknown) => {
-      const event = params as { dataType?: string; data?: unknown };
-      if (event.dataType === 'node' && event.data) {
-        setHoveredNode(event.data as GraphNode);
-      }
-    });
+          // 同步到 Chat 模块
+          const entity: Entity = {
+            id: nodeId,
+            name: nodeName,
+            type: nodeCategory as EntityType,
+            relevance: 1,
+          };
+          graphSyncService.updateFromKnowledge([entity], [], []);
+        }
+      });
 
-    chartInstance.current.off('mouseout');
-    chartInstance.current.on('mouseout', () => {
-      setHoveredNode(null);
-    });
+      chartInstance.current.off('mouseover');
+      chartInstance.current.on('mouseover', (params: unknown) => {
+        const event = params as { dataType?: string; data?: unknown };
+        if (event.dataType === 'node' && event.data) {
+          setHoveredNode(event.data as GraphNode);
+        }
+      });
+
+      chartInstance.current.off('mouseout');
+      chartInstance.current.on('mouseout', () => {
+        setHoveredNode(null);
+      });
+    }
   }, [
     graphData,
     layoutType,
@@ -314,6 +455,8 @@ export default function KnowledgeGraph() {
 
       if (chartInstance.current) {
         chartInstance.current.resize();
+        // 更新视口信息
+        graphOptimizer.updateViewport(clientWidth, clientHeight);
       }
     });
 
@@ -321,47 +464,28 @@ export default function KnowledgeGraph() {
     return () => observer.disconnect();
   }, [graphData]);
 
-  // 监听 graphStore 变化，自动更新图谱
+  // 监听 ECharts 缩放事件，更新 LOD
   useEffect(() => {
-    // 只在 graphStore 数据来源是 chat 或 snapshot 时才更新，避免覆盖当前页面加载的数据
-    if (
-      graphStoreEntities.length > 0 &&
-      (graphStoreSource === 'chat' || graphStoreSource === 'snapshot')
-    ) {
-      const chatGraphData = graphService.entitiesToGraphData(
-        graphStoreEntities,
-        graphStoreRelations
+    if (!chartInstance.current) return;
+
+    const zoomHandler = (_params: { zoom?: number }) => {
+      const zoom = _params.zoom || 1;
+      // setZoomLevel(zoom); // zoomLevel 未使用，注释掉
+      // 更新优化器的视口缩放级别
+      graphOptimizer.updateViewport(
+        chartRef.current?.clientWidth || 800,
+        chartRef.current?.clientHeight || 600,
+        zoom
       );
-      // 转换为 KnowledgeGraph 使用的 GraphData 格式
-      const knowledgeGraphData: KnowledgeGraphData = {
-        nodes: chatGraphData.nodes.map((node) => ({
-          ...node,
-          itemStyle: {
-            color: node.itemStyle?.color || 'var(--color-primary)',
-          },
-        })),
-        edges: chatGraphData.edges.map((edge) => ({
-          source: edge.source,
-          target: edge.target,
-          relationType: edge.relationType,
-          value: edge.value,
-          lineStyle: edge.lineStyle,
-        })),
-        categories: chatGraphData.categories?.map((cat) => ({
-          name: cat.name,
-          itemStyle: {
-            color: (cat as unknown as { baseColor?: string }).baseColor || 'var(--color-primary)',
-          },
-        })),
-      };
-      setRawGraphData(knowledgeGraphData);
-      toast.info(
-        '图谱已更新',
-        `来自${graphStoreSource === 'chat' ? '智能问答' : '快照'}的 ${chatGraphData.nodes.length} 个节点`
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphStoreEntities, graphStoreRelations, graphStoreSource]);
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    chartInstance.current.on('globalout', zoomHandler as any);
+
+    return () => {
+      chartInstance.current?.off('globalout', zoomHandler);
+    };
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -430,6 +554,8 @@ export default function KnowledgeGraph() {
         confidence: Number(edge.value ?? edge.weight ?? 0.5),
       }));
 
+      // 同步到 graphStore，但标记来源为 knowledge
+      // 由于 useEffect 中忽略了 knowledge 源，不会导致循环更新
       graphSyncService.updateFromKnowledge(entities, relations, []);
 
       toast.success('知识图谱加载成功', `共 ${data.nodes.length} 个节点`);
@@ -534,15 +660,15 @@ export default function KnowledgeGraph() {
         >
           <div
             className="w-24 h-24 mx-auto mb-6 rounded-full flex items-center justify-center shadow-lg"
-            style={{ background: 'var(--gradient-info)' }}
+            style={{ background: 'var(--gradient-primary)', opacity: 0.2 }}
           >
-            <span className="text-4xl">📊</span>
+            <span className="text-4xl">🔍</span>
           </div>
           <p className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text-primary)' }}>
-            暂无图谱数据
+            图谱数据为空
           </p>
           <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            请先搜索或添加实体数据
+            暂无可显示的图谱节点
           </p>
         </motion.div>
       </div>
@@ -550,118 +676,152 @@ export default function KnowledgeGraph() {
   }
 
   return (
-    <div className="w-full h-full relative">
+    <div className="relative w-full h-full">
       <div ref={chartRef} className="w-full h-full" />
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="absolute bottom-6 left-6 backdrop-blur-xl rounded-2xl px-5 py-4"
-        style={{
-          background: 'var(--gradient-card)',
-          border: '1px solid var(--color-border)',
-          boxShadow: 'var(--color-shadow)',
-        }}
-      >
-        <div className="flex items-center gap-6 text-sm">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
-            className="flex items-center gap-2"
-          >
-            <div
-              className="w-3 h-3 rounded-full animate-pulse"
-              style={{ background: 'var(--color-primary)' }}
-            />
-            <span style={{ color: 'var(--color-text-secondary)' }}>
-              节点:{' '}
-              <span className="font-bold text-base" style={{ color: 'var(--color-text-primary)' }}>
-                {graphData?.nodes.length}
-              </span>
-            </span>
-          </motion.div>
-          <div className="w-px h-5" style={{ background: 'var(--color-border)' }} />
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.3 }}
-            className="flex items-center gap-2"
-          >
-            <div
-              className="w-3 h-3 rounded-full animate-pulse"
-              style={{ background: 'var(--color-secondary)' }}
-            />
-            <span style={{ color: 'var(--color-text-secondary)' }}>
-              关系:{' '}
-              <span className="font-bold text-base" style={{ color: 'var(--color-text-primary)' }}>
-                {graphData?.edges.length}
-              </span>
-            </span>
-          </motion.div>
-        </div>
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        className="absolute top-4 right-4 flex gap-2"
-      >
-        {[
-          { icon: ZoomIn, label: '放大', onClick: handleZoomIn },
-          { icon: ZoomOut, label: '缩小', onClick: handleZoomOut },
-          { icon: RotateCcw, label: '重置', onClick: handleReset },
-        ].map((item) => (
-          <motion.button
-            key={item.label}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={item.onClick}
-            className="w-9 h-9 backdrop-blur-xl rounded-lg flex items-center justify-center transition-all"
-            style={{
-              background: 'var(--color-surface)',
-              border: '1px solid var(--color-border)',
-              color: 'var(--color-text-secondary)',
-            }}
-            title={item.label}
-          >
-            <item.icon size={16} />
-          </motion.button>
-        ))}
-      </motion.div>
+      {isMobile && (
+        <motion.button
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          onClick={() => setShowMobileControls(!showMobileControls)}
+          className="absolute bottom-4 right-4 z-20 w-12 h-12 rounded-full shadow-lg flex items-center justify-center"
+          style={{ background: 'var(--gradient-primary)' }}
+        >
+          {showMobileControls ? (
+            <Minimize2 size={20} color="#fff" />
+          ) : (
+            <Smartphone size={20} color="#fff" />
+          )}
+        </motion.button>
+      )}
 
       <AnimatePresence>
-        {hoveredNode && (
+        {showMobileControls && isMobile && (
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="absolute bottom-6 right-6 backdrop-blur-xl rounded-2xl px-5 py-4 shadow-2xl"
-            style={{
-              background: 'var(--gradient-card)',
-              border: '1px solid var(--color-border)',
-            }}
+            exit={{ opacity: 0, y: 20 }}
+            className="absolute bottom-20 right-4 z-20 flex flex-col gap-2"
           >
-            <div className="flex items-center gap-3">
-              <div
-                className="w-4 h-4 rounded-full"
-                style={{
-                  backgroundColor: getCategoryColor(hoveredNode.category),
-                  boxShadow: `0 0 15px ${getCategoryColor(hoveredNode.category)}`,
-                }}
-              />
-              <div>
-                <div style={{ color: 'var(--color-text-primary)' }} className="font-semibold">
-                  {hoveredNode.name}
-                </div>
-                <div style={{ color: 'var(--color-text-muted)' }} className="text-xs">
-                  {getCategoryLabel(hoveredNode.category)}
-                </div>
-              </div>
-            </div>
+            <motion.button
+              onClick={handleZoomIn}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className="w-10 h-10 rounded-full shadow-lg flex items-center justify-center"
+              style={{ background: 'var(--color-surface)' }}
+            >
+              <ZoomIn size={18} style={{ color: 'var(--color-text-secondary)' }} />
+            </motion.button>
+
+            <motion.button
+              onClick={handleZoomOut}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className="w-10 h-10 rounded-full shadow-lg flex items-center justify-center"
+              style={{ background: 'var(--color-surface)' }}
+            >
+              <ZoomOut size={18} style={{ color: 'var(--color-text-secondary)' }} />
+            </motion.button>
+
+            <motion.button
+              onClick={handleReset}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className="w-10 h-10 rounded-full shadow-lg flex items-center justify-center"
+              style={{ background: 'var(--color-surface)' }}
+            >
+              <RotateCcw size={18} style={{ color: 'var(--color-text-secondary)' }} />
+            </motion.button>
           </motion.div>
         )}
       </AnimatePresence>
+
+      {!isMobile && (
+        <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
+          <motion.button
+            onClick={handleZoomIn}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            className="w-10 h-10 rounded-lg shadow-lg flex items-center justify-center transition-colors"
+            style={{
+              background: 'var(--color-surface)',
+              color: 'var(--color-text-secondary)',
+            }}
+            title="放大"
+          >
+            <ZoomIn size={18} />
+          </motion.button>
+
+          <motion.button
+            onClick={handleZoomOut}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            className="w-10 h-10 rounded-lg shadow-lg flex items-center justify-center transition-colors"
+            style={{
+              background: 'var(--color-surface)',
+              color: 'var(--color-text-secondary)',
+            }}
+            title="缩小"
+          >
+            <ZoomOut size={18} />
+          </motion.button>
+
+          <motion.button
+            onClick={handleReset}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            className="w-10 h-10 rounded-lg shadow-lg flex items-center justify-center transition-colors"
+            style={{
+              background: 'var(--color-surface)',
+              color: 'var(--color-text-secondary)',
+            }}
+            title="重置"
+          >
+            <RotateCcw size={18} />
+          </motion.button>
+
+          {performanceStats && (
+            <div
+              className="px-3 py-2 rounded-lg shadow-lg text-xs"
+              style={{
+                background: 'var(--color-surface)',
+                color: 'var(--color-text-secondary)',
+              }}
+            >
+              <div className="flex items-center gap-1">
+                <Activity size={12} />
+                <span>{performanceStats.fps} FPS</span>
+              </div>
+              <div className="mt-1">{performanceStats.nodeCount} 节点</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {hoveredNode && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="absolute bottom-4 left-4 z-10 max-w-xs backdrop-blur-xl rounded-xl p-4 shadow-lg"
+          style={{
+            background: 'var(--gradient-card)',
+            border: '1px solid var(--color-border)',
+          }}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <div
+              className="w-3 h-3 rounded-full"
+              style={{ background: getCategoryColor(hoveredNode.category) }}
+            />
+            <h3 className="font-semibold text-sm" style={{ color: 'var(--color-text-primary)' }}>
+              {hoveredNode.name}
+            </h3>
+          </div>
+          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            {getCategoryLabel(hoveredNode.category)}
+          </p>
+        </motion.div>
+      )}
     </div>
   );
 }

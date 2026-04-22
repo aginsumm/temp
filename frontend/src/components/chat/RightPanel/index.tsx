@@ -18,10 +18,10 @@ import { useResizablePanel } from '../../../hooks/useResizablePanel';
 import DynamicGraphPanel from '../DynamicGraphPanel';
 import ErrorBoundary from '../../common/ErrorBoundary';
 import { snapshotService } from '../../../api/snapshot';
-import { useToast } from '../../common/Toast';
 import ConfirmDialog from '../../common/ConfirmDialog';
 import { LoadingOverlay } from '../../common/ProgressBar';
-import type { Entity, Relation, GraphSnapshot } from '../../../types/chat';
+import type { Entity, Relation } from '../../../types/graph';
+import type { GraphSnapshot } from '../../../types/chat';
 import { useNavigate } from 'react-router-dom';
 import { graphSyncService } from '../../../services/graphSyncService';
 
@@ -69,7 +69,6 @@ export default function RightPanel({
   const relations = useMemo(() => propRelations || [], [propRelations]);
   const keywords = useMemo(() => propKeywords || [], [propKeywords]);
 
-  const toast = useToast();
   const navigate = useNavigate();
 
   // 监听快照加载事件
@@ -78,8 +77,6 @@ export default function RightPanel({
       const customEvent = event as CustomEvent<GraphSnapshot>;
       if (onLoadSnapshot && customEvent.detail) {
         onLoadSnapshot(customEvent.detail);
-        // 使用函数形式，避免依赖 toast 对象
-        toast.success('快照已加载', '请在图谱标签页查看');
       }
     };
 
@@ -87,7 +84,6 @@ export default function RightPanel({
     return () => {
       window.removeEventListener('loadSnapshot', handleLoadSnapshot);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onLoadSnapshot]);
 
   const { isResizing, handleMouseDown } = useResizablePanel({
@@ -115,13 +111,11 @@ export default function RightPanel({
 
   const hasGraphData = entities.length > 0;
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const loadSnapshots = useCallback(async () => {
     if (!sessionId) return;
     setIsLoadingSnapshots(true);
     setLoadingProgress(0);
     try {
-      // 模拟进度更新
       const progressInterval = setInterval(() => {
         setLoadingProgress((prev) => {
           if (prev === undefined || prev >= 90) {
@@ -136,29 +130,15 @@ export default function RightPanel({
       setSnapshots(response.snapshots);
       setLoadingProgress(100);
 
-      // 如果快照列表为空，给出提示
-      if (response.snapshots.length === 0) {
-        toast.info('暂无快照', '当前会话还没有保存的快照');
-      }
-
       clearInterval(progressInterval);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '未知错误';
       console.warn('Failed to load snapshots:', error);
       setLoadingProgress(undefined);
-      if (errorMessage.includes('not found') || errorMessage.includes('不存在')) {
-        toast.error('加载失败', '快照不存在');
-      } else if (errorMessage.includes('permission') || errorMessage.includes('权限')) {
-        toast.error('加载失败', '无权访问快照');
-      } else {
-        toast.error('加载失败', '无法加载快照列表，请检查网络连接');
-      }
     } finally {
       setIsLoadingSnapshots(false);
       setTimeout(() => setLoadingProgress(undefined), 300);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sessionId]);
 
   useEffect(() => {
     if (activeTab === 'history' && sessionId) {
@@ -176,21 +156,17 @@ export default function RightPanel({
     if (!pendingSnapshot) return;
 
     setShowConfirmDialog(false);
-    toast.info('加载快照', `正在加载 "${pendingSnapshot.title || '未命名快照'}"`);
 
     try {
       const fullSnapshot = await snapshotService.getSnapshot(pendingSnapshot.id);
       if (!fullSnapshot) {
-        toast.error('加载失败', '快照数据不存在');
         return;
       }
 
-      // 通过回调通知父组件加载快照
       if (onLoadSnapshot) {
         onLoadSnapshot(fullSnapshot);
       }
 
-      // 使用 snapshot 来源同步图谱数据到所有模块
       graphSyncService.updateFromSnapshot(
         fullSnapshot.entities,
         fullSnapshot.relations,
@@ -198,33 +174,21 @@ export default function RightPanel({
         fullSnapshot.session_id,
         fullSnapshot.message_id
       );
-
-      toast.success('加载成功', '已恢复快照数据');
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '未知错误';
       console.error('Failed to load snapshot:', error);
-      if (errorMessage.includes('not found') || errorMessage.includes('不存在')) {
-        toast.error('加载失败', '快照数据不存在');
-      } else if (errorMessage.includes('permission') || errorMessage.includes('权限')) {
-        toast.error('加载失败', '无权访问该快照');
-      } else {
-        toast.error('加载失败', '无法加载快照数据，请检查网络连接');
-      }
     } finally {
       setPendingSnapshot(null);
     }
-  }, [pendingSnapshot, onLoadSnapshot, toast]);
+  }, [pendingSnapshot, onLoadSnapshot]);
 
   const handleViewInKnowledgePage = useCallback(
     async (snapshot: GraphSnapshot) => {
       try {
         const fullSnapshot = await snapshotService.getSnapshot(snapshot.id);
         if (!fullSnapshot) {
-          toast.error('加载失败', '快照数据不存在');
           return;
         }
 
-        // 存储快照数据到 sessionStorage，供知识图谱页面使用
         sessionStorage.setItem(
           'pendingSnapshot',
           JSON.stringify({
@@ -235,10 +199,8 @@ export default function RightPanel({
           })
         );
 
-        // 跳转到知识图谱页面
         navigate('/knowledge');
 
-        // 延迟发送事件，确保页面已经加载
         setTimeout(() => {
           const event = new CustomEvent('loadSnapshot', {
             detail: {
@@ -249,14 +211,12 @@ export default function RightPanel({
             },
           });
           window.dispatchEvent(event);
-          toast.success('跳转成功', '请在知识图谱页面查看快照');
         }, 500);
       } catch (error) {
         console.error('Failed to view snapshot in knowledge page:', error);
-        toast.error('跳转失败', '无法跳转到知识图谱页面');
       }
     },
-    [navigate, toast]
+    [navigate]
   );
 
   const cancelLoadSnapshot = useCallback(() => {
@@ -587,23 +547,16 @@ export default function RightPanel({
           opacity: rightPanelCollapsed ? 0 : 1,
         }}
         transition={isResizing ? { duration: 0 } : { duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-        className="panel-heritage-bg right-panel h-full min-h-0 flex flex-col overflow-hidden relative transition-colors duration-300"
+        className="h-full min-h-0 flex flex-col overflow-hidden relative transition-colors duration-300"
         style={{
-          background: 'var(--color-surface)',
-          borderLeft: '1px solid var(--color-border-light)',
-          backdropFilter: 'blur(12px)',
-          boxShadow: 'var(--color-shadow)',
+          background: rightPanelCollapsed
+            ? 'transparent'
+            : 'linear-gradient(135deg, var(--color-surface) 0%, var(--color-background-secondary) 100%)',
+          borderLeft: rightPanelCollapsed ? 'none' : '1px solid var(--color-border-light)',
         }}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
-        {/* 底部角落装饰 */}
-        {!rightPanelCollapsed && (
-          <>
-            <div className="panel-corner-ornament bottom-left" />
-            <div className="panel-corner-ornament bottom-right" />
-          </>
-        )}
         <div className="flex flex-col h-full">
           <div
             className="px-3 py-2"

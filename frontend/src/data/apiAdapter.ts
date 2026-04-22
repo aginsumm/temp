@@ -15,22 +15,34 @@ const HEALTH_PATH = '/api/v1/health';
 function resolveHealthUrl(baseUrl: string): string {
   const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
 
+  // 如果已经包含完整的 health 路径，直接返回
   if (normalized.endsWith(HEALTH_PATH)) {
     return normalized;
   }
 
+  // 如果以 /health 结尾但不是 /api/v1/health，说明配置错误，需要修正
+  if (normalized.endsWith('/health')) {
+    console.warn('⚠️ 检测到 API 基础 URL 配置错误，应该是 /api/v1 或 http://localhost:8000/api/v1');
+    const baseWithoutHealth = normalized.slice(0, -'/health'.length);
+    return `${baseWithoutHealth}${HEALTH_PATH}`;
+  }
+
+  // 如果以 /api/v1 结尾，添加 /health
   if (normalized.endsWith('/api/v1')) {
     return `${normalized}/health`;
   }
 
+  // 如果包含 /api/v1/，替换为 /api/v1/health
   if (normalized.includes('/api/v1/')) {
     return `${normalized.split('/api/v1/')[0]}${HEALTH_PATH}`;
   }
 
+  // 如果包含 /api/v1（但不以它结尾），也替换
   if (normalized.includes('/api/v1')) {
     return `${normalized.split('/api/v1')[0]}${HEALTH_PATH}`;
   }
 
+  // 其他情况，直接追加 /api/v1/health
   return `${normalized}${HEALTH_PATH}`;
 }
 

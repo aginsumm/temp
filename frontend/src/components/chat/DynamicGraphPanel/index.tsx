@@ -17,7 +17,7 @@ import { snapshotService } from '../../../api/snapshot';
 import { useToast } from '../../common/Toast';
 import { useThemeStore } from '../../../stores/themeStore';
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '../../../constants/categories';
-import type { Entity, Relation, GraphNode, EntityType } from '../../../types/chat';
+import type { Entity, Relation, GraphNode, EntityType } from '../../../types/graph';
 
 const ENTITY_COLORS: Record<EntityType, string> = CATEGORY_COLORS;
 
@@ -268,12 +268,15 @@ export default function DynamicGraphPanel({
     });
   }, [graphData, selectedNode, resolvedMode, entities, onNodeClick]);
 
+  const renderGraphRef = useRef(renderGraph);
+  renderGraphRef.current = renderGraph;
+
   useEffect(() => {
     if (chartRef.current && graphData.nodes.length > 0) {
       if (!chartInstance.current) {
         chartInstance.current = echarts.init(chartRef.current);
       }
-      renderGraph();
+      renderGraphRef.current();
     }
 
     return () => {
@@ -282,7 +285,7 @@ export default function DynamicGraphPanel({
         chartInstance.current = null;
       }
     };
-  }, [graphData, renderGraph]);
+  }, [graphData]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -377,7 +380,6 @@ export default function DynamicGraphPanel({
 
   const handleSaveSnapshot = async () => {
     if (!sessionId || !messageId) {
-      toast.warning('无法保存', '缺少会话或消息信息');
       return;
     }
 
@@ -391,11 +393,9 @@ export default function DynamicGraphPanel({
         entities,
         relations: relations || [],
       });
-      toast.success('保存成功', '图谱快照已保存');
       onSaveSnapshot?.();
     } catch (error) {
       console.error('Failed to save snapshot:', error);
-      toast.error('保存失败', '无法保存图谱快照');
     } finally {
       setIsSaving(false);
     }
@@ -403,12 +403,10 @@ export default function DynamicGraphPanel({
 
   const handleShare = async () => {
     if (!sessionId || !messageId) {
-      toast.warning('无法分享', '缺少会话或消息信息');
       return;
     }
 
     try {
-      // messageId 不是 snapshotId，先确保存在可分享的快照
       let snapshotId = messageId;
       let snapshot = await snapshotService.getSnapshot(snapshotId);
       if (!snapshot) {
@@ -426,15 +424,10 @@ export default function DynamicGraphPanel({
       const result = await snapshotService.shareSnapshot(snapshotId, 7);
 
       if (result && result.share_url) {
-        // 直接使用后端返回的完整 URL
         await navigator.clipboard.writeText(result.share_url);
-        toast.success('分享成功', '链接已复制到剪贴板，7 天内有效');
-      } else {
-        toast.success('分享成功', '快照已设置为共享状态');
       }
     } catch (error) {
       console.error('Failed to share snapshot:', error);
-      toast.error('分享失败', '无法分享图谱快照');
     }
   };
 

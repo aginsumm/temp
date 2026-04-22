@@ -7,7 +7,7 @@ import { syncManager } from '../data/syncManager';
 import type { FavoriteItem, FeedbackItem } from '../data/models';
 
 type ViewMode = 'graph' | 'list';
-type LayoutType = 'force' | 'circular' | 'hierarchical';
+type LayoutType = 'force' | 'circular' | 'hierarchical' | 'radial' | 'grid';
 type SortBy = 'relevance' | 'name' | 'date';
 
 interface GraphState {

@@ -3,7 +3,7 @@
  * 提供统一的数据验证功能，确保数据完整性和一致性
  */
 
-import type { Entity, Relation, GraphNode, GraphEdge } from '../types/chat';
+import type { Entity, Relation, GraphNode, GraphEdge } from '../types/graph';
 
 export interface ValidationResult {
   valid: boolean;

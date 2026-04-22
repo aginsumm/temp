@@ -253,6 +253,44 @@ async def send_message_stream(
         logger.error(f"Error creating user message: {e}")
         raise HTTPException(status_code=500, detail=f"创建消息失败: {str(e)}")
 
+    def deduplicate_entities(entities: list) -> list:
+        """实体去重：基于名称和类型合并相同实体"""
+        if not entities:
+            return []
+        
+        seen = {}
+        for entity in entities:
+            key = f"{entity.name.lower().strip()}_{entity.type}"
+            if key not in seen:
+                seen[key] = entity
+            else:
+                existing = seen[key]
+                if entity.description and not existing.description:
+                    existing.description = entity.description
+                if entity.relevance and (not existing.relevance or entity.relevance > existing.relevance):
+                    existing.relevance = entity.relevance
+                if entity.importance and (not existing.importance or entity.importance > existing.importance):
+                    existing.importance = entity.importance
+        
+        return list(seen.values())
+
+    def deduplicate_relations(relations: list) -> list:
+        """关系去重：基于 source-target-type 合并相同关系"""
+        if not relations:
+            return []
+        
+        seen = {}
+        for relation in relations:
+            key = f"{relation.source}_{relation.target}_{relation.type}"
+            if key not in seen:
+                seen[key] = relation
+            else:
+                existing = seen[key]
+                if relation.confidence and (not existing.confidence or relation.confidence > existing.confidence):
+                    existing.confidence = relation.confidence
+        
+        return list(seen.values())
+
     async def generate():
         full_content = ""
         accumulated_length = 0
@@ -276,6 +314,10 @@ async def send_message_stream(
             keywords = await llm_service.extract_keywords(full_content)
             relations = await llm_service.extract_relations(full_content, entities)
 
+            # 实体和关系去重
+            entities = deduplicate_entities(entities)
+            relations = deduplicate_relations(relations)
+
             if entities:
                 entities_data = json.dumps({
                     "type": "entities",
@@ -287,7 +329,7 @@ async def send_message_stream(
             if keywords:
                 keywords_data = json.dumps({
                     "type": "keywords",
-                    "keywords": keywords
+                    "keywords": list(dict.fromkeys(keywords))  # 关键词去重
                 }, ensure_ascii=False)
                 yield f"data: {keywords_data}\n\n"
 

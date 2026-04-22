@@ -1,6 +1,6 @@
 import { useState, useEffect, lazy, Suspense, useCallback, useTransition } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Network, List, Download, Bookmark, FolderOpen, X } from 'lucide-react';
+import { Network, List, Download, Bookmark, FolderOpen, X, SlidersHorizontal } from 'lucide-react';
 import useKnowledgeGraphStore from '../../stores/knowledgeGraphStore';
 import { knowledgeApi, Entity } from '../../api/knowledge';
 import { snapshotService } from '../../api/snapshot';
@@ -12,9 +12,12 @@ import { useToast } from '../../components/common/Toast';
 
 const KnowledgeGraph = lazy(() => import('../../components/knowledge/KnowledgeGraph'));
 const ListView = lazy(() => import('../../components/knowledge/ListView'));
+const SearchPanel = lazy(() => import('../../components/knowledge/SearchPanel'));
+const FilterPanel = lazy(() => import('../../components/knowledge/FilterPanel'));
 
 export default function KnowledgePage() {
-  const { viewMode, setViewMode, setSelectedNode } = useKnowledgeGraphStore();
+  const { viewMode, setViewMode, setSelectedNode, toggleFilterPanel, filterPanelCollapsed } =
+    useKnowledgeGraphStore();
   const [isPending, startTransitionFn] = useTransition();
   const [entities, setEntities] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(false);
@@ -23,6 +26,12 @@ export default function KnowledgePage() {
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [isLoadingSnapshots, setIsLoadingSnapshots] = useState(false);
   const toast = useToast();
+
+  const handleFilterChange = useCallback((filters: any) => {
+    console.log('Filter changed:', filters);
+    // 筛选条件变化时，触发图谱重新加载
+    // 这里通过更新 store 中的 filter 状态来触发 KnowledgeGraph 重新加载
+  }, []);
 
   const viewButtons = [
     {
@@ -77,47 +86,33 @@ export default function KnowledgePage() {
     try {
       const response = await snapshotService.listSnapshots(undefined, 1, 50);
       setSnapshots(response.snapshots);
-      if (response.snapshots.length === 0) {
-        // 使用函数形式，避免依赖 toast 对象
-        toast.info('暂无快照', '还没有保存的图谱快照');
-      }
     } catch (error) {
       console.error('Failed to load snapshots:', error);
-      toast.error('加载失败', '无法加载快照列表');
     } finally {
       setIsLoadingSnapshots(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleLoadSnapshot = useCallback(
-    async (snapshot: GraphSnapshot) => {
-      try {
-        const fullSnapshot = await snapshotService.getSnapshot(snapshot.id);
-        if (!fullSnapshot) {
-          toast.error('加载失败', '快照数据不存在');
-          return;
-        }
-
-        // 使用 snapshot 来源同步，确保知识图谱页面会按快照逻辑更新
-        graphSyncService.updateFromSnapshot(
-          fullSnapshot.entities,
-          fullSnapshot.relations,
-          fullSnapshot.keywords,
-          fullSnapshot.session_id,
-          fullSnapshot.message_id
-        );
-
-        toast.success('加载成功', `已加载快照 "${fullSnapshot.title || '未命名'}"`);
-        setShowSnapshots(false);
-      } catch (error) {
-        console.error('Failed to load snapshot:', error);
-        toast.error('加载失败', '无法加载快照数据');
+  const handleLoadSnapshot = useCallback(async (snapshot: GraphSnapshot) => {
+    try {
+      const fullSnapshot = await snapshotService.getSnapshot(snapshot.id);
+      if (!fullSnapshot) {
+        return;
       }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
+
+      graphSyncService.updateFromSnapshot(
+        fullSnapshot.entities,
+        fullSnapshot.relations,
+        fullSnapshot.keywords,
+        fullSnapshot.session_id,
+        fullSnapshot.message_id
+      );
+
+      setShowSnapshots(false);
+    } catch (error) {
+      console.error('Failed to load snapshot:', error);
+    }
+  }, []);
 
   useEffect(() => {
     if (showSnapshots) {
@@ -126,7 +121,6 @@ export default function KnowledgePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showSnapshots]);
 
-  // 页面加载时检查 sessionStorage 中是否有待加载的快照
   useEffect(() => {
     let isMounted = true;
     let timeoutId: NodeJS.Timeout;
@@ -137,25 +131,20 @@ export default function KnowledgePage() {
         const { snapshot, entities, relations, keywords, filters } =
           JSON.parse(pendingSnapshotData);
 
-        // 延迟发送事件，确保组件已完全加载
         timeoutId = setTimeout(() => {
           if (!isMounted) return;
 
-          // 使用统一的快照加载函数
           const event = new CustomEvent('loadSnapshot', {
             detail: {
               snapshot,
               entities,
               relations,
               keywords,
-              filters, // 包含筛选条件
+              filters,
             },
           });
           window.dispatchEvent(event);
 
-          toast.success('快照已加载', `已恢复快照 "${snapshot.title || '未命名'}"`);
-
-          // 清除 sessionStorage 中的数据
           sessionStorage.removeItem('pendingSnapshot');
         }, 300);
       }
@@ -164,14 +153,12 @@ export default function KnowledgePage() {
       sessionStorage.removeItem('pendingSnapshot');
     }
 
-    // 清理函数
     return () => {
       isMounted = false;
       if (timeoutId) {
         clearTimeout(timeoutId);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -320,54 +307,81 @@ export default function KnowledgePage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
-          className="flex-1 min-h-0"
+          className="flex-1 min-h-0 flex gap-4"
         >
-          <div
-            className="backdrop-blur-xl rounded-2xl overflow-hidden relative h-full"
-            style={{
-              background: 'var(--gradient-card)',
-              border: '1px solid var(--color-border)',
-              boxShadow: 'var(--color-shadow)',
-            }}
-          >
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="mb-4 flex-shrink-0">
+              <Suspense fallback={<div className="h-32" />}>
+                <SearchPanel />
+              </Suspense>
+            </div>
             <div
-              className="absolute inset-0 pointer-events-none"
+              className="backdrop-blur-xl rounded-2xl overflow-hidden relative h-full flex"
               style={{
-                background:
-                  'linear-gradient(90deg, var(--color-primary), var(--color-secondary), var(--color-accent))',
-                opacity: 0.05,
+                background: 'var(--gradient-card)',
+                border: '1px solid var(--color-border)',
+                boxShadow: 'var(--color-shadow)',
               }}
-            />
+            >
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  background:
+                    'linear-gradient(90deg, var(--color-primary), var(--color-secondary), var(--color-accent))',
+                  opacity: 0.05,
+                }}
+              />
 
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={viewMode}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
-                className={`relative z-10 h-full w-full ${isPending ? 'opacity-50' : ''}`}
-              >
-                {viewMode === 'graph' && (
-                  <ErrorBoundary>
-                    <Suspense fallback={<GraphSkeleton />}>
-                      <KnowledgeGraph />
-                    </Suspense>
-                  </ErrorBoundary>
-                )}
-                {viewMode === 'list' && (
-                  <ErrorBoundary>
-                    <Suspense fallback={<ListSkeleton />}>
-                      <ListView
-                        entities={entities}
-                        onEntityClick={handleEntityClick}
-                        loading={loading}
-                      />
-                    </Suspense>
-                  </ErrorBoundary>
-                )}
-              </motion.div>
-            </AnimatePresence>
+              {!filterPanelCollapsed && (
+                <Suspense fallback={<div className="w-80" />}>
+                  <FilterPanel onFilterChange={handleFilterChange} />
+                </Suspense>
+              )}
+
+              <div className="flex-1 min-h-0 relative">
+                <motion.button
+                  onClick={toggleFilterPanel}
+                  className="absolute top-4 left-4 z-20 p-2 rounded-lg shadow-lg transition-all"
+                  style={{
+                    background: 'var(--color-surface)',
+                    color: 'var(--color-text-secondary)',
+                  }}
+                  title={filterPanelCollapsed ? '打开筛选' : '关闭筛选'}
+                >
+                  <SlidersHorizontal size={18} />
+                </motion.button>
+
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={viewMode}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.3 }}
+                    className={`relative z-10 h-full w-full ${isPending ? 'opacity-50' : ''}`}
+                  >
+                    {viewMode === 'graph' && (
+                      <ErrorBoundary>
+                        <Suspense fallback={<GraphSkeleton />}>
+                          <KnowledgeGraph />
+                        </Suspense>
+                      </ErrorBoundary>
+                    )}
+                    {viewMode === 'list' && (
+                      <ErrorBoundary>
+                        <Suspense fallback={<ListSkeleton />}>
+                          <ListView
+                            entities={entities}
+                            onEntityClick={handleEntityClick}
+                            loading={loading}
+                          />
+                        </Suspense>
+                      </ErrorBoundary>
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+            </div>
           </div>
         </motion.div>
       </div>

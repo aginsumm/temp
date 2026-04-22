@@ -491,19 +491,31 @@ class ChatRepository {
     content: string,
     onChunk: (chunk: string) => void,
     onComplete: (message: Message) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    onStatusChange?: (status: 'connecting' | 'streaming' | 'complete' | 'error') => void
   ): Promise<() => void> {
     let isAborted = false;
     const controller = new AbortController();
+    const STREAM_TIMEOUT = 60000; // 60秒超时
+    const MAX_RETRIES = 1; // 网络错误时重试1次
+    let retryCount = 0;
 
-    (async () => {
+    const executeStream = async (): Promise<void> => {
       try {
         const token = localStorage.getItem('token') || '';
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        // 🌟 强行请求真实的流式接口
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+
+        onStatusChange?.('connecting');
+
+        // 创建超时控制器
+        const timeoutController = new AbortController();
+        const timeoutId = setTimeout(() => {
+          timeoutController.abort();
+        }, STREAM_TIMEOUT);
+
         const response = await fetch(`${apiBaseUrl}/chat/stream`, {
           method: 'POST',
           headers,
@@ -512,13 +524,27 @@ class ChatRepository {
             content: content,
             message_type: 'text',
           }),
-          signal: controller.signal,
+          signal: AbortSignal.any([controller.signal, timeoutController.signal]),
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const errText = await response.text();
-          throw new Error(`HTTP error! status: ${response.status}, body: ${errText}`);
+          let errorType = 'UNKNOWN_ERROR';
+
+          if (response.status === 401) {
+            errorType = 'AUTH_ERROR';
+          } else if (response.status === 429) {
+            errorType = 'RATE_LIMIT_ERROR';
+          } else if (response.status >= 500) {
+            errorType = 'SERVER_ERROR';
+          }
+
+          throw new Error(`[${errorType}] HTTP ${response.status}: ${errText}`);
         }
+
+        onStatusChange?.('streaming');
 
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
@@ -528,45 +554,73 @@ class ChatRepository {
         let latestRelations: Relation[] = [];
         let fullContent = '';
         let sseBuffer = '';
+        let lastActivityTime = Date.now();
+        const ACTIVITY_TIMEOUT = 30000; // 30秒无活动超时
 
         if (reader) {
           while (!isAborted) {
-            const { done, value } = await reader.read();
-            if (done) break;
+            // 检查活动超时
+            if (Date.now() - lastActivityTime > ACTIVITY_TIMEOUT) {
+              throw new Error('[STREAM_TIMEOUT] 流式响应超时，30秒无数据');
+            }
 
-            sseBuffer += decoder.decode(value, { stream: true });
-            const events = sseBuffer.split('\n\n');
-            sseBuffer = events.pop() || '';
+            try {
+              const { done, value } = await Promise.race([
+                reader.read(),
+                new Promise<never>((_, reject) =>
+                  setTimeout(() => reject(new Error('[READ_TIMEOUT] 读取超时')), 10000)
+                ),
+              ]);
 
-            for (const rawEvent of events) {
-              const dataLines = rawEvent
-                .split('\n')
-                .map((line) => line.trim())
-                .filter((line) => line.startsWith('data:'))
-                .map((line) => line.replace(/^data:\s?/, ''));
+              if (done) break;
 
-              if (dataLines.length === 0) continue;
-              const payload = dataLines.join('\n');
-              if (payload === '[DONE]') continue;
+              lastActivityTime = Date.now();
+              sseBuffer += decoder.decode(value, { stream: true });
+              const events = sseBuffer.split('\n\n');
+              sseBuffer = events.pop() || '';
 
-              try {
-                const data = JSON.parse(payload);
-                if (data.type === 'content_chunk' || data.type === 'content') {
-                  const chunkText = String(data.content || '');
-                  fullContent += chunkText;
-                  onChunk(chunkText);
-                } else if (data.type === 'entities') {
-                  latestEntities = Array.isArray(data.entities) ? data.entities : [];
-                } else if (data.type === 'keywords') {
-                  latestKeywords = Array.isArray(data.keywords) ? data.keywords : [];
-                } else if (data.type === 'relations') {
-                  latestRelations = Array.isArray(data.relations) ? data.relations : [];
-                } else if (data.type === 'complete') {
-                  lastResponse = data.response || data;
+              for (const rawEvent of events) {
+                const dataLines = rawEvent
+                  .split('\n')
+                  .map((line) => line.trim())
+                  .filter((line) => line.startsWith('data:'))
+                  .map((line) => line.replace(/^data:\s?/, ''));
+
+                if (dataLines.length === 0) continue;
+                const payload = dataLines.join('\n');
+                if (payload === '[DONE]') continue;
+
+                try {
+                  const data = JSON.parse(payload);
+                  if (data.type === 'content_chunk' || data.type === 'content') {
+                    const chunkText = String(data.content || '');
+                    fullContent += chunkText;
+                    onChunk(chunkText);
+                  } else if (data.type === 'entities') {
+                    latestEntities = Array.isArray(data.entities) ? data.entities : [];
+                  } else if (data.type === 'keywords') {
+                    latestKeywords = Array.isArray(data.keywords) ? data.keywords : [];
+                  } else if (data.type === 'relations') {
+                    latestRelations = Array.isArray(data.relations) ? data.relations : [];
+                  } else if (data.type === 'complete') {
+                    lastResponse = data.response || data;
+                  } else if (data.type === 'error') {
+                    throw new Error(`[STREAM_ERROR] ${data.message || '流式响应错误'}`);
+                  }
+                } catch (parseError) {
+                  if (parseError instanceof SyntaxError) {
+                    // JSON 解析失败，可能是不完整的事件，等待后续分片
+                    continue;
+                  }
+                  throw parseError;
                 }
-              } catch {
-                // 忽略不完整事件，等待后续分片
               }
+            } catch (readError: unknown) {
+              if (readError instanceof Error && readError.message.includes('READ_TIMEOUT')) {
+                console.warn('⚠️ 读取超时，继续等待...');
+                continue;
+              }
+              throw readError;
             }
           }
         }
@@ -598,14 +652,63 @@ class ChatRepository {
             relations: lastResponse.relations || latestRelations || [],
           };
           await this.addMessage(aiMessage);
+          onStatusChange?.('complete');
           onComplete(aiMessage);
         }
-      } catch (error) {
+      } catch (error: unknown) {
         if (isAborted) return;
-        console.error('🔥 真实流式请求彻底报错:', error);
-        if (onError) onError(error as Error);
+
+        // 判断错误类型
+        let shouldRetry = false;
+        let errorMessage = '未知错误';
+
+        const err = error instanceof Error ? error : new Error(String(error));
+
+        if (err.name === 'AbortError') {
+          errorMessage = '请求已取消';
+        } else if (err.message.includes('STREAM_TIMEOUT') || err.message.includes('READ_TIMEOUT')) {
+          errorMessage = '响应超时，请稍后重试';
+        } else if (err.message.includes('AUTH_ERROR')) {
+          errorMessage = '认证失败，请重新登录';
+        } else if (err.message.includes('RATE_LIMIT_ERROR')) {
+          errorMessage = '请求过于频繁，请稍后重试';
+        } else if (err.message.includes('SERVER_ERROR')) {
+          errorMessage = '服务器错误，请稍后重试';
+          shouldRetry = retryCount < MAX_RETRIES;
+        } else if (
+          err.message.includes('NetworkError') ||
+          err.message.includes('Failed to fetch')
+        ) {
+          errorMessage = '网络连接失败，请检查网络';
+          shouldRetry = retryCount < MAX_RETRIES;
+        } else {
+          errorMessage = err.message || '请求失败';
+          shouldRetry = retryCount < MAX_RETRIES && !err.message.includes('[STREAM_ERROR]');
+        }
+
+        console.error(`🔥 流式请求失败 (重试 ${retryCount}/${MAX_RETRIES}):`, errorMessage);
+
+        // 重试逻辑
+        if (shouldRetry) {
+          retryCount++;
+          const delay = 1000 * retryCount; // 指数退避
+          console.log(`⏳ ${delay}ms 后重试...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+
+          if (!isAborted) {
+            await executeStream();
+            return;
+          }
+        }
+
+        // 不再重试，报告错误
+        console.error('❌ 流式请求最终失败:', errorMessage);
+        if (onError) onError(new Error(errorMessage));
+        onStatusChange?.('error');
       }
-    })();
+    };
+
+    executeStream();
 
     return () => {
       isAborted = true;

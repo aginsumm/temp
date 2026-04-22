@@ -14,6 +14,7 @@ from app.core.constants import (
 )
 from app.services.knowledge_service import KnowledgeService
 from app.services.llm_service import llm_service
+from app.middleware.knowledge_validator import KnowledgeDataValidator
 from app.schemas.knowledge import (
     Entity,
     EntityCreate,
@@ -37,6 +38,15 @@ from app.schemas.knowledge import (
     Feedback,
     ExportRequest,
     ImportRequest,
+    BatchEntityCreate,
+    BatchEntityUpdate,
+    BatchRelationshipCreate,
+    BatchOperationResult,
+    EntityAliasCreate,
+    EntityAlias,
+    GraphSnapshotCreate,
+    GraphSnapshot,
+    GraphVersionDiff,
 )
 
 
@@ -64,6 +74,11 @@ async def create_entity(
     entity_data: EntityCreate,
     db: AsyncSession = Depends(get_db),
 ):
+    # 数据验证
+    is_valid, errors = KnowledgeDataValidator.validate_entity(entity_data.model_dump())
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=f"数据验证失败: {', '.join(errors)}")
+    
     service = KnowledgeService(db)
     entity = await service.create_entity(entity_data)
     return entity
@@ -112,7 +127,7 @@ async def search_entities(
     db: AsyncSession = Depends(get_db),
 ):
     service = KnowledgeService(db)
-    entities, total = await service.search_entities(search_request)
+    entities, total = await service.search_entities_with_alias(search_request)
 
     total_pages = (total + search_request.page_size - 1) // search_request.page_size
 
@@ -187,6 +202,11 @@ async def create_relationship(
     relationship_data: RelationshipCreate,
     db: AsyncSession = Depends(get_db),
 ):
+    # 数据验证
+    is_valid, errors = KnowledgeDataValidator.validate_relationship(relationship_data.model_dump())
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=f"数据验证失败: {', '.join(errors)}")
+    
     service = KnowledgeService(db)
     relationship = await service.create_relationship(relationship_data)
     return relationship
@@ -324,7 +344,7 @@ async def find_path(
 async def llm_intelligent_search(
     request: LLMSearchRequest,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user),
+    _user_id: str = Depends(get_current_user),
 ):
     """
     使用 LLM 进行智能搜索，支持自然语言理解和语义搜索
@@ -557,3 +577,192 @@ async def import_data(
     service = KnowledgeService(db)
     result = await service.import_data(import_request)
     return result
+
+
+@router.post("/entity/batch", response_model=BatchOperationResult, summary="批量创建实体")
+async def batch_create_entities(
+    batch_data: BatchEntityCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """批量创建实体，支持最多 100 个实体同时创建"""
+    service = KnowledgeService(db)
+    result = await service.batch_create_entities(batch_data.entities)
+    return BatchOperationResult(**result)
+
+
+@router.put("/entity/batch", response_model=BatchOperationResult, summary="批量更新实体")
+async def batch_update_entities(
+    batch_data: BatchEntityUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """批量更新实体，key 为实体 ID"""
+    service = KnowledgeService(db)
+    result = await service.batch_update_entities(batch_data.updates)
+    return BatchOperationResult(**result)
+
+
+@router.post("/relationship/batch", response_model=BatchOperationResult, summary="批量创建关系")
+async def batch_create_relationships(
+    batch_data: BatchRelationshipCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """批量创建关系，支持最多 100 个关系同时创建"""
+    service = KnowledgeService(db)
+    result = await service.batch_create_relationships(batch_data.relationships)
+    return BatchOperationResult(**result)
+
+
+@router.post("/entity/{entity_id}/alias", response_model=EntityAlias, summary="添加实体别名")
+async def add_entity_alias(
+    entity_id: str,
+    alias_data: EntityAliasCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """为实体添加别名（支持同义词、缩写、翻译）"""
+    service = KnowledgeService(db)
+    try:
+        alias = await service.add_entity_alias(
+            entity_id=entity_id,
+            alias_name=alias_data.alias_name,
+            alias_type=alias_data.alias_type,
+        )
+        return alias
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/entity/{entity_id}/aliases", response_model=List[EntityAlias], summary="获取实体别名列表")
+async def get_entity_aliases(
+    entity_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """获取实体的所有别名"""
+    service = KnowledgeService(db)
+    aliases = await service.get_entity_aliases(entity_id)
+    return aliases
+
+
+@router.delete("/entity/alias/{alias_id}", summary="删除实体别名")
+async def delete_entity_alias(
+    alias_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """删除指定的实体别名"""
+    service = KnowledgeService(db)
+    success = await service.delete_entity_alias(alias_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="别名不存在")
+    return {"success": True}
+
+
+@router.get("/analysis/pagerank", summary="计算 PageRank 重要性排序")
+async def calculate_pagerank(
+    top_k: int = Query(20, ge=1, le=100, description="返回 Top K 实体"),
+    db: AsyncSession = Depends(get_db),
+):
+    """计算知识图谱的 PageRank 重要性评分"""
+    service = KnowledgeService(db)
+    result = await service.calculate_pagerank(top_k)
+    return result
+
+
+@router.post("/analysis/pagerank/update", summary="使用 PageRank 更新实体重要性")
+async def update_importance_with_pagerank(
+    weight_pagerank: float = Query(0.7, ge=0.0, le=1.0, description="PageRank 权重"),
+    weight_original: float = Query(0.3, ge=0.0, le=1.0, description="原始重要性权重"),
+    db: AsyncSession = Depends(get_db),
+):
+    """使用 PageRank 评分更新实体重要性"""
+    service = KnowledgeService(db)
+    result = await service.update_entity_importance_with_pagerank(
+        weight_pagerank=weight_pagerank,
+        weight_original=weight_original,
+    )
+    return result
+
+
+@router.post("/version/snapshot", response_model=GraphSnapshot, summary="创建图谱快照")
+async def create_snapshot(
+    snapshot_data: GraphSnapshotCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """创建当前图谱状态的快照"""
+    service = KnowledgeService(db)
+    snapshot = await service.create_snapshot(
+        title=snapshot_data.title,
+        description=snapshot_data.description,
+        tags=snapshot_data.tags,
+    )
+    return snapshot
+
+
+@router.get("/version/snapshots", summary="获取快照列表")
+async def get_snapshots(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取所有快照列表"""
+    service = KnowledgeService(db)
+    snapshots, total = await service.get_snapshots(page, page_size)
+    return {
+        "snapshots": snapshots,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+@router.get("/version/snapshot/{snapshot_id}", response_model=GraphSnapshot, summary="获取快照详情")
+async def get_snapshot(
+    snapshot_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """获取指定快照的详情"""
+    service = KnowledgeService(db)
+    snapshot = await service.get_snapshot(snapshot_id)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="快照不存在")
+    return snapshot
+
+
+@router.delete("/version/snapshot/{snapshot_id}", summary="删除快照")
+async def delete_snapshot(
+    snapshot_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """删除指定快照"""
+    service = KnowledgeService(db)
+    success = await service.delete_snapshot(snapshot_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="快照不存在")
+    return {"success": True}
+
+
+@router.post("/version/snapshot/{snapshot_id}/restore", summary="从快照恢复")
+async def restore_snapshot(
+    snapshot_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """从指定快照恢复图谱数据"""
+    service = KnowledgeService(db)
+    try:
+        result = await service.restore_snapshot(snapshot_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/version/diff", response_model=GraphVersionDiff, summary="比较快照差异")
+async def diff_snapshots(
+    snapshot_id_1: str = Query(..., description="第一个快照 ID"),
+    snapshot_id_2: str = Query(..., description="第二个快照 ID"),
+    db: AsyncSession = Depends(get_db),
+):
+    """比较两个快照之间的差异"""
+    service = KnowledgeService(db)
+    try:
+        diff = await service.diff_snapshots(snapshot_id_1, snapshot_id_2)
+        return diff
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))

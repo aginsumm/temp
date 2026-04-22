@@ -23,7 +23,6 @@ import { useResizablePanel } from '../../../hooks/useResizablePanel';
 import { chatDataService } from '../../../services/chat';
 import { useToast } from '../../common/Toast';
 import type { Session } from '../../../types/chat';
-import { snapshotService } from '../../../api/snapshot';
 
 interface SidebarProps {
   onNewChat: () => void;
@@ -221,18 +220,6 @@ export default function Sidebar({
   };
 
   const handleSwitchSession = async (sessionId: string) => {
-    // 检查新会话的快照数量
-    try {
-      const response = await snapshotService.listSnapshots(sessionId, 1, 1);
-      const snapshotCount = response.total;
-
-      if (snapshotCount > 0) {
-        toast.info('会话快照', `该会话有 ${snapshotCount} 个保存的图谱快照，可在右侧面板查看`);
-      }
-    } catch (error) {
-      console.error('Failed to check snapshots for session:', error);
-    }
-
     onSwitchSession?.(sessionId);
     setContextMenu(null);
   };
@@ -478,20 +465,14 @@ export default function Sidebar({
         initial={false}
         animate={{ width: sidebarCollapsed ? 56 : sidebarWidth }}
         transition={isResizing ? { duration: 0 } : { duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-        className="panel-heritage-bg sidebar-left h-full min-h-0 flex flex-col overflow-hidden relative transition-colors duration-300"
+        className="h-full min-h-0 flex flex-col overflow-hidden relative transition-colors duration-300"
         style={{
-          background: 'var(--color-surface)',
-          borderRight: '1px solid var(--color-border-light)',
-          backdropFilter: 'blur(12px)',
+          background: sidebarCollapsed
+            ? 'transparent'
+            : 'linear-gradient(135deg, var(--color-surface) 0%, var(--color-background-secondary) 100%)',
+          borderRight: sidebarCollapsed ? 'none' : '1px solid var(--color-border-light)',
         }}
       >
-        {/* 底部角落装饰 */}
-        {!sidebarCollapsed && (
-          <>
-            <div className="panel-corner-ornament bottom-left" />
-            <div className="panel-corner-ornament bottom-right" />
-          </>
-        )}
         {sidebarCollapsed ? (
           <div className="flex flex-col items-center py-2 gap-2">
             <motion.button

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Entity, Relation } from '../types/chat';
+
+const GRAPH_STORAGE_VERSION = 5;
 
 interface GraphState {
   entities: Entity[];
@@ -23,11 +25,7 @@ interface GraphState {
     source?: 'chat' | 'knowledge' | 'snapshot'
   ) => void;
   clearGraphData: () => void;
-  mergeGraphData: (
-    entities: Entity[],
-    relations: Relation[],
-    keywords?: string[]
-  ) => void;
+  mergeGraphData: (entities: Entity[], relations: Relation[], keywords?: string[]) => void;
 }
 
 export const useGraphStore = create<GraphState>()(
@@ -53,14 +51,7 @@ export const useGraphStore = create<GraphState>()(
         set({ keywords, lastUpdated: Date.now() });
       },
 
-      updateGraphData: (
-        entities,
-        relations,
-        keywords,
-        sessionId,
-        messageId,
-        source
-      ) => {
+      updateGraphData: (entities, relations, keywords, sessionId, messageId, source) => {
         const updates: Partial<GraphState> = {
           lastUpdated: Date.now(),
         };
@@ -89,7 +80,7 @@ export const useGraphStore = create<GraphState>()(
 
       mergeGraphData: (newEntities, newRelations, newKeywords) => {
         const state = get();
-        
+
         const existingEntityIds = new Set(state.entities.map((e) => e.id));
         const mergedEntities = [
           ...state.entities,
@@ -122,12 +113,57 @@ export const useGraphStore = create<GraphState>()(
     }),
     {
       name: 'graph-storage',
+      storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         entities: state.entities,
         relations: state.relations,
         keywords: state.keywords,
       }),
-      version: 1,
+      version: GRAPH_STORAGE_VERSION,
+      migrate: (persistedState: unknown, version: number) => {
+        if (version < 5) {
+          return {
+            entities: [],
+            relations: [],
+            keywords: [],
+            sessionId: null,
+            messageId: null,
+            lastUpdated: Date.now(),
+            source: null,
+          };
+        }
+        return persistedState;
+      },
+      onRehydrateStorage: () => {
+        return (state, error) => {
+          if (error) {
+            console.error('图谱数据恢复失败:', error);
+            localStorage.removeItem('graph-storage');
+          } else {
+            const storedData = localStorage.getItem('graph-storage');
+            if (storedData) {
+              try {
+                const parsed = JSON.parse(storedData);
+                if (parsed.version && parsed.version < 5) {
+                  console.log('检测到旧版本数据，清除中...');
+                  localStorage.removeItem('graph-storage');
+                  if (state) {
+                    state.entities = [];
+                    state.relations = [];
+                    state.keywords = [];
+                  }
+                }
+              } catch {
+                localStorage.removeItem('graph-storage');
+              }
+            }
+            console.log('图谱数据已恢复:', {
+              entities: state?.entities?.length || 0,
+              relations: state?.relations?.length || 0,
+            });
+          }
+        };
+      },
     }
   )
 );

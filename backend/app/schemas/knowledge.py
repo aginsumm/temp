@@ -10,7 +10,7 @@ class EntityBase(BaseModel):
     region: Optional[str] = Field(None, description="所属地域")
     period: Optional[str] = Field(None, description="所属时期")
     coordinates: Optional[Dict[str, float]] = Field(None, description="地理坐标")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="额外元数据", alias="meta_data")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="额外元数据")
     importance: Optional[float] = Field(0.0, description="重要性评分")
 
     class Config:
@@ -27,7 +27,7 @@ class EntityUpdate(BaseModel):
     region: Optional[str] = None
     period: Optional[str] = None
     coordinates: Optional[Dict[str, float]] = None
-    metadata: Optional[Dict[str, Any]] = Field(None, alias="meta_data")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="额外元数据")
     importance: Optional[float] = None
 
     class Config:
@@ -201,3 +201,67 @@ class ExportRequest(BaseModel):
 class ImportRequest(BaseModel):
     format: str = Field("json", description="导入格式：json/csv")
     data: Dict[str, Any] = Field(..., description="导入数据")
+
+
+class BatchEntityCreate(BaseModel):
+    entities: List[EntityCreate] = Field(..., min_items=1, max_items=100, description="批量创建的实体列表")
+
+
+class BatchEntityUpdate(BaseModel):
+    updates: Dict[str, EntityUpdate] = Field(..., description="批量更新的实体，key 为实体 ID")
+
+
+class BatchRelationshipCreate(BaseModel):
+    relationships: List[RelationshipCreate] = Field(..., min_items=1, max_items=100, description="批量创建的关系列表")
+
+
+class BatchOperationResult(BaseModel):
+    success_count: int = Field(..., description="成功数量")
+    failed_count: int = Field(..., description="失败数量")
+    results: List[Dict[str, Any]] = Field(..., description="详细结果列表")
+    errors: List[Dict[str, Any]] = Field(default_factory=list, description="错误列表")
+
+
+class EntityAliasCreate(BaseModel):
+    entity_id: str = Field(..., description="实体 ID")
+    alias_name: str = Field(..., min_length=1, max_length=200, description="别名名称")
+    alias_type: str = Field("synonym", description="别名类型：synonym/abbreviation/translation")
+
+
+class EntityAlias(BaseModel):
+    id: str
+    entity_id: str
+    alias_name: str
+    alias_type: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class GraphSnapshotCreate(BaseModel):
+    title: str = Field(..., description="快照标题")
+    description: Optional[str] = Field(None, description="快照描述")
+    tags: Optional[List[str]] = Field(None, description="标签列表")
+
+
+class GraphSnapshot(BaseModel):
+    id: str
+    title: str
+    description: Optional[str]
+    entity_count: int
+    relationship_count: int
+    created_at: datetime
+    tags: Optional[List[str]]
+    created_by: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class GraphVersionDiff(BaseModel):
+    added_entities: int = Field(..., description="新增实体数")
+    removed_entities: int = Field(..., description="删除实体数")
+    modified_entities: int = Field(..., description="修改实体数")
+    added_relationships: int = Field(..., description="新增关系数")
+    removed_relationships: int = Field(..., description="删除关系数")

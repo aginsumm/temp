@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { knowledgeApi, GraphData, GraphNode } from '../../../api/knowledge';
 import useKnowledgeGraphStore from '../../../stores/knowledgeGraphStore';
-import { optimizeGraphData } from '../../../utils/graphOptimizer';
+import { graphOptimizer } from '../../../utils/graphOptimizer';
 import { GraphSkeleton } from '../../common/Skeleton';
 import { useToast } from '../../common/Toast';
 import { useThemeStore } from '../../../stores/themeStore';
@@ -67,7 +67,7 @@ const CATEGORY_COLOR_VARS: Record<string, string> = {
   work: '--color-accent',
   pattern: '--color-error',
   region: '--color-info',
-  period: '--color-primary',
+  period: '--color-indigo',
   material: '--color-success',
 };
 
@@ -103,7 +103,8 @@ function getCSSVariable(varName: string): string {
   return '#8B5CF6';
 }
 
-function getCategoryColor(category: string): string {
+function getCategoryColor(category?: string): string {
+  if (!category) return getCSSVariable('--color-primary');
   const varName = CATEGORY_COLOR_VARS[category] || '--color-primary';
   return getCSSVariable(varName);
 }
@@ -137,9 +138,13 @@ export default function WebGLRenderer({
     try {
       setLoading(true);
       const response = await knowledgeApi.search({
-        category: category || undefined,
+        category: category === 'all' ? undefined : category,
         keyword: keyword || undefined,
       });
+
+      // 提取所有唯一的实体类型作为分类
+      const uniqueTypes = Array.from(new Set(response.results.map((e) => e.type)));
+      const categories = uniqueTypes.map((type) => ({ name: type }));
 
       const graphDataFromEntities: GraphData = {
         nodes: response.results.map((entity) => ({
@@ -148,13 +153,17 @@ export default function WebGLRenderer({
           category: entity.type,
           symbolSize: 20 + (entity.importance || 0.5) * 30,
           value: entity.importance || 0.5,
-          itemStyle: { color: '#3B82F6' },
+          itemStyle: {
+            color: getCategoryColor(entity.type),
+          },
         })),
         edges: [],
-        categories: [],
+        categories,
       };
 
-      const optimizedData = optimizeGraphData(graphDataFromEntities);
+      // 使用 graphOptimizer 进行优化
+      const optimizationResult = graphOptimizer.optimize(graphDataFromEntities);
+      const optimizedData = optimizationResult.optimizedData;
 
       setGraphData(optimizedData);
       setPerformanceMetrics((prev) => ({
@@ -192,7 +201,9 @@ export default function WebGLRenderer({
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      chart.dispose();
+      if (chart) {
+        chart.dispose();
+      }
       chartRef.current = null;
     };
   }, [loading]);
@@ -211,20 +222,23 @@ export default function WebGLRenderer({
       tooltip: {
         trigger: 'item',
         backgroundColor: getCSSVariable('--color-surface'),
-        borderColor: getCategoryColor(graphData.nodes[0]?.category || 'inheritor'),
+        borderColor: borderColor,
         textStyle: { color: textColor },
         formatter: (params: unknown) => {
           const p = params as TooltipParams;
           if (p.dataType === 'node') {
+            const categoryLabel = CATEGORY_LABELS[p.data.category] || p.data.category;
             return `
               <div style="padding: 8px;">
                 <div style="font-weight: bold; margin-bottom: 4px;">${p.data.name}</div>
-                <div style="font-size: 12px; color: ${getCSSVariable('--color-text-muted')};">类型：${CATEGORY_LABELS[p.data.category] || p.data.category}</div>
-                <div style="font-size: 12px; color: ${getCSSVariable('--color-text-muted')};">关联：${p.data.value}</div>
+                <div style="font-size: 12px; color: ${getCSSVariable('--color-text-muted')};">类型：${categoryLabel}</div>
+                <div style="font-size: 12px; color: ${getCSSVariable('--color-text-muted')};">关联：${p.data.value?.toFixed(2)}</div>
               </div>
             `;
+          } else if (p.dataType === 'edge') {
+            return `${p.data.source} → ${p.data.target}${p.data.relationType ? ` (${p.data.relationType})` : ''}`;
           }
-          return `${p.data.source} → ${p.data.target}`;
+          return '';
         },
       },
       legend: [
@@ -239,28 +253,33 @@ export default function WebGLRenderer({
         {
           type: 'graph',
           layout: 'force',
-          data: graphData.nodes.map((node) => ({
-            id: node.id,
-            name: node.name,
-            category: (graphData.categories || []).findIndex((c) => c.name === node.category),
-            symbolSize: settings.enableVirtualization
-              ? Math.min(node.symbolSize || (node.value || 0.5) * 2, 50)
-              : (node.value || 0.5) * 2,
-            x: node.x,
-            y: node.y,
-            itemStyle: {
-              color: getCategoryColor(node.category),
-              shadowBlur: 10,
-              shadowColor: 'rgba(0, 0, 0, 0.3)',
-            },
-            label: {
-              show: settings.showLabels,
-              position: 'right',
-              formatter: '{b}',
-              color: textColor,
-              fontSize: 12,
-            },
-          })),
+          data: graphData.nodes.map((node) => {
+            const categoryIndex = (graphData.categories || []).findIndex(
+              (c) => c.name === node.category
+            );
+            return {
+              id: node.id,
+              name: node.name,
+              category: categoryIndex >= 0 ? categoryIndex : undefined,
+              symbolSize: settings.enableVirtualization
+                ? Math.min(node.symbolSize || (node.value || 0.5) * 2, 50)
+                : (node.value || 0.5) * 2,
+              x: node.x,
+              y: node.y,
+              itemStyle: {
+                color: getCategoryColor(node.category),
+                shadowBlur: 10,
+                shadowColor: 'rgba(0, 0, 0, 0.3)',
+              },
+              label: {
+                show: settings.showLabels,
+                position: 'right',
+                formatter: '{b}',
+                color: textColor,
+                fontSize: 12,
+              },
+            };
+          }),
           links: graphData.edges.map((edge) => ({
             source: edge.source,
             target: edge.target,
@@ -298,6 +317,8 @@ export default function WebGLRenderer({
 
     chart.setOption(option, true);
 
+    // 安全地添加事件监听器，避免内存泄漏
+    chart.off('click');
     chart.on('click', (params: unknown) => {
       const p = params as {
         dataType?: 'node' | 'edge';
@@ -311,6 +332,7 @@ export default function WebGLRenderer({
       }
     });
 
+    chart.off('mouseover');
     chart.on('mouseover', (params: unknown) => {
       const p = params as { dataType?: 'node'; data: GraphNode };
       if (p.dataType === 'node' && onNodeHover) {
