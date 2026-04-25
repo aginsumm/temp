@@ -76,6 +76,21 @@ export function EnhancedMessageSearch({
     return results.slice(0, 50); // 限制结果数量
   }, [messages, query]);
 
+  const saveRecentSearch = useCallback((searchTerm: string) => {
+    if (!searchTerm.trim()) return;
+
+    setRecentSearches((prev) => {
+      const updated = [searchTerm, ...prev.filter((s) => s !== searchTerm)].slice(0, 5);
+      localStorage.setItem('message_recent_searches', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const clearRecentSearches = useCallback(() => {
+    setRecentSearches([]);
+    localStorage.removeItem('message_recent_searches');
+  }, []);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (!isOpen) return;
@@ -103,26 +118,13 @@ export function EnhancedMessageSearch({
           break;
       }
     },
-    [isOpen, searchResults, selectedIndex, onSelectMessage, onClose, query]
+    [isOpen, searchResults, selectedIndex, onSelectMessage, onClose, query, saveRecentSearch]
   );
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
-
-  const saveRecentSearch = (searchTerm: string) => {
-    if (!searchTerm.trim()) return;
-
-    const updated = [searchTerm, ...recentSearches.filter((s) => s !== searchTerm)].slice(0, 5);
-    setRecentSearches(updated);
-    localStorage.setItem('message_recent_searches', JSON.stringify(updated));
-  };
-
-  const clearRecentSearches = () => {
-    setRecentSearches([]);
-    localStorage.removeItem('message_recent_searches');
-  };
 
   const highlightText = (text: string, highlights: string[]) => {
     if (!highlights.length) return text;

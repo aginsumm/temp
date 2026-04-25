@@ -33,22 +33,22 @@ const DEFAULT_OPTIONS: Required<RetryOptions> = {
 /**
  * 检查错误是否为网络错误
  */
-export function isNetworkError(error: any): boolean {
+export function isNetworkError(error: unknown): boolean {
   if (!error) return false;
   
-  const message = error.message?.toLowerCase() || '';
+  const errorObj = error as Record<string, unknown>;
+  const message = (errorObj.message as string)?.toLowerCase() || '';
   const isNetwork =
     message.includes('network') ||
     message.includes('fetch') ||
     message.includes('timeout') ||
     message.includes('connection') ||
     message.includes('networkerror') ||
-    error.code === 'NETWORK_ERROR' ||
-    error.code === 'TIMEOUT' ||
-    error.code === 'CONNECTION_REFUSED';
+    errorObj.code === 'NETWORK_ERROR' ||
+    errorObj.code === 'TIMEOUT' ||
+    errorObj.code === 'CONNECTION_REFUSED';
   
-  // 检查 HTTP 状态码
-  const status = error.status || error.response?.status;
+  const status = (errorObj.status as number) || ((errorObj.response as Record<string, unknown>)?.status as number);
   const isServerError = status >= 500 && status < 600;
   const isTooManyRequests = status === 429;
   

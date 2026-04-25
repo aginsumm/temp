@@ -1,5 +1,10 @@
 import { create } from 'zustand';
-import { connectionManager, ConnectionStatus, ConnectionState } from '../services/connectionManager';
+import {
+  connectionManager,
+  ConnectionStatus,
+  ConnectionState,
+  QueuedRequest,
+} from '../services/connectionManager';
 
 interface NetworkState {
   status: ConnectionStatus;
@@ -10,10 +15,10 @@ interface NetworkState {
   httpAvailable: boolean;
   wsAvailable: boolean;
   isManualReconnect: boolean;
-  
+
   forceReconnect: () => Promise<boolean>;
   checkHealth: () => Promise<boolean>;
-  getQueuedRequests: () => any[];
+  getQueuedRequests: () => QueuedRequest[];
   clearQueue: () => void;
   setManualReconnect: (value: boolean) => void;
 }
@@ -65,7 +70,9 @@ connectionManager.subscribe((state: ConnectionState) => {
   });
 });
 
-export const getConnectionQuality = (latency: number | null): 'excellent' | 'good' | 'poor' | 'unknown' => {
+export const getConnectionQuality = (
+  latency: number | null
+): 'excellent' | 'good' | 'poor' | 'unknown' => {
   if (latency === null) return 'unknown';
   if (latency < 100) return 'excellent';
   if (latency < 300) return 'good';

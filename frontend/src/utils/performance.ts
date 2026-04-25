@@ -23,7 +23,7 @@ export interface PerformanceReport {
  * @param wait 等待时间（毫秒）
  * @returns 防抖后的函数
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
@@ -48,7 +48,7 @@ export function debounce<T extends (...args: any[]) => any>(
  * @param limit 时间限制（毫秒）
  * @returns 节流后的函数
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: unknown[]) => unknown>(
   func: T,
   limit: number
 ): (...args: Parameters<T>) => void {
@@ -76,18 +76,18 @@ export async function processInChunks<T, R>(
   chunkSize: number = 100
 ): Promise<R[]> {
   const results: R[] = [];
-  
+
   for (let i = 0; i < array.length; i += chunkSize) {
     const chunk = array.slice(i, i + chunkSize);
     const chunkResults = processor(chunk);
     results.push(...chunkResults);
-    
+
     // 让出主线程，避免阻塞 UI
     if (i + chunkSize < array.length) {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
   }
-  
+
   return results;
 }
 
@@ -98,7 +98,11 @@ export async function processInChunks<T, R>(
  */
 export function idleCallback(callback: (deadline: IdleDeadline) => void, timeout?: number): void {
   if ('requestIdleCallback' in window) {
-    (window as any).requestIdleCallback(callback, { timeout });
+    const requestIdleCallback = window.requestIdleCallback as (
+      cb: (deadline: IdleDeadline) => void,
+      opts?: { timeout?: number }
+    ) => number;
+    requestIdleCallback(callback, { timeout });
   } else {
     // Fallback: 使用 setTimeout
     setTimeout(() => {
@@ -325,8 +329,10 @@ export function measureComponentRender(
   componentName: string,
   onMeasure?: (duration: number) => void
 ) {
-  return function <T extends { new (...args: any[]): object }>(constructor: T) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return function <T extends new (...args: any[]) => object>(constructor: T) {
     return class extends constructor {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       constructor(...args: any[]) {
         super(...args);
 

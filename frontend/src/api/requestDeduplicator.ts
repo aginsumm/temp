@@ -1,24 +1,20 @@
 class RequestDeduplicator {
-  private pendingRequests: Map<string, Promise<any>>;
+  private pendingRequests: Map<string, Promise<unknown>>;
 
   constructor() {
     this.pendingRequests = new Map();
   }
 
-  async deduplicate<T>(
-    key: string,
-    requestFn: () => Promise<T>
-  ): Promise<T> {
+  async deduplicate<T>(key: string, requestFn: () => Promise<T>): Promise<T> {
     const existingRequest = this.pendingRequests.get(key);
-    
+
     if (existingRequest) {
-      return existingRequest;
+      return existingRequest as Promise<T>;
     }
 
-    const request = requestFn()
-      .finally(() => {
-        this.pendingRequests.delete(key);
-      });
+    const request = requestFn().finally(() => {
+      this.pendingRequests.delete(key);
+    });
 
     this.pendingRequests.set(key, request);
     return request;

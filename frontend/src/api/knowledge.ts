@@ -4,7 +4,7 @@ import { Entity as ChatEntity } from '../types/chat';
 import type { KnowledgeEntityFull } from '../data/models';
 import { withRetry } from '../utils/retry';
 
-const API_BASE = '/api/v1/knowledge';
+const API_BASE = 'knowledge';
 
 export interface Entity extends ChatEntity {
   region?: string;
@@ -600,3 +600,147 @@ export interface SearchHistoryItem {
   result_count: number;
   created_at: string;
 }
+
+export interface BatchOperationResult {
+  success_count: number;
+  failed_count: number;
+  results: Array<Record<string, unknown>>;
+  errors: Array<Record<string, unknown>>;
+}
+
+// 扩展 knowledgeApi 添加批量操作方法
+export const knowledgeApiWithBatch = {
+  ...knowledgeApi,
+
+  batchCreateEntities: async (entities: EntityCreate[]): Promise<BatchOperationResult> => {
+    if (apiAdapterManager.shouldUseLocal()) {
+      const results = await Promise.all(
+        entities.map((entity) =>
+          mockKnowledgeService.createEntity(entity as Partial<KnowledgeEntityFull>)
+        )
+      );
+      return {
+        success_count: results.length,
+        failed_count: 0,
+        results: results.map((r, idx) => ({
+          index: idx,
+          id: r.id,
+          name: r.name,
+          status: 'success',
+        })),
+        errors: [],
+      };
+    }
+
+    try {
+      const response = await apiAdapterManager.request<BatchOperationResult>({
+        method: 'POST',
+        url: `${API_BASE}/entity/batch`,
+        data: { entities },
+      });
+      return response.data;
+    } catch (error) {
+      console.warn('API unavailable, creating entities locally');
+      const results = await Promise.all(
+        entities.map((entity) =>
+          mockKnowledgeService.createEntity(entity as Partial<KnowledgeEntityFull>)
+        )
+      );
+      return {
+        success_count: results.length,
+        failed_count: 0,
+        results: results.map((r, idx) => ({
+          index: idx,
+          id: r.id,
+          name: r.name,
+          status: 'success',
+        })),
+        errors: [],
+      };
+    }
+  },
+
+  batchUpdateEntities: async (
+    updates: Record<string, EntityUpdate>
+  ): Promise<BatchOperationResult> => {
+    if (apiAdapterManager.shouldUseLocal()) {
+      const results = await Promise.all(
+        Object.entries(updates).map(([id, data]) =>
+          mockKnowledgeService.updateEntity(id, data as Partial<KnowledgeEntityFull>)
+        )
+      );
+      return {
+        success_count: results.length,
+        failed_count: 0,
+        results: results.map((r, idx) => ({
+          entity_id: Object.keys(updates)[idx],
+          name: r?.name || '',
+          status: 'success',
+        })),
+        errors: [],
+      };
+    }
+
+    try {
+      const response = await apiAdapterManager.request<BatchOperationResult>({
+        method: 'PUT',
+        url: `${API_BASE}/entity/batch`,
+        data: { updates },
+      });
+      return response.data;
+    } catch (error) {
+      console.warn('API unavailable, updating entities locally');
+      const results = await Promise.all(
+        Object.entries(updates).map(([id, data]) =>
+          mockKnowledgeService.updateEntity(id, data as Partial<KnowledgeEntityFull>)
+        )
+      );
+      return {
+        success_count: results.length,
+        failed_count: 0,
+        results: results.map((r, idx) => ({
+          entity_id: Object.keys(updates)[idx],
+          name: r?.name || '',
+          status: 'success',
+        })),
+        errors: [],
+      };
+    }
+  },
+
+  batchCreateRelationships: async (
+    relationships: RelationshipCreate[]
+  ): Promise<BatchOperationResult> => {
+    if (apiAdapterManager.shouldUseLocal()) {
+      const results = await Promise.all(
+        relationships.map((rel) => mockKnowledgeService.createRelationship(rel))
+      );
+      return {
+        success_count: results.length,
+        failed_count: 0,
+        results: results.map((r, idx) => ({ index: idx, id: r.id!, status: 'success' })),
+        errors: [],
+      };
+    }
+
+    try {
+      const response = await apiAdapterManager.request<BatchOperationResult>({
+        method: 'POST',
+        url: `${API_BASE}/relationship/batch`,
+        data: { relationships },
+      });
+      return response.data;
+    } catch (error) {
+      console.warn('API unavailable, creating relationships locally');
+      const results = await Promise.all(
+        relationships.map((rel) => mockKnowledgeService.createRelationship(rel))
+      );
+      return {
+        success_count: results.length,
+        failed_count: 0,
+        results: results.map((r, idx) => ({ index: idx, id: r.id!, status: 'success' })),
+        errors: [],
+      };
+    }
+  },
+};

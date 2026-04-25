@@ -1,5 +1,18 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
+interface SpeechRecognitionInstance {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+}
+
 interface UseVoiceInputOptions {
   onTranscript?: (text: string) => void;
   onError?: (error: string) => void;
@@ -25,13 +38,20 @@ export function useVoiceInput({
   const [error, setError] = useState<string | null>(null);
   const [isSupported, setIsSupported] = useState(false);
 
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const finalTranscriptRef = useRef('');
+
+  const isRecordingRef = useRef(false);
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
 
   useEffect(() => {
     // 检查浏览器支持
     const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      (window as unknown as Record<string, unknown>).SpeechRecognition ||
+      (window as unknown as Record<string, unknown>).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
       setError('您的浏览器不支持语音输入');
@@ -41,7 +61,7 @@ export function useVoiceInput({
 
     setIsSupported(true);
 
-    const recognition = new SpeechRecognition();
+    const recognition = new (SpeechRecognition as new () => SpeechRecognitionInstance)();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = language;
@@ -51,7 +71,7 @@ export function useVoiceInput({
       setError(null);
     };
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
       let interimTranscript = '';
       let finalTranscript = '';
 
@@ -75,7 +95,7 @@ export function useVoiceInput({
       }
     };
 
-    recognition.onerror = (event: any) => {
+    recognition.onerror = (event: { error: string }) => {
       let errorMessage = '语音识别错误';
 
       switch (event.error) {
@@ -104,7 +124,7 @@ export function useVoiceInput({
     };
 
     recognition.onend = () => {
-      if (isRecording) {
+      if (isRecordingRef.current) {
         // 如果仍在录音状态但识别结束了，尝试重启
         try {
           recognition.start();

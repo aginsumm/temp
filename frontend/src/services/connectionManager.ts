@@ -41,12 +41,57 @@ type ConnectionListener = (state: ConnectionState) => void;
 
 const DEFAULT_CONFIG: ConnectionConfig = {
   healthCheckInterval: 30000,
-  healthCheckEndpoint: '/health',
+  healthCheckEndpoint: '/',
   maxReconnectAttempts: 10,
   reconnectBaseDelay: 1000,
   reconnectMaxDelay: 30000,
   offlineQueueSize: 50,
 };
+const HEALTH_PATH = '/api/v1/health';
+
+function resolveHealthCheckUrl(rawBase: string): string {
+  // 如果是相对路径，添加默认主机
+  const baseUrl = rawBase.startsWith('http') ? rawBase : `http://localhost:8000${rawBase}`;
+
+  const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+
+  // 如果已经包含完整的 health 路径，直接返回
+  if (normalized.endsWith(HEALTH_PATH)) {
+    return normalized;
+  }
+
+  // 如果以 /health 结尾但不是 /api/v1/health，说明配置错误，需要修正
+  if (normalized.endsWith('/health')) {
+    console.warn(
+      '⚠️ 检测到 VITE_HEALTH_CHECK_URL 配置错误，应该是 http://localhost:8000/api/v1 或 http://localhost:8000/api/v1/health'
+    );
+    // 尝试修正：去掉 /health，添加 /api/v1/health
+    const baseWithoutHealth = normalized.slice(0, -'/health'.length);
+    return `${baseWithoutHealth}${HEALTH_PATH}`;
+  }
+
+  // 如果以 /api/v1 结尾，添加 /health
+  if (normalized.endsWith('/api/v1')) {
+    return `${normalized}/health`;
+  }
+
+  // 如果包含 /api/v1/，替换为 /api/v1/health
+  if (normalized.includes('/api/v1/')) {
+    return `${normalized.split('/api/v1/')[0]}${HEALTH_PATH}`;
+  }
+
+  // 如果包含 /api/v1（但不以它结尾），也替换
+  if (normalized.includes('/api/v1')) {
+    return `${normalized.split('/api/v1')[0]}${HEALTH_PATH}`;
+  }
+
+  // 其他情况，直接追加 /api/v1/health
+  return `${normalized}${HEALTH_PATH}`;
+}
+
+const HEALTH_CHECK_BASE_URL = resolveHealthCheckUrl(
+  import.meta.env.VITE_HEALTH_CHECK_URL || 'http://localhost:8000/api/v1'
+);
 
 class OfflineQueue {
   private queue: QueuedRequest[] = [];
@@ -146,7 +191,8 @@ class ConnectionManager {
   async checkHealth(): Promise<boolean> {
     const startTime = Date.now();
     try {
-      const response = await fetch(`${this.apiBaseUrl}${this.config.healthCheckEndpoint}`, {
+      // HEALTH_CHECK_BASE_URL 已经包含了完整的路径，不需要再拼接
+      const response = await fetch(HEALTH_CHECK_BASE_URL, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(5000),
@@ -167,7 +213,8 @@ class ConnectionManager {
       }
 
       return isHealthy;
-    } catch {
+    } catch (error) {
+      console.error('健康检查失败:', error);
       this.updateState({
         httpAvailable: false,
         latency: null,
@@ -353,8 +400,6 @@ class ConnectionManager {
     }
   }
 }
-
-const HEALTH_CHECK_BASE_URL = import.meta.env.VITE_HEALTH_CHECK_URL || '';
 
 export const connectionManager = new ConnectionManager(HEALTH_CHECK_BASE_URL);
 

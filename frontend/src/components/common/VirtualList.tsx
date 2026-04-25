@@ -65,8 +65,8 @@ export function VirtualList<T>({
 }
 
 interface MessageListProps {
-  messages: any[];
-  renderItem: (message: any, index: number) => React.ReactNode;
+  messages: unknown[];
+  renderItem: (message: unknown, index: number) => React.ReactNode;
   containerHeight?: number;
   messageHeight?: number;
 }
@@ -90,8 +90,8 @@ export function VirtualMessageList({
 }
 
 interface InfiniteScrollProps {
-  items: any[];
-  renderItem: (item: any, index: number) => React.ReactNode;
+  items: unknown[];
+  renderItem: (item: unknown, index: number) => React.ReactNode;
   onLoadMore: () => Promise<void>;
   hasMore: boolean;
   loading?: boolean;
@@ -104,10 +104,9 @@ export function InfiniteScroll({
   renderItem,
   onLoadMore,
   hasMore,
-  loading: _loading = false,
   threshold = 100,
   className = '',
-}: InfiniteScrollProps) {
+}: Omit<InfiniteScrollProps, 'loading'>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
 

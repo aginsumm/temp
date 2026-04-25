@@ -108,29 +108,29 @@ export const useAuthStore = create<AuthState>()(
       },
 
       // 把原来的 updateUser 替换为这个增强版：
-updateUser: (userData) => {
-  const currentUser = get().user;
-  if (currentUser) {
-    // 1. 更新 Zustand 全局状态
-    const updatedUser = { ...currentUser, ...userData };
-    set({ user: updatedUser });
+      updateUser: (userData) => {
+        const currentUser = get().user;
+        if (currentUser) {
+          // 1. 更新 Zustand 全局状态
+          const updatedUser = { ...currentUser, ...userData };
+          set({ user: updatedUser });
 
-    // 2. 🔥 核心修复：同步更新底层 LocalStorage，防止路由跳转时被 App.jsx 的旧数据覆盖
-    try {
-      const legacyUserStr = localStorage.getItem('heritage_current_user');
-      if (legacyUserStr) {
-        const legacyUser = JSON.parse(legacyUserStr);
-        // 把新的 userData (比如 avatar) 合并进去，再存回本地
-        localStorage.setItem(
-          'heritage_current_user', 
-          JSON.stringify({ ...legacyUser, ...userData })
-        );
-      }
-    } catch (e) {
-      console.warn('同步本地 legacy 存储失败:', e);
-    }
-  }
-},
+          // 2. 🔥 核心修复：同步更新底层 LocalStorage，防止路由跳转时被 App.jsx 的旧数据覆盖
+          try {
+            const legacyUserStr = localStorage.getItem('heritage_current_user');
+            if (legacyUserStr) {
+              const legacyUser = JSON.parse(legacyUserStr);
+              // 把新的 userData (比如 avatar) 合并进去，再存回本地
+              localStorage.setItem(
+                'heritage_current_user',
+                JSON.stringify({ ...legacyUser, ...userData })
+              );
+            }
+          } catch (e) {
+            console.warn('同步本地 legacy 存储失败:', e);
+          }
+        }
+      },
 
       setUserFromStorage: (user, token) => {
         set({
@@ -219,7 +219,7 @@ updateUser: (userData) => {
               });
               localStorage.setItem('token', response.access_token);
               return { success: true };
-            } catch (e: any) {
+            } catch (e: unknown) {
               console.warn('Backend login failed, trying local:', e);
             }
           }
@@ -241,9 +241,10 @@ updateUser: (userData) => {
 
           set({ isLoading: false, error: localResult.error });
           return { success: false, error: localResult.error };
-        } catch (e: any) {
-          set({ isLoading: false, error: e.message });
-          return { success: false, error: e.message };
+        } catch (e: unknown) {
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          set({ isLoading: false, error: errorMessage });
+          return { success: false, error: errorMessage };
         }
       },
 
@@ -273,51 +274,56 @@ updateUser: (userData) => {
 
           set({ isLoading: false, error: '访客登录失败' });
           return { success: false, error: '访客登录失败' };
-        } catch (e: any) {
-          set({ isLoading: false, error: e.message });
-          return { success: false, error: e.message };
+        } catch (e: unknown) {
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          set({ isLoading: false, error: errorMessage });
+          return { success: false, error: errorMessage };
         }
       },
 
-   register: async (username: string, password: string) => {
-    // 【关键新增】：如果是游客点击了注册，注册前先清理游客状态
+      register: async (username: string, password: string) => {
+        // 【关键新增】：如果是游客点击了注册，注册前先清理游客状态
         const currentState = get();
         if (currentState.isAuthenticated) {
           await currentState.logout();
         }
-  set({ isLoading: true, error: null });
+        set({ isLoading: true, error: null });
 
-  try {
-    // 1. 检查后端是否可用
-    const backendAvailable = await get().checkBackendStatus();
-    if (!backendAvailable) {
-      set({ isLoading: false, error: '服务器不可用，请稍后重试' });
-      return { success: false, error: '服务器不可用' };
-    }
+        try {
+          // 1. 检查后端是否可用
+          const backendAvailable = await get().checkBackendStatus();
+          if (!backendAvailable) {
+            set({ isLoading: false, error: '服务器不可用，请稍后重试' });
+            return { success: false, error: '服务器不可用' };
+          }
 
-    // 2. 直接调用后端注册（不再降级到本地）
-    const response = await authApi.register({ username, password });
-    
-    // 3. 注册成功，更新状态
-    set({
-      user: response.user,
-      token: response.access_token,
-      isAuthenticated: true,
-      isGuest: false,
-      isLocalUser: false,      // 明确标记为在线用户
-      isLoading: false,
-    });
-    localStorage.setItem('token', response.access_token);
-    return { success: true };
+          // 2. 直接调用后端注册（不再降级到本地）
+          const response = await authApi.register({ username, password });
 
-  } catch (e: any) {
-    // 4. 后端注册失败，直接返回错误，不进行任何本地降级
-    console.error('Backend register failed:', e);
-    const errorMsg = e.response?.data?.detail || e.message || '注册失败，请重试';
-    set({ isLoading: false, error: errorMsg });
-    return { success: false, error: errorMsg };
-  }
-},
+          // 3. 注册成功，更新状态
+          set({
+            user: response.user,
+            token: response.access_token,
+            isAuthenticated: true,
+            isGuest: false,
+            isLocalUser: false, // 明确标记为在线用户
+            isLoading: false,
+          });
+          localStorage.setItem('token', response.access_token);
+          return { success: true };
+        } catch (e: unknown) {
+          // 4. 后端注册失败，直接返回错误，不进行任何本地降级
+          console.error('Backend register failed:', e);
+          const errorObj = e as Record<string, unknown>;
+          const errorMsg =
+            (((errorObj.response as Record<string, unknown>)?.data as Record<string, unknown>)
+              ?.detail as string) ||
+            (e instanceof Error ? e.message : String(e)) ||
+            '注册失败，请重试';
+          set({ isLoading: false, error: errorMsg });
+          return { success: false, error: errorMsg };
+        }
+      },
     }),
     {
       name: 'auth-storage',

@@ -38,29 +38,29 @@ export function extractFiltersFromSnapshot(snapshot: GraphSnapshot): {
   const categories = new Set<string>();
   const regions = new Set<string>();
   const periods = new Set<string>();
-  
+
   // 从实体中提取类别、地区和时期
   snapshot.entities.forEach((entity) => {
     categories.add(entity.type);
-    
+
     if (entity.metadata?.region) {
-      regions.add(entity.metadata.region);
+      regions.add(entity.metadata.region as string);
     }
-    
+
     if (entity.metadata?.period) {
-      periods.add(entity.metadata.period);
+      periods.add(entity.metadata.period as string);
     }
-    
+
     // 也检查 Knowledge 实体的字段
-    const knowledgeEntity = entity as any;
+    const knowledgeEntity = entity as unknown as Record<string, unknown>;
     if (knowledgeEntity.region) {
-      regions.add(knowledgeEntity.region);
+      regions.add(knowledgeEntity.region as string);
     }
     if (knowledgeEntity.period) {
-      periods.add(knowledgeEntity.period);
+      periods.add(knowledgeEntity.period as string);
     }
   });
-  
+
   return {
     categories: Array.from(categories),
     regions: Array.from(regions),
@@ -79,22 +79,17 @@ export async function loadSnapshot(
   snapshot: GraphSnapshot,
   options: SnapshotLoadOptions = {}
 ): Promise<SnapshotLoadResult> {
-  const {
-    updateFilters = true,
-    dispatchEvent = true,
-    saveToSession = false,
-    sessionId,
-  } = options;
-  
+  const { updateFilters = true, dispatchEvent = true, saveToSession = false, sessionId } = options;
+
   try {
     // 提取数据
     const entities = snapshot.entities || [];
     const relations = snapshot.relations || [];
     const keywords = snapshot.keywords || [];
-    
+
     // 提取筛选条件
     const filters = extractFiltersFromSnapshot(snapshot);
-    
+
     // 保存到 sessionStorage（用于页面刷新后恢复）
     if (saveToSession && sessionId) {
       try {
@@ -111,7 +106,7 @@ export async function loadSnapshot(
         console.warn('Failed to save snapshot to sessionStorage:', error);
       }
     }
-    
+
     // 触发全局事件
     if (dispatchEvent) {
       const event = new CustomEvent('loadSnapshot', {
@@ -125,7 +120,7 @@ export async function loadSnapshot(
       });
       window.dispatchEvent(event);
     }
-    
+
     return {
       success: true,
       snapshot,
@@ -158,14 +153,14 @@ export async function restoreSnapshotFromSession(
     if (!savedState) {
       return null;
     }
-    
+
     const { entities, relations, keywords, filters, snapshotId } = JSON.parse(savedState);
-    
+
     // 检查是否是同一个会话的图谱状态
     if (!entities || entities.length === 0) {
       return null;
     }
-    
+
     // 构造快照对象
     const snapshot: GraphSnapshot = {
       id: snapshotId || `restored_${Date.now()}`,
@@ -177,7 +172,7 @@ export async function restoreSnapshotFromSession(
       relations: relations || [],
       created_at: new Date().toISOString(),
     };
-    
+
     // 触发加载事件
     const event = new CustomEvent('restoreGraphState', {
       detail: {
@@ -188,7 +183,7 @@ export async function restoreSnapshotFromSession(
       },
     });
     window.dispatchEvent(event);
-    
+
     return {
       success: true,
       snapshot,
@@ -219,10 +214,7 @@ export function clearSnapshotFromSession(sessionId: string): void {
  * @param snapshot 快照对象
  * @param sessionId 会话 ID
  */
-export function saveSnapshotToSession(
-  snapshot: GraphSnapshot,
-  sessionId: string
-): void {
+export function saveSnapshotToSession(snapshot: GraphSnapshot, sessionId: string): void {
   try {
     const graphState = {
       entities: snapshot.entities,

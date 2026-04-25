@@ -6,14 +6,14 @@ export interface AppError {
   message: string;
   details?: string;
   timestamp: string;
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
 }
 
 class ErrorHandler {
   private errors: AppError[] = [];
   private maxErrors = 100;
 
-  handleError(error: Error | string, context?: Record<string, any>): AppError {
+  handleError(error: Error | string, context?: Record<string, unknown>): AppError {
     const appError: AppError = {
       code: this.generateErrorCode(error),
       message: this.getUserFriendlyMessage(error),
@@ -106,7 +106,7 @@ export const errorHandler = new ErrorHandler();
 export function useErrorHandler() {
   const toast = useToast();
 
-  const handleError = (error: Error | string, context?: Record<string, any>) => {
+  const handleError = (error: Error | string, context?: Record<string, unknown>) => {
     const appError = errorHandler.handleError(error, context);
     toast.error(appError.message);
     return appError;

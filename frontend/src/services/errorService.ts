@@ -340,7 +340,7 @@ export function handleApiError(error: unknown, context?: ErrorContext): AppError
   return errorService.handleError(error, context);
 }
 
-export function withErrorHandling<T extends (...args: any[]) => any>(
+export function withErrorHandling<T extends (...args: unknown[]) => unknown>(
   fn: T,
   context?: ErrorContext
 ): T {

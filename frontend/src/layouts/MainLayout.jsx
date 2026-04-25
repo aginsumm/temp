@@ -12,7 +12,7 @@ export default function MainLayout() {
       >
         <NetworkStatusManager mode="compact" position="top-bar" showQueue />
         <Header />
-        <main className="pt-16 flex-1 overflow-x-hidden">
+        <main className="pt-16 flex-1 overflow-x-hidden min-h-0">
           <Outlet />
         </main>
       </div>

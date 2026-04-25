@@ -302,10 +302,9 @@ export async function withErrorHandling<T>(
   operation: () => Promise<T>,
   options: ErrorHandlerOptions & {
     successMessage?: string;
-    errorMessage?: string;
   } = {}
 ): Promise<T> {
-  const { successMessage, errorMessage, ...errorOptions } = options;
+  const { successMessage, ...errorOptions } = options;
 
   try {
     const result = await operation();

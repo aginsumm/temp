@@ -27,37 +27,52 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const addToast = useCallback((toast: Omit<Toast, 'id'>) => {
-    const id = `toast_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const newToast = { ...toast, id };
-    
-    setToasts((prev) => [...prev, newToast]);
-
-    const duration = toast.duration || 5000;
-    setTimeout(() => {
-      removeToast(id);
-    }, duration);
-  }, []);
-
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const success = useCallback((title: string, message?: string) => {
-    addToast({ type: 'success', title, message });
-  }, [addToast]);
+  const addToast = useCallback(
+    (toast: Omit<Toast, 'id'>) => {
+      const id = `toast_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+      const newToast = { ...toast, id };
 
-  const error = useCallback((title: string, message?: string) => {
-    addToast({ type: 'error', title, message, duration: 7000 });
-  }, [addToast]);
+      setToasts((prev) => [...prev, newToast]);
 
-  const warning = useCallback((title: string, message?: string) => {
-    addToast({ type: 'warning', title, message });
-  }, [addToast]);
+      const duration = toast.duration || 5000;
+      setTimeout(() => {
+        removeToast(id);
+      }, duration);
+    },
+    [removeToast]
+  );
 
-  const info = useCallback((title: string, message?: string) => {
-    addToast({ type: 'info', title, message });
-  }, [addToast]);
+  const success = useCallback(
+    (title: string, message?: string) => {
+      addToast({ type: 'success', title, message });
+    },
+    [addToast]
+  );
+
+  const error = useCallback(
+    (title: string, message?: string) => {
+      addToast({ type: 'error', title, message, duration: 7000 });
+    },
+    [addToast]
+  );
+
+  const warning = useCallback(
+    (title: string, message?: string) => {
+      addToast({ type: 'warning', title, message });
+    },
+    [addToast]
+  );
+
+  const info = useCallback(
+    (title: string, message?: string) => {
+      addToast({ type: 'info', title, message });
+    },
+    [addToast]
+  );
 
   return (
     <ToastContext.Provider value={{ toasts, addToast, removeToast, success, error, warning, info }}>
@@ -67,7 +82,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast: (id: string) => void }) {
+function ToastContainer({
+  toasts,
+  removeToast,
+}: {
+  toasts: Toast[];
+  removeToast: (id: string) => void;
+}) {
   return (
     <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm w-full pointer-events-none">
       <AnimatePresence>
@@ -123,9 +144,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
         </div>
         <div className="flex-1 min-w-0">
           <h4 className="text-sm font-semibold text-white">{toast.title}</h4>
-          {toast.message && (
-            <p className="text-xs text-white/80 mt-1">{toast.message}</p>
-          )}
+          {toast.message && <p className="text-xs text-white/80 mt-1">{toast.message}</p>}
         </div>
         <button
           onClick={onClose}
@@ -138,6 +157,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useToast() {
   const context = useContext(ToastContext);
   if (!context) {

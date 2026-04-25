@@ -7,8 +7,8 @@ import json
 from datetime import datetime, timedelta
 
 from app.core.database import get_db
-from app.core.auth import get_current_user
-from app.schemas.chat import Entity, Relation, GraphData, GraphNode, GraphEdge
+from app.core.auth import get_current_user, get_current_or_guest
+from app.schemas.chat import Entity, Relation, RelationType, GraphData, GraphNode, GraphEdge
 from app.services.graph_service import GraphSnapshotService
 from app.models.chat import MessageEntity, Message, MessageRelation
 from pydantic import BaseModel
@@ -59,7 +59,7 @@ class SnapshotListResponse(BaseModel):
 async def create_snapshot(
     request: CreateSnapshotRequest,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_or_guest),
 ):
     snapshot_service = GraphSnapshotService(db)
     
@@ -96,7 +96,7 @@ async def create_snapshot(
 async def get_snapshot(
     snapshot_id: str,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_or_guest),
 ):
     snapshot_service = GraphSnapshotService(db)
     snapshot = await snapshot_service.get_snapshot(snapshot_id)
@@ -110,7 +110,7 @@ async def get_snapshot(
     
     share_url = None
     if snapshot.is_shared and snapshot.share_token:
-        share_url = f"/shared/graph/{snapshot.share_token}"
+        share_url = f"/api/v1/shared/graph/{snapshot.share_token}"
     
     return SnapshotResponse(
         id=snapshot.id,
@@ -136,7 +136,7 @@ async def list_snapshots(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_or_guest),
 ):
     snapshot_service = GraphSnapshotService(db)
     snapshots, total = await snapshot_service.get_user_snapshots(
@@ -150,7 +150,7 @@ async def list_snapshots(
     for snapshot in snapshots:
         share_url = None
         if snapshot.is_shared and snapshot.share_token:
-            share_url = f"/shared/graph/{snapshot.share_token}"
+            share_url = f"/api/v1/shared/graph/{snapshot.share_token}"
         
         response_snapshots.append(
             SnapshotResponse(
@@ -183,7 +183,7 @@ async def list_snapshots(
 async def delete_snapshot(
     snapshot_id: str,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_or_guest),
 ):
     snapshot_service = GraphSnapshotService(db)
     success = await snapshot_service.delete_snapshot(snapshot_id, user_id)
@@ -204,7 +204,7 @@ async def update_snapshot(
     snapshot_id: str,
     updates: SnapshotUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_or_guest),
 ):
     snapshot_service = GraphSnapshotService(db)
     snapshot = await snapshot_service.update_snapshot(
@@ -218,7 +218,7 @@ async def update_snapshot(
     
     share_url = None
     if snapshot.is_shared and snapshot.share_token:
-        share_url = f"/shared/graph/{snapshot.share_token}"
+        share_url = f"/api/v1/shared/graph/{snapshot.share_token}"
     
     return SnapshotResponse(
         id=snapshot.id,
@@ -244,7 +244,7 @@ async def share_snapshot(
     expires_days: Optional[int] = Query(7, ge=1, le=365),
     request: Request = None,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_or_guest),
 ):
     snapshot_service = GraphSnapshotService(db)
     share = await snapshot_service.share_snapshot(
@@ -261,9 +261,9 @@ async def share_snapshot(
     
     # 生成完整 URL
     if request:
-        share_url = f"{request.url.scheme}://{request.url.netloc}/shared/graph/{share.share_token}"
+        share_url = f"{request.url.scheme}://{request.url.netloc}/api/v1/shared/graph/{share.share_token}"
     else:
-        share_url = f"/shared/graph/{share.share_token}"
+        share_url = f"/api/v1/shared/graph/{share.share_token}"
     
     return SnapshotResponse(
         id=snapshot.id,
@@ -287,7 +287,7 @@ async def share_snapshot(
 async def unshare_snapshot(
     snapshot_id: str,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_or_guest),
 ):
     snapshot_service = GraphSnapshotService(db)
     success = await snapshot_service.cancel_share(snapshot_id, user_id)
@@ -309,7 +309,7 @@ async def get_shared_snapshot(
     if not snapshot:
         raise HTTPException(status_code=404, detail="分享已过期或不存在")
     
-    share_url = f"/shared/graph/{share_token}"
+    share_url = f"/api/v1/shared/graph/{share_token}"
     
     return SnapshotResponse(
         id=snapshot.id,
@@ -333,10 +333,18 @@ async def get_shared_snapshot(
 async def get_session_graph_data(
     session_id: str,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user),
+    user_id: str = Depends(get_current_or_guest),
 ):
     from app.services.chat_service import MessageService
+    from app.services.chat_service import SessionService
     
+    session_service = SessionService(db)
+    session = await session_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    if session.user_id != user_id:
+        raise HTTPException(status_code=403, detail="无权访问该会话图谱")
+
     message_service = MessageService(db)
     messages, total, _ = await message_service.get_session_messages(session_id, 1, 100)
     
@@ -357,16 +365,46 @@ async def get_session_graph_data(
                 all_entities.append(entity)
         
         if msg.keywords:
-            all_keywords.extend(msg.keywords)
+            if isinstance(msg.keywords, str):
+                try:
+                    all_keywords.extend(json.loads(msg.keywords))
+                except json.JSONDecodeError:
+                    pass
+            elif isinstance(msg.keywords, list):
+                all_keywords.extend(msg.keywords)
+
+        if msg.relations:
+            for rel in msg.relations:
+                raw_type = rel.relation_type if hasattr(rel, "relation_type") else None
+                try:
+                    relation_type = (
+                        RelationType(raw_type)
+                        if raw_type
+                        else RelationType.related_to
+                    )
+                except ValueError:
+                    relation_type = RelationType.related_to
+
+                all_relations.append(
+                    Relation(
+                        id=rel.id,
+                        source=rel.source_entity,
+                        target=rel.target_entity,
+                        type=relation_type,
+                        confidence=(rel.confidence or 80) / 100.0,
+                        evidence=rel.evidence,
+                        bidirectional=bool(rel.bidirectional),
+                    )
+                )
     
-    seen_entity_names = set()
+    seen_entity_ids = set()
     unique_entities = []
     for e in all_entities:
-        if e.name not in seen_entity_names:
-            seen_entity_names.add(e.name)
+        if e.id not in seen_entity_ids:
+            seen_entity_ids.add(e.id)
             unique_entities.append(e)
     
-    unique_keywords = list(dict.fromkeys(all_keywords))
+    unique_keywords = [kw for kw in dict.fromkeys(all_keywords) if isinstance(kw, str)]
     
     nodes: list[GraphNode] = []
     edges: list[GraphEdge] = []
@@ -382,11 +420,22 @@ async def get_session_graph_data(
         nodes.append(node)
     
     node_ids = {n.id for n in nodes}
+    entity_name_to_id = {entity.name: entity.id for entity in unique_entities}
+    edge_keys = set()
     for relation in all_relations:
-        if relation.source in node_ids and relation.target in node_ids:
+        source_id = relation.source if relation.source in node_ids else entity_name_to_id.get(relation.source)
+        target_id = relation.target if relation.target in node_ids else entity_name_to_id.get(relation.target)
+
+        if source_id in node_ids and target_id in node_ids:
+            edge_key = (source_id, target_id, relation.type.value)
+            if edge_key in edge_keys:
+                continue
+            edge_keys.add(edge_key)
             edge = GraphEdge(
-                source=relation.source,
-                target=relation.target,
+                id=relation.id,
+                source=source_id,
+                target=target_id,
+                relationType=relation.type,
                 value=relation.confidence or 0.5,
             )
             edges.append(edge)

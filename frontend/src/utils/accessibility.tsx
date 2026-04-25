@@ -127,6 +127,7 @@ export function AccessibilityProvider({ children }: { children: React.ReactNode 
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAccessibility() {
   const context = useContext(AccessibilityContext);
   if (!context) {
@@ -135,6 +136,7 @@ export function useAccessibility() {
   return context;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useKeyboardShortcut(
   key: string,
   callback: () => void,
@@ -164,6 +166,7 @@ export function useKeyboardShortcut(
   }, [key, callback, options]);
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useFocusTrap(active: boolean = true) {
   const containerRef = useRef<HTMLElement>(null);
   const { trapFocus } = useAccessibility();
@@ -178,6 +181,7 @@ export function useFocusTrap(active: boolean = true) {
   return containerRef;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAnnouncement() {
   const { announce } = useAccessibility();
   return announce;

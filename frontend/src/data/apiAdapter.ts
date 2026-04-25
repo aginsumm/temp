@@ -10,9 +10,44 @@ interface RequestConfig {
 }
 
 type NetworkStatusListener = (status: NetworkStatus) => void;
+const HEALTH_PATH = '/api/v1/health';
+
+function resolveHealthUrl(baseUrl: string): string {
+  const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+
+  // 如果已经包含完整的 health 路径，直接返回
+  if (normalized.endsWith(HEALTH_PATH)) {
+    return normalized;
+  }
+
+  // 如果以 /health 结尾但不是 /api/v1/health，说明配置错误，需要修正
+  if (normalized.endsWith('/health')) {
+    console.warn('⚠️ 检测到 API 基础 URL 配置错误，应该是 /api/v1 或 http://localhost:8000/api/v1');
+    const baseWithoutHealth = normalized.slice(0, -'/health'.length);
+    return `${baseWithoutHealth}${HEALTH_PATH}`;
+  }
+
+  // 如果以 /api/v1 结尾，添加 /health
+  if (normalized.endsWith('/api/v1')) {
+    return `${normalized}/health`;
+  }
+
+  // 如果包含 /api/v1/，替换为 /api/v1/health
+  if (normalized.includes('/api/v1/')) {
+    return `${normalized.split('/api/v1/')[0]}${HEALTH_PATH}`;
+  }
+
+  // 如果包含 /api/v1（但不以它结尾），也替换
+  if (normalized.includes('/api/v1')) {
+    return `${normalized.split('/api/v1')[0]}${HEALTH_PATH}`;
+  }
+
+  // 其他情况，直接追加 /api/v1/health
+  return `${normalized}${HEALTH_PATH}`;
+}
 
 class ApiAdapterManager {
-  private baseUrl: string = 'http://localhost:8000/api/v1';
+  private baseUrl: string = import.meta.env.VITE_API_BASE_URL || '/api/v1';
   private defaultTimeout: number = 30000;
   private connectionMode: ConnectionMode = 'offline';
   private listeners: Set<NetworkStatusListener> = new Set();
@@ -53,7 +88,7 @@ class ApiAdapterManager {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      const response = await fetch(`${this.baseUrl}/health`, {
+      const response = await fetch(resolveHealthUrl(this.baseUrl), {
         method: 'GET',
         signal: controller.signal,
       });
@@ -117,7 +152,15 @@ class ApiAdapterManager {
     url: string,
     params?: Record<string, string | number | boolean | undefined>
   ): string {
-    const fullUrl = url.startsWith('http') ? url : `${this.baseUrl}${url}`;
+    let fullUrl: string;
+    if (url.startsWith('http')) {
+      fullUrl = url;
+    } else {
+      // 确保 baseUrl 和 url 之间有且仅有一个 /
+      const base = this.baseUrl.endsWith('/') ? this.baseUrl.slice(0, -1) : this.baseUrl;
+      const path = url.startsWith('/') ? url : `/${url}`;
+      fullUrl = `${base}${path}`;
+    }
 
     if (params && Object.keys(params).length > 0) {
       const searchParams = new URLSearchParams();
@@ -140,27 +183,6 @@ class ApiAdapterManager {
   }
 
   async request<T>(config: RequestConfig): Promise<ApiResponse<T>> {
-
-    // 👇🌟🌟🌟 终极安检门：拦截一切导致 Bug 的空消息和假消息 🌟🌟🌟👇
-    if (config.url && config.url.includes('/chat/message')) {
-      
-      // 👇🌟 拦截所有发往废弃接口的请求 🌟👇
-    if (config.url && config.url.includes('/chat/message')) {
-      console.warn("🛑 后端已删除 /chat/message 接口，已拦截废弃的同步请求");
-      return { data: {} as T, status: 200, headers: {} }; // 假装成功，让同步器闭嘴，消除 404
-    }
-
-      // // 2. 拦截被 syncManager 盲目推送的空内容请求！(这是解决英文预设的关键)
-      // if (config.method === 'POST' && config.data) {
-      //   const payloadContent = (config.data as any).content;
-      //   if (payloadContent === undefined || payloadContent === null || payloadContent.trim() === '') {
-      //     console.warn("🛑 拦截了导致双重回复的空消息请求！已丢弃。");
-      //     return { data: {} as T, status: 200, headers: {} }; // 假装成功，让同步器闭嘴
-      //   }
-      // }
-    }
-    // 👆🌟🌟🌟 拦截结束 🌟🌟🌟👆
-
     const { method, url, data, params, headers, timeout } = config;
     const fullUrl = this.buildUrl(url, params);
     const token = this.getAuthToken();

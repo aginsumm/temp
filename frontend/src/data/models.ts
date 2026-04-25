@@ -141,6 +141,7 @@ export interface ChatMessage {
   sources?: Source[];
   entities?: ChatEntity[];
   keywords?: string[];
+  relations?: import('../types/chat').Relation[];
   feedback?: 'helpful' | 'unclear' | null;
   is_favorite?: boolean;
   versions?: ChatMessageVersion[];

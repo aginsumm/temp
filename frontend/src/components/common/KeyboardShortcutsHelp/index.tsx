@@ -239,6 +239,7 @@ export default function KeyboardShortcutsHelp({ visible, onClose }: KeyboardShor
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useKeyboardShortcuts(
   handlers: Record<string, () => void>,
   enabled: boolean = true

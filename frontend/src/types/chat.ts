@@ -46,43 +46,19 @@ export interface Source {
   relevance: number;
 }
 
-export interface Entity {
-  id: string;
-  name: string;
-  type: EntityType;
-  description?: string;
-  url?: string;
-  relevance?: number;
-  metadata?: {
-    period?: string;
-    region?: string;
-    category?: string;
-  };
-  properties?: Record<string, unknown>;
-  // Knowledge 模块扩展字段
-  importance?: number;
-  region?: string;
-  period?: string;
-  coordinates?: {
-    lat: number;
-    lng: number;
-  };
-  images?: string[];
-  tags?: string[];
-  created_at?: string;
-  updated_at?: string;
-  aliases?: string[];
-  external_ids?: Record<string, string>;
-}
+// 从统一的 graph.ts 导入类型
+import type {
+  EntityType,
+  ChatEntity as Entity,
+  ChatRelation as Relation,
+  RelationType,
+  GraphData,
+} from './graph';
 
-export type EntityType =
-  | 'inheritor'
-  | 'technique'
-  | 'work'
-  | 'pattern'
-  | 'region'
-  | 'period'
-  | 'material';
+// 向后兼容：重新导出类型
+export { EntityType, RelationType };
+// 导出 Entity 和 Relation 类型，供其他模块使用
+export type { Entity, Relation };
 
 export interface FavoriteQuestion {
   id: string;
@@ -131,6 +107,7 @@ export interface ChatRequest {
   session_id: string;
   content: string;
   message_type?: 'text' | 'voice';
+  file_urls?: string[];
 }
 
 export interface ChatResponse {
@@ -155,70 +132,6 @@ export interface MessageListResponse {
   messages: Message[];
   total: number;
   has_more: boolean;
-}
-
-export interface Relation {
-  id: string;
-  source: string;
-  target: string;
-  type: RelationType;
-  confidence?: number;
-  evidence?: string;
-  bidirectional?: boolean;
-}
-
-export type RelationType =
-  | 'inherits'
-  | 'origin'
-  | 'creates'
-  | 'flourished_in'
-  | 'located_in'
-  | 'uses_material'
-  | 'has_pattern'
-  | 'related_to'
-  | 'influenced_by'
-  | 'contains';
-
-export interface GraphNode {
-  id: string;
-  name: string;
-  category: EntityType;
-  symbolSize?: number;
-  value?: number;
-  x?: number;
-  y?: number;
-  itemStyle?: {
-    color?: string;
-    borderColor?: string;
-    borderWidth?: number;
-  };
-  description?: string;
-  metadata?: Entity['metadata'];
-}
-
-export interface GraphEdge {
-  id: string;
-  source: string;
-  target: string;
-  relationType: RelationType;
-  value?: number;
-  lineStyle?: {
-    color?: string;
-    width?: number;
-    curveness?: number;
-    opacity?: number;
-  };
-}
-
-export interface GraphCategory {
-  name: EntityType;
-  baseColor: string;
-}
-
-export interface GraphData {
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-  categories?: GraphCategory[];
 }
 
 export interface GraphSnapshot {

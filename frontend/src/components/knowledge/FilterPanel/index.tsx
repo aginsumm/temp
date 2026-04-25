@@ -1,30 +1,40 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Filter, ChevronDown, ChevronRight, ChevronLeft } from 'lucide-react';
-import { knowledgeApi } from '../../../api/knowledge';
+import { motion } from 'framer-motion';
+import { ChevronLeft, Search, X, SlidersHorizontal } from 'lucide-react';
 import useKnowledgeGraphStore from '../../../stores/knowledgeGraphStore';
+import { knowledgeApi } from '../../../api/knowledge';
 
-interface ExpandedSections {
-  region: boolean;
-  period: boolean;
+interface FilterPanelProps {
+  onFilterChange?: (filters: FilterState) => void;
 }
 
-export default function FilterPanel() {
+interface FilterState {
+  keyword: string;
+  category: string;
+  regions: string[];
+  periods: string[];
+  minImportance: number;
+  maxImportance: number;
+  hasCoordinates: boolean | null;
+}
+
+export default function FilterPanel({ onFilterChange }: FilterPanelProps) {
+  const { toggleFilterPanel, filterPanelCollapsed, setCategory, setKeyword } =
+    useKnowledgeGraphStore();
+  const [filters, setFilters] = useState<FilterState>({
+    keyword: '',
+    category: 'all',
+    regions: [],
+    periods: [],
+    minImportance: 0,
+    maxImportance: 1,
+    hasCoordinates: null,
+  });
+  const [categories, setCategories] = useState<
+    Array<{ value: string; label: string; color: string }>
+  >([]);
   const [regions, setRegions] = useState<string[]>([]);
   const [periods, setPeriods] = useState<string[]>([]);
-  const [expandedSections, setExpandedSections] = useState<ExpandedSections>({
-    region: true,
-    period: true,
-  });
-
-  const {
-    region: selectedRegions,
-    period: selectedPeriods,
-    setRegion,
-    setPeriod,
-    filterPanelCollapsed,
-    toggleFilterPanel,
-  } = useKnowledgeGraphStore();
 
   useEffect(() => {
     loadFilterOptions();
@@ -32,76 +42,73 @@ export default function FilterPanel() {
 
   const loadFilterOptions = async () => {
     try {
-      const [regionsData, periodsData] = await Promise.all([
+      const [categoriesData, regionsData, periodsData] = await Promise.all([
+        knowledgeApi.getCategories(),
         knowledgeApi.getRegions(),
         knowledgeApi.getPeriods(),
       ]);
+      setCategories(categoriesData);
       setRegions(regionsData);
       setPeriods(periodsData);
     } catch (error) {
-      console.error('加载筛选选项失败:', error);
+      console.error('Failed to load filter options:', error);
     }
   };
 
-  const toggleSection = (section: keyof ExpandedSections) => {
-    setExpandedSections((prev) => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
+  const updateFilter = (
+    key: keyof FilterState,
+    value: string | number | boolean | null | string[]
+  ) => {
+    const newFilters = { ...filters, [key]: value };
+    setFilters(newFilters);
+    onFilterChange?.(newFilters);
+
+    // 同步到 store，触发图谱重新加载
+    if (key === 'category') {
+      setCategory(value as string);
+    } else if (key === 'keyword') {
+      setKeyword(value as string);
+    }
   };
 
-  const handleRegionToggle = (region: string) => {
-    const newRegions = selectedRegions.includes(region)
-      ? selectedRegions.filter((r) => r !== region)
-      : [...selectedRegions, region];
-    setRegion(newRegions);
+  const toggleArrayValue = (key: 'regions' | 'periods', value: string) => {
+    const currentValues = filters[key];
+    const newValues = currentValues.includes(value)
+      ? currentValues.filter((v) => v !== value)
+      : [...currentValues, value];
+    updateFilter(key, newValues);
   };
 
-  const handlePeriodToggle = (period: string) => {
-    const newPeriods = selectedPeriods.includes(period)
-      ? selectedPeriods.filter((p) => p !== period)
-      : [...selectedPeriods, period];
-    setPeriod(newPeriods);
+  const resetFilters = () => {
+    const resetState: FilterState = {
+      keyword: '',
+      category: 'all',
+      regions: [],
+      periods: [],
+      minImportance: 0,
+      maxImportance: 1,
+      hasCoordinates: null,
+    };
+    setFilters(resetState);
+    onFilterChange?.(resetState);
   };
 
-  if (filterPanelCollapsed) {
+  const hasActiveFilters = () => {
     return (
-      <motion.button
-        initial={{ x: -100, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        exit={{ x: -100, opacity: 0 }}
-        onClick={toggleFilterPanel}
-        whileHover={{ width: 64 }}
-        className="w-12 h-32 backdrop-blur-xl rounded-r-2xl shadow-2xl flex flex-col items-center justify-center gap-2 group transition-all"
-        style={{
-          background: 'var(--gradient-card)',
-          borderRight: '1px solid var(--color-border)',
-          borderTop: '1px solid var(--color-border)',
-          borderBottom: '1px solid var(--color-border)',
-        }}
-      >
-        <motion.div animate={{ x: [0, 4, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>
-          <ChevronRight
-            size={24}
-            style={{ color: 'var(--color-primary)' }}
-            className="transition-colors"
-          />
-        </motion.div>
-        <span
-          className="text-xs writing-mode-vertical opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{ color: 'var(--color-text-muted)' }}
-        >
-          筛选
-        </span>
-      </motion.button>
+      filters.keyword !== '' ||
+      filters.category !== 'all' ||
+      filters.regions.length > 0 ||
+      filters.periods.length > 0 ||
+      filters.minImportance > 0 ||
+      filters.maxImportance < 1 ||
+      filters.hasCoordinates !== null
     );
-  }
+  };
 
   return (
     <motion.div
       initial={{ x: -320, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: -320, opacity: 0 }}
+      animate={{ x: filterPanelCollapsed ? -320 : 0, opacity: filterPanelCollapsed ? 0 : 1 }}
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
       className="w-80 backdrop-blur-xl h-full flex flex-col relative overflow-hidden"
       style={{
@@ -112,7 +119,8 @@ export default function FilterPanel() {
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: 'linear-gradient(180deg, var(--color-primary), var(--color-secondary), var(--color-accent))',
+          background:
+            'linear-gradient(180deg, var(--color-primary), var(--color-secondary), var(--color-accent))',
           opacity: 0.03,
         }}
       />
@@ -120,17 +128,23 @@ export default function FilterPanel() {
       <div className="relative z-10">
         <div className="p-6" style={{ borderBottom: '1px solid var(--color-border)' }}>
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold flex items-center gap-3" style={{ color: 'var(--color-text-primary)' }}>
+            <h2
+              className="text-lg font-semibold flex items-center gap-3"
+              style={{ color: 'var(--color-text-primary)' }}
+            >
               <div
                 className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg"
                 style={{ background: 'var(--gradient-primary)' }}
               >
-                <Filter size={18} style={{ color: 'var(--color-text-inverse)' }} />
+                <SlidersHorizontal size={18} style={{ color: 'var(--color-text-inverse)' }} />
               </div>
               <div>
-                <span>筛选条件</span>
-                <p className="text-xs font-normal mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-                  按地域和时期筛选
+                <span>高级筛选</span>
+                <p
+                  className="text-xs font-normal mt-0.5"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  {hasActiveFilters() ? '已应用筛选条件' : '多条件组合搜索'}
                 </p>
               </div>
             </h2>
@@ -153,189 +167,176 @@ export default function FilterPanel() {
 
       <div className="relative z-10 flex-1 overflow-y-auto p-6 space-y-6">
         <div>
-          <motion.button
-            onClick={() => toggleSection('region')}
-            whileHover={{ x: 4 }}
-            className="w-full flex items-center justify-between text-sm font-medium mb-3 group"
+          <label
+            className="text-sm font-medium mb-2 block"
             style={{ color: 'var(--color-text-secondary)' }}
           >
-            <span className="flex items-center gap-2">
-              <div className="w-1 h-4 rounded-full" style={{ background: 'var(--color-primary)' }} />
-              地域
-            </span>
-            <motion.div
-              animate={{ rotate: expandedSections.region ? 180 : 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <ChevronDown
-                size={16}
-                style={{ color: 'var(--color-text-muted)' }}
-                className="transition-colors"
-              />
-            </motion.div>
-          </motion.button>
-          <AnimatePresence>
-            {expandedSections.region && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-2"
-              >
-                {regions &&
-                  regions.length > 0 &&
-                  regions.map((region, index) => (
-                    <motion.label
-                      key={region}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      className="flex items-center gap-3 cursor-pointer group"
-                    >
-                      <div className="relative">
-                        <input
-                          type="checkbox"
-                          checked={selectedRegions.includes(region)}
-                          onChange={() => handleRegionToggle(region)}
-                          className="sr-only"
-                        />
-                        <div
-                          className="w-5 h-5 rounded-md border-2 transition-all"
-                          style={{
-                            background: selectedRegions.includes(region) ? 'var(--gradient-primary)' : 'transparent',
-                            borderColor: selectedRegions.includes(region) ? 'var(--color-primary)' : 'var(--color-border)',
-                          }}
-                        >
-                          {selectedRegions.includes(region) && (
-                            <motion.div
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
-                              className="w-full h-full flex items-center justify-center"
-                            >
-                              <svg
-                                className="w-3 h-3"
-                                fill="currentColor"
-                                viewBox="0 0 12 12"
-                                style={{ color: 'var(--color-text-inverse)' }}
-                              >
-                                <path d="M10.28 2.28L4 8.56 1.72 6.28a.75.75 0 00-1.06 1.06l3 3a.75.75 0 001.06 0l7-7a.75.75 0 00-1.06-1.06z" />
-                              </svg>
-                            </motion.div>
-                          )}
-                        </div>
-                      </div>
-                      <span className="text-sm transition-colors" style={{ color: 'var(--color-text-muted)' }}>
-                        {region}
-                      </span>
-                    </motion.label>
-                  ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
+            关键词搜索
+          </label>
+          <div className="relative">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2"
+              style={{ color: 'var(--color-text-muted)' }}
+            />
+            <input
+              type="text"
+              value={filters.keyword}
+              onChange={(e) => updateFilter('keyword', e.target.value)}
+              placeholder="搜索实体名称或描述..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm"
+              style={{
+                background: 'var(--color-surface)',
+                border: '1px solid var(--color-border)',
+                color: 'var(--color-text-primary)',
+              }}
+            />
+          </div>
         </div>
 
         <div>
-          <motion.button
-            onClick={() => toggleSection('period')}
-            whileHover={{ x: 4 }}
-            className="w-full flex items-center justify-between text-sm font-medium mb-3 group"
+          <label
+            className="text-sm font-medium mb-2 block"
             style={{ color: 'var(--color-text-secondary)' }}
           >
-            <span className="flex items-center gap-2">
-              <div className="w-1 h-4 rounded-full" style={{ background: 'var(--color-secondary)' }} />
-              时期
-            </span>
-            <motion.div
-              animate={{ rotate: expandedSections.period ? 180 : 0 }}
-              transition={{ duration: 0.2 }}
+            实体类型
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => updateFilter('category', 'all')}
+              className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                filters.category === 'all' ? 'ring-2 ring-primary' : ''
+              }`}
+              style={{
+                background:
+                  filters.category === 'all' ? 'var(--color-primary)' : 'var(--color-surface)',
+                color:
+                  filters.category === 'all'
+                    ? 'var(--color-text-inverse)'
+                    : 'var(--color-text-primary)',
+              }}
             >
-              <ChevronDown
-                size={16}
-                style={{ color: 'var(--color-text-muted)' }}
-                className="transition-colors"
-              />
-            </motion.div>
-          </motion.button>
-          <AnimatePresence>
-            {expandedSections.period && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-2"
+              全部
+            </button>
+            {categories.map((cat) => (
+              <button
+                key={cat.value}
+                onClick={() => updateFilter('category', cat.value)}
+                className={`px-3 py-2 rounded-lg text-xs font-medium transition-all`}
+                style={{
+                  background: filters.category === cat.value ? cat.color : 'var(--color-surface)',
+                  color: filters.category === cat.value ? '#fff' : 'var(--color-text-primary)',
+                }}
               >
-                {periods &&
-                  periods.length > 0 &&
-                  periods.map((period, index) => (
-                    <motion.label
-                      key={period}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      className="flex items-center gap-3 cursor-pointer group"
-                    >
-                      <div className="relative">
-                        <input
-                          type="checkbox"
-                          checked={selectedPeriods.includes(period)}
-                          onChange={() => handlePeriodToggle(period)}
-                          className="sr-only"
-                        />
-                        <div
-                          className="w-5 h-5 rounded-md border-2 transition-all"
-                          style={{
-                            background: selectedPeriods.includes(period) ? 'var(--gradient-secondary)' : 'transparent',
-                            borderColor: selectedPeriods.includes(period) ? 'var(--color-secondary)' : 'var(--color-border)',
-                          }}
-                        >
-                          {selectedPeriods.includes(period) && (
-                            <motion.div
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
-                              className="w-full h-full flex items-center justify-center"
-                            >
-                              <svg
-                                className="w-3 h-3"
-                                fill="currentColor"
-                                viewBox="0 0 12 12"
-                                style={{ color: 'var(--color-text-inverse)' }}
-                              >
-                                <path d="M10.28 2.28L4 8.56 1.72 6.28a.75.75 0 00-1.06 1.06l3 3a.75.75 0 001.06 0l7-7a.75.75 0 00-1.06-1.06z" />
-                              </svg>
-                            </motion.div>
-                          )}
-                        </div>
-                      </div>
-                      <span className="text-sm transition-colors" style={{ color: 'var(--color-text-muted)' }}>
-                        {period}
-                      </span>
-                    </motion.label>
-                  ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
+                {cat.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
 
-      <div className="relative z-10 p-6" style={{ borderTop: '1px solid var(--color-border)' }}>
-        <motion.button
-          onClick={() => {
-            setRegion([]);
-            setPeriod([]);
-          }}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          className="w-full py-3 px-4 rounded-xl transition-all text-sm font-medium"
-          style={{
-            background: 'var(--color-surface)',
-            color: 'var(--color-text-secondary)',
-            border: '1px solid var(--color-border)',
-          }}
-        >
-          清除筛选
-        </motion.button>
+        <div>
+          <label
+            className="text-sm font-medium mb-2 block"
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
+            地区筛选
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {regions.map((region) => (
+              <button
+                key={region}
+                onClick={() => toggleArrayValue('regions', region)}
+                className={`px-3 py-1.5 rounded-full text-xs transition-all ${
+                  filters.regions.includes(region) ? 'ring-2 ring-primary' : ''
+                }`}
+                style={{
+                  background: filters.regions.includes(region)
+                    ? 'var(--color-primary)'
+                    : 'var(--color-surface)',
+                  color: filters.regions.includes(region)
+                    ? 'var(--color-text-inverse)'
+                    : 'var(--color-text-primary)',
+                }}
+              >
+                {region}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label
+            className="text-sm font-medium mb-2 block"
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
+            时期筛选
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {periods.map((period) => (
+              <button
+                key={period}
+                onClick={() => toggleArrayValue('periods', period)}
+                className={`px-3 py-1.5 rounded-full text-xs transition-all ${
+                  filters.periods.includes(period) ? 'ring-2 ring-primary' : ''
+                }`}
+                style={{
+                  background: filters.periods.includes(period)
+                    ? 'var(--color-primary)'
+                    : 'var(--color-surface)',
+                  color: filters.periods.includes(period)
+                    ? 'var(--color-text-inverse)'
+                    : 'var(--color-text-primary)',
+                }}
+              >
+                {period}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label
+            className="text-sm font-medium mb-3 block"
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
+            重要性范围: {filters.minImportance.toFixed(1)} - {filters.maxImportance.toFixed(1)}
+          </label>
+          <div className="space-y-3">
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={filters.minImportance}
+              onChange={(e) => updateFilter('minImportance', parseFloat(e.target.value))}
+              className="w-full"
+            />
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={filters.maxImportance}
+              onChange={(e) => updateFilter('maxImportance', parseFloat(e.target.value))}
+              className="w-full"
+            />
+          </div>
+        </div>
+
+        {hasActiveFilters() && (
+          <button
+            onClick={resetFilters}
+            className="w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
+            style={{
+              background: 'var(--color-surface)',
+              border: '1px solid var(--color-border)',
+              color: 'var(--color-text-primary)',
+            }}
+          >
+            <X size={14} />
+            重置所有筛选条件
+          </button>
+        )}
       </div>
     </motion.div>
   );

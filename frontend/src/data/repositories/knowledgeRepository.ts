@@ -242,7 +242,11 @@ class KnowledgeRepository {
     const graphData: KnowledgeGraphData = { nodes, edges, categories };
 
     if (!centerEntityId) {
-      await knowledgeOfflineStorage.cacheGraphData(graphData as unknown as { nodes: unknown[]; edges: unknown[]; categories: unknown[] });
+      await knowledgeOfflineStorage.cacheGraphData({
+        nodes: nodes as unknown as unknown[],
+        edges: edges as unknown as unknown[],
+        categories: categories as unknown as unknown[],
+      });
     }
 
     return graphData;

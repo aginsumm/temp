@@ -204,6 +204,10 @@ export default function GraphEditor({
       setShowLinkModal(false);
       setLinkTarget('');
       setLinkType('相关');
+      
+      // 触发图谱刷新：通过 graphSyncService 同步关系变化
+      // 重新加载当前实体的关系数据
+      loadEntity(entity.id);
     } catch (error) {
       console.error('Failed to create relationship:', error);
       toast.error('创建失败', '无法创建关系');

@@ -2,10 +2,10 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
-from datetime import datetime, timedelta
 from app.core.config import settings
 
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
@@ -15,7 +15,7 @@ async def get_current_user(
         detail="无法验证凭据",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
     try:
         token = credentials.credentials
         if not token:
@@ -46,8 +46,36 @@ async def get_current_user(
         raise credentials_exception
 
 
+async def get_current_or_guest(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security)
+) -> str:
+    if credentials is None or credentials.credentials is None:
+        return "guest_user"
+
+    try:
+        token = credentials.credentials
+        if not token:
+            return "guest_user"
+
+        if "." not in token:
+            if token == "mock-token-for-now":
+                return "1"
+            return token
+
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM]
+        )
+
+        user_id: Optional[str] = payload.get("sub")
+        return user_id or "guest_user"
+    except JWTError:
+        return "guest_user"
+
+
 async def get_optional_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security)
 ) -> Optional[str]:
     if credentials is None or credentials.credentials is None:
         return None

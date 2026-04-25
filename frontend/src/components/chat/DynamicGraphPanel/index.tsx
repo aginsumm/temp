@@ -16,13 +16,24 @@ import { graphService } from '../../../api/graph';
 import { snapshotService } from '../../../api/snapshot';
 import { useToast } from '../../common/Toast';
 import { useThemeStore } from '../../../stores/themeStore';
-import { useChatStore } from '../../../stores/chatStore';
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '../../../constants/categories';
-import type { Entity, Relation, GraphNode, EntityType } from '../../../types/chat';
+import type { Entity, Relation, GraphNode, EntityType } from '../../../types/graph';
 
 const ENTITY_COLORS: Record<EntityType, string> = CATEGORY_COLORS;
 
 const ENTITY_LABELS: Record<EntityType, string> = CATEGORY_LABELS;
+
+/**
+ * HTML 转义函数，防止 XSS 攻击
+ */
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 interface DynamicGraphPanelProps {
   entities?: Entity[];
@@ -35,7 +46,6 @@ interface DynamicGraphPanelProps {
   height?: number | string;
   showControls?: boolean;
   showSaveButton?: boolean;
-  useStoreData?: boolean; // 是否直接使用 chatStore 的数据
 }
 
 export default function DynamicGraphPanel({
@@ -49,7 +59,6 @@ export default function DynamicGraphPanel({
   height = 280,
   showControls = true,
   showSaveButton = true,
-  useStoreData = false,
 }: DynamicGraphPanelProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
@@ -60,22 +69,9 @@ export default function DynamicGraphPanel({
 
   const { resolvedMode } = useThemeStore();
 
-  // 根据 useStoreData 决定使用 props 还是 store 的数据
-  const storeEntities = useChatStore((state) => state.currentEntities);
-  const storeRelations = useChatStore((state) => state.currentRelations);
-  const storeKeywords = useChatStore((state) => state.currentKeywords);
-
-  const entities = useMemo(() => {
-    return useStoreData ? storeEntities : propEntities || [];
-  }, [useStoreData, storeEntities, propEntities]);
-
-  const relations = useMemo(() => {
-    return useStoreData ? storeRelations : propRelations || [];
-  }, [useStoreData, storeRelations, propRelations]);
-
-  const keywords = useMemo(() => {
-    return useStoreData ? storeKeywords : propKeywords || [];
-  }, [useStoreData, storeKeywords, propKeywords]);
+  const entities = useMemo(() => propEntities || [], [propEntities]);
+  const relations = useMemo(() => propRelations || [], [propRelations]);
+  const keywords = useMemo(() => propKeywords || [], [propKeywords]);
 
   const toast = useToast();
 
@@ -112,37 +108,45 @@ export default function DynamicGraphPanel({
           color: textColor,
           fontSize: 14,
         },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        formatter: (params: any) => {
-          if (params.dataType === 'node' && params.data) {
-            const category = params.data.category as EntityType;
+        formatter: (params: unknown) => {
+          const param = params as Record<string, unknown>;
+          if (param.dataType === 'node' && param.data) {
+            const data = param.data as Record<string, unknown>;
+            const category = data.category as EntityType;
             const color = ENTITY_COLORS[category] || '#666666';
-            const value = params.data.value ?? 0.5;
+            const value = (data.value as number) ?? 0.5;
+            const name = escapeHtml(String(data.name || ''));
+            const description = data.description as string | undefined;
+            const safeDescription = description ? escapeHtml(description.slice(0, 80)) : '';
             return `
               <div style="padding: 12px; min-width: 200px;">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                   <div style="width: 12px; height: 12px; border-radius: 50%; background: ${color}; box-shadow: 0 0 10px ${color}"></div>
-                  <strong style="color: var(--color-primary); font-size: 16px;">${params.data.name}</strong>
+                  <strong style="color: var(--color-primary); font-size: 16px;">${name}</strong>
                 </div>
                 <div style="color: var(--color-text-muted); font-size: 13px; margin-bottom: 4px;">
-                  <span style="color: var(--color-text-secondary);">类型:</span> ${ENTITY_LABELS[category] || params.data.category}
+                  <span style="color: var(--color-text-secondary);">类型:</span> ${ENTITY_LABELS[category] || category}
                 </div>
                 <div style="color: var(--color-text-muted); font-size: 13px;">
-                  <span style="color: var(--color-text-secondary);">重要性:</span> 
+                  <span style="color: var(--color-text-secondary);">重要性:</span>
                   <span style="color: var(--color-warning); font-weight: bold;">${(value * 100).toFixed(0)}%</span>
                 </div>
-                ${params.data.description ? `<div style="color: var(--color-text-secondary); font-size: 13px; margin-top: 4px;">${params.data.description.slice(0, 80)}...</div>` : ''}
+                ${safeDescription ? `<div style="color: var(--color-text-secondary); font-size: 13px; margin-top: 4px;">${safeDescription}...</div>` : ''}
               </div>
             `;
           }
+          const data = param.data as Record<string, unknown> | undefined;
+          const source = escapeHtml(String(data?.source || ''));
+          const target = escapeHtml(String(data?.target || ''));
+          const relationType = escapeHtml(String(data?.relationType || '关联'));
           return `
             <div style="padding: 12px; min-width: 200px;">
               <div style="color: var(--color-primary); font-size: 14px; margin-bottom: 8px;">
-                ${params.data?.source} → ${params.data?.target}
+                ${source} → ${target}
               </div>
               <div style="color: var(--color-text-muted); font-size: 13px;">
-                <span style="color: var(--color-text-secondary);">关系:</span> 
-                <span style="color: var(--color-success); font-weight: bold;">${params.data?.relationType || '关联'}</span>
+                <span style="color: var(--color-text-secondary);">关系:</span>
+                <span style="color: var(--color-success); font-weight: bold;">${relationType}</span>
               </div>
             </div>
           `;
@@ -239,22 +243,38 @@ export default function DynamicGraphPanel({
     chartInstance.current.setOption(option, true);
 
     chartInstance.current.off('click');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    chartInstance.current.on('click', (params: any) => {
+    chartInstance.current.on('click', (params: Record<string, unknown>) => {
       if (params.dataType === 'node') {
-        const entity = entities.find((e) => e.id === params.data.id);
+        const data = params.data as Record<string, unknown>;
+        const entity = entities.find((e) => e.id === data.id);
         if (entity && onNodeClick) {
           onNodeClick(entity);
         }
-        setSelectedNode(params.data);
+        setSelectedNode({
+          id: String(data.id || ''),
+          name: String(data.name || ''),
+          category: (data.category as EntityType) || 'entity',
+          value: Number(data.value || 0.5),
+          description: data.description as string | undefined,
+        });
       }
     });
 
     chartInstance.current.off('mouseover');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    chartInstance.current.on('mouseover', (params: any) => {
+    chartInstance.current.on('mouseover', (params: Record<string, unknown>) => {
       if (params.dataType === 'node') {
-        setHoveredNode(params.data);
+        const data = params.data as Record<string, unknown> | undefined;
+        if (data) {
+          setHoveredNode({
+            id: String(data.id || ''),
+            name: String(data.name || ''),
+            category: (data.category as EntityType) || 'entity',
+            value: Number(data.value || 0.5),
+            description: data.description as string | undefined,
+          });
+        } else {
+          setHoveredNode(null);
+        }
       }
     });
 
@@ -264,12 +284,15 @@ export default function DynamicGraphPanel({
     });
   }, [graphData, selectedNode, resolvedMode, entities, onNodeClick]);
 
+  const renderGraphRef = useRef(renderGraph);
+  renderGraphRef.current = renderGraph;
+
   useEffect(() => {
     if (chartRef.current && graphData.nodes.length > 0) {
       if (!chartInstance.current) {
         chartInstance.current = echarts.init(chartRef.current);
       }
-      renderGraph();
+      renderGraphRef.current();
     }
 
     return () => {
@@ -278,7 +301,7 @@ export default function DynamicGraphPanel({
         chartInstance.current = null;
       }
     };
-  }, [graphData, renderGraph]);
+  }, [graphData]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -291,72 +314,14 @@ export default function DynamicGraphPanel({
       setIsFullscreen(!!document.fullscreenElement);
     };
 
-    // 监听快照加载事件
-    const handleSnapshotLoaded = () => {
-      // 快照数据会通过 props 自动更新，这里只需要重新渲染
-      setTimeout(() => {
-        renderGraph();
-      }, 100);
-    };
-
     window.addEventListener('resize', handleResize);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    window.addEventListener('loadSnapshot' as any, handleSnapshotLoaded as any);
 
     return () => {
       window.removeEventListener('resize', handleResize);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      window.removeEventListener('loadSnapshot' as any, handleSnapshotLoaded as any);
     };
   }, [renderGraph]);
-
-  // 当图谱数据变化时，自动保存到 sessionStorage
-  useEffect(() => {
-    if (graphData.nodes.length > 0 && sessionId) {
-      try {
-        const graphState = {
-          entities,
-          relations,
-          keywords,
-          sessionId,
-          timestamp: Date.now(),
-        };
-        sessionStorage.setItem(`graphState_${sessionId}`, JSON.stringify(graphState));
-      } catch (error) {
-        console.warn('Failed to save graph state to sessionStorage:', error);
-      }
-    }
-  }, [entities, relations, keywords, sessionId, graphData.nodes.length]);
-
-  // 页面加载时恢复图谱状态
-  useEffect(() => {
-    if (sessionId && !entities.length) {
-      try {
-        const savedState = sessionStorage.getItem(`graphState_${sessionId}`);
-        if (savedState) {
-          const {
-            entities: savedEntities,
-            relations: savedRelations,
-            keywords: savedKeywords,
-          } = JSON.parse(savedState);
-
-          // 检查是否是同一个会话的图谱状态
-          const event = new CustomEvent('restoreGraphState', {
-            detail: {
-              entities: savedEntities,
-              relations: savedRelations,
-              keywords: savedKeywords,
-            },
-          });
-          window.dispatchEvent(event);
-        }
-      } catch (error) {
-        console.warn('Failed to restore graph state from sessionStorage:', error);
-      }
-    }
-  }, [sessionId, entities.length]);
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -431,7 +396,6 @@ export default function DynamicGraphPanel({
 
   const handleSaveSnapshot = async () => {
     if (!sessionId || !messageId) {
-      toast.warning('无法保存', '缺少会话或消息信息');
       return;
     }
 
@@ -445,11 +409,9 @@ export default function DynamicGraphPanel({
         entities,
         relations: relations || [],
       });
-      toast.success('保存成功', '图谱快照已保存');
       onSaveSnapshot?.();
     } catch (error) {
       console.error('Failed to save snapshot:', error);
-      toast.error('保存失败', '无法保存图谱快照');
     } finally {
       setIsSaving(false);
     }
@@ -457,25 +419,31 @@ export default function DynamicGraphPanel({
 
   const handleShare = async () => {
     if (!sessionId || !messageId) {
-      toast.warning('无法分享', '缺少会话或消息信息');
       return;
     }
 
     try {
-      const snapshotId = messageId;
+      let snapshotId = messageId;
+      let snapshot = await snapshotService.getSnapshot(snapshotId);
+      if (!snapshot) {
+        snapshot = await snapshotService.createSnapshot({
+          session_id: sessionId,
+          message_id: messageId,
+          graph_data: graphData,
+          keywords: keywords.length > 0 ? keywords : [],
+          entities,
+          relations: relations || [],
+        });
+        snapshotId = snapshot.id;
+      }
 
       const result = await snapshotService.shareSnapshot(snapshotId, 7);
 
       if (result && result.share_url) {
-        // 直接使用后端返回的完整 URL
         await navigator.clipboard.writeText(result.share_url);
-        toast.success('分享成功', '链接已复制到剪贴板，7 天内有效');
-      } else {
-        toast.success('分享成功', '快照已设置为共享状态');
       }
     } catch (error) {
       console.error('Failed to share snapshot:', error);
-      toast.error('分享失败', '无法分享图谱快照');
     }
   };
 

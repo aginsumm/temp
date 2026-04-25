@@ -58,18 +58,21 @@ export default function FileUpload({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const validateFile = (file: File): { valid: boolean; error?: string } => {
-    if (file.size > MAX_FILE_SIZE) {
-      return { valid: false, error: `文件 "${file.name}" 超过10MB限制` };
-    }
+  const validateFile = useCallback(
+    (file: File): { valid: boolean; error?: string } => {
+      if (file.size > MAX_FILE_SIZE) {
+        return { valid: false, error: `文件 "${file.name}" 超过10MB限制` };
+      }
 
-    const acceptedTypesList = acceptedTypes.split(',');
-    if (!acceptedTypesList.includes(file.type)) {
-      return { valid: false, error: `文件类型 "${file.type}" 不支持` };
-    }
+      const acceptedTypesList = acceptedTypes.split(',');
+      if (!acceptedTypesList.includes(file.type)) {
+        return { valid: false, error: `文件类型 "${file.type}" 不支持` };
+      }
 
-    return { valid: true };
-  };
+      return { valid: true };
+    },
+    [acceptedTypes]
+  );
 
   const uploadFile = async (file: File): Promise<UploadedFile> => {
     const formData = new FormData();
@@ -122,7 +125,7 @@ export default function FileUpload({
         if (validation.valid) {
           validFiles.push(file);
         } else {
-          validationErrors.push(validation.error!);
+          validationErrors.push(validation.error ?? '未知错误');
         }
       }
 
@@ -150,7 +153,16 @@ export default function FileUpload({
         setUploading(false);
       }
     },
-    [disabled, uploading, files.length, maxFiles, onUploadComplete, onUploadError, toast]
+    [
+      disabled,
+      uploading,
+      files.length,
+      maxFiles,
+      onUploadComplete,
+      onUploadError,
+      toast,
+      validateFile,
+    ]
   );
 
   const handleDrag = useCallback((e: React.DragEvent) => {

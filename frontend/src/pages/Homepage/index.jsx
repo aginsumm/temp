@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   MessageSquare,
   Network,
@@ -19,7 +19,6 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import HeritageImages from '../../assets/heritage-images';
-import ThemeBackground from '../../components/common/ThemeBackground';
 import { useThemeStore } from '../../stores/themeStore';
 import { getThemeVisual } from '../../config/themes/heritageThemes';
 import '../../styles/heritage.css';
@@ -584,7 +583,6 @@ export default function Homepage() {
                       values="0.5;1;0.5"
                       dur="2.5s"
                       repeatCount="indefinite"
-                      delay="1s"
                     />
                   </circle>
                   <circle cx="250" cy="130" r="5" fill="#daa520" filter="url(#glow)">

@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
 
 class ConnectionPool {
   private static instance: ConnectionPool;
@@ -18,7 +18,7 @@ class ConnectionPool {
     return ConnectionPool.instance;
   }
 
-  async request<T>(config: any): Promise<T> {
+  async request<T>(config: AxiosRequestConfig): Promise<T> {
     return new Promise((resolve, reject) => {
       const controller = new AbortController();
       const requestId = `${Date.now()}_${Math.random()}`;

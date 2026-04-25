@@ -36,7 +36,7 @@ class NetworkStatusService {
   private readonly BASE_RECONNECT_DELAY = 1000;
   private readonly MAX_RECONNECT_DELAY = 30000;
   private readonly LATENCY_HISTORY_SIZE = 20;
-  private readonly HEALTH_ENDPOINT = '/health';
+  private readonly HEALTH_ENDPOINT = '/api/v1/health';
   private isReconnecting = false;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private healthCheckEnabled = false;

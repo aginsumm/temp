@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeSanitize from 'rehype-sanitize';
 import SyntaxHighlighter from 'react-syntax-highlighter';
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { motion, AnimatePresence } from 'framer-motion';
+// Framer Motion 已移除，使用 CSS 动画替代
 import {
   ThumbsUp,
   ThumbsDown,
@@ -18,9 +20,15 @@ import {
   Trash2,
   Code,
   ExternalLink,
+  Volume2,
+  Pause,
+  Play,
+  X,
+  Quote,
 } from 'lucide-react';
 import { useThemeStore } from '../../../stores/themeStore';
 import { useToast } from '../../common/Toast';
+import { speechSynthesisService } from '../../../services/speechSynthesisService';
 import VersionSwitcher from '../VersionSwitcher';
 import type { Message } from '../../../types/chat';
 
@@ -35,9 +43,11 @@ interface UnifiedMessageBubbleProps {
   onSwitchVersion?: (messageId: string, versionId: string) => void;
   onEditAndRegenerate?: (messageId: string, newContent: string) => void;
   onSyncVersionForGroup?: (versionGroupId: string, versionIndex: number) => void;
+  onQuote?: (message: Message) => void;
   isHistorical?: boolean;
   isLast?: boolean;
   isStreaming?: boolean;
+  isThinking?: boolean;
 }
 
 function CodeBlock({
@@ -138,9 +148,13 @@ export default function UnifiedMessageBubble({
   onSwitchVersion,
   onEditAndRegenerate,
   onSyncVersionForGroup,
+  onQuote,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   isHistorical = false,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   isLast = false,
   isStreaming: isStreamingProp = false,
+  isThinking = false,
 }: UnifiedMessageBubbleProps) {
   const { resolvedMode } = useThemeStore();
   const toast = useToast();
@@ -151,9 +165,14 @@ export default function UnifiedMessageBubble({
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  const [hasCompletedTyping, setHasCompletedTyping] = useState(false);
-  const [hasInitialized, setHasInitialized] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const bubbleRef = useRef<HTMLDivElement>(null);
+
+  // 当消息内容变化时重置编辑内容
+  useEffect(() => {
+    setEditContent(message.content);
+  }, [message.content, message.id]);
   const isUser = message.role === 'user';
   const isDark = resolvedMode === 'dark';
 
@@ -169,53 +188,32 @@ export default function UnifiedMessageBubble({
     return index !== -1 ? index : 0;
   }, [versions]);
 
+  // 简化的可见性控制 - 立即显示，不使用 IntersectionObserver 避免闪烁
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-        }
-      },
-      { threshold: 0.1, rootMargin: '50px' }
-    );
-
-    if (bubbleRef.current) {
-      observer.observe(bubbleRef.current);
-    }
-
-    return () => observer.disconnect();
+    setIsVisible(true);
   }, []);
 
+  // 操作按钮显示逻辑
   useEffect(() => {
-    if (hasInitialized) return;
-
-    if (isUser || isHistorical) {
-      setShowActions(true);
-      setHasCompletedTyping(true);
-      setHasInitialized(true);
-      return;
-    }
-
+    // 流式响应时不显示操作按钮
     if (isCurrentlyStreaming) {
       setShowActions(false);
-      setHasInitialized(true);
       return;
     }
 
+    // 非流式状态下，用户消息始终显示操作按钮
+    // AI消息在流式完成后显示操作按钮
     setShowActions(true);
-    setHasCompletedTyping(true);
-    setHasInitialized(true);
-  }, [isUser, isHistorical, isLast, hasInitialized, isCurrentlyStreaming]);
+  }, [isUser, isCurrentlyStreaming]);
 
+  // 清理语音合成
   useEffect(() => {
-    if (isCurrentlyStreaming) {
-      setHasCompletedTyping(false);
-      setShowActions(false);
-    } else if (hasInitialized && !hasCompletedTyping) {
-      setShowActions(true);
-      setHasCompletedTyping(true);
-    }
-  }, [isCurrentlyStreaming, hasInitialized, hasCompletedTyping]);
+    return () => {
+      if (isSpeaking) {
+        speechSynthesisService.stop();
+      }
+    };
+  }, [isSpeaking]);
 
   const handleCopy = async () => {
     try {
@@ -227,6 +225,57 @@ export default function UnifiedMessageBubble({
       console.error('Failed to copy:', err);
     }
   };
+
+  const handleSpeak = () => {
+    if (!message.content || message.content.trim().length === 0) return;
+
+    if (isSpeaking) {
+      if (isPaused) {
+        speechSynthesisService.resume();
+        setIsPaused(false);
+      } else {
+        speechSynthesisService.pause();
+        setIsPaused(true);
+      }
+    } else {
+      const success = speechSynthesisService.speak(message.content);
+      if (success) {
+        setIsSpeaking(true);
+        setIsPaused(false);
+      } else {
+        toast.error('朗读失败', '浏览器不支持语音合成');
+      }
+    }
+  };
+
+  // 监听语音合成事件 - 只在当前消息正在朗读时更新状态
+  useEffect(() => {
+    const handleStart = () => {
+      // 只有当当前消息正在朗读时才更新状态
+      if (speechSynthesisService.getState() === 'speaking') {
+        setIsSpeaking(true);
+        setIsPaused(false);
+      }
+    };
+    const handleEnd = () => {
+      setIsSpeaking(false);
+      setIsPaused(false);
+    };
+    const handleError = () => {
+      setIsSpeaking(false);
+      setIsPaused(false);
+    };
+
+    speechSynthesisService.on('start', handleStart);
+    speechSynthesisService.on('end', handleEnd);
+    speechSynthesisService.on('error', handleError);
+
+    return () => {
+      speechSynthesisService.off('start', handleStart);
+      speechSynthesisService.off('end', handleEnd);
+      speechSynthesisService.off('error', handleError);
+    };
+  }, []);
 
   const handleCopyCode = async (code: string) => {
     try {
@@ -275,17 +324,12 @@ export default function UnifiedMessageBubble({
   };
 
   return (
-    <motion.div
+    <div
       ref={bubbleRef}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: isVisible ? 1 : 0, y: isVisible ? 0 : 20 }}
-      transition={{ duration: 0.3, ease: 'easeOut' }}
-      className={`flex gap-2.5 ${isUser ? 'flex-row-reverse' : ''} mb-3`}
+      className={`flex gap-2.5 ${isUser ? 'flex-row-reverse' : ''} mb-3 transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`}
     >
-      <motion.div
-        whileHover={{ scale: 1.08 }}
-        whileTap={{ scale: 0.95 }}
-        className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center shadow-sm`}
+      <div
+        className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center shadow-sm transition-transform duration-200 hover:scale-105`}
         style={{
           background: isUser
             ? 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%)'
@@ -297,7 +341,7 @@ export default function UnifiedMessageBubble({
         ) : (
           <Bot size={16} className="text-white" />
         )}
-      </motion.div>
+      </div>
 
       <div className={`flex-1 ${isUser ? 'flex flex-col items-end' : ''}`}>
         <div className={`flex items-center gap-2 mb-1 ${isUser ? 'justify-end' : ''}`}>
@@ -308,17 +352,15 @@ export default function UnifiedMessageBubble({
             {formatTime(message.created_at)}
           </span>
           {isCurrentlyStreaming && (
-            <motion.span
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="text-xs px-2 py-0.5 rounded-full"
+            <span
+              className="text-xs px-2 py-0.5 rounded-full animate-pulse"
               style={{
                 background: 'var(--color-primary-light)',
                 color: 'var(--color-primary)',
               }}
             >
               接收中
-            </motion.span>
+            </span>
           )}
         </div>
 
@@ -340,8 +382,42 @@ export default function UnifiedMessageBubble({
             wordBreak: 'break-word',
           }}
         >
+          {/* 思考中指示器 - 显示在AI消息内容上方 */}
+          {isThinking && !isUser && (
+            <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg" style={{ background: 'var(--color-background-secondary)' }}>
+              <div className="flex gap-1">
+                <span
+                  className="w-1.5 h-1.5 rounded-full animate-bounce"
+                  style={{ background: 'var(--color-primary)', animationDelay: '0ms' }}
+                />
+                <span
+                  className="w-1.5 h-1.5 rounded-full animate-bounce"
+                  style={{ background: 'var(--color-primary)', animationDelay: '150ms' }}
+                />
+                <span
+                  className="w-1.5 h-1.5 rounded-full animate-bounce"
+                  style={{ background: 'var(--color-primary)', animationDelay: '300ms' }}
+                />
+              </div>
+              <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                思考中...
+              </span>
+            </div>
+          )}
+
           {isEditing ? (
             <div className="space-y-3">
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
+                style={{
+                  background: 'var(--color-primary-alpha)',
+                  color: 'var(--color-primary)',
+                  border: '1px solid var(--color-primary)',
+                }}
+              >
+                <Edit3 size={14} />
+                <span className="font-medium">正在编辑消息</span>
+              </div>
               <textarea
                 value={editContent}
                 onChange={(e) => setEditContent(e.target.value)}
@@ -351,6 +427,7 @@ export default function UnifiedMessageBubble({
                   background: 'var(--color-background-secondary)',
                   color: 'var(--color-text-primary)',
                   minHeight: '100px',
+                  border: '2px solid var(--color-primary)',
                 }}
                 autoFocus
               />
@@ -358,19 +435,20 @@ export default function UnifiedMessageBubble({
                 <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                   Ctrl/Cmd + Enter 保存并重新生成 · Esc 取消
                 </span>
-                <div className="flex justify-end gap-2">
+                <div className="flex gap-2">
                   <button
                     onClick={() => {
                       setIsEditing(false);
                       setEditContent(message.content);
                     }}
-                    className="px-3 py-1.5 rounded-lg text-sm transition-colors"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm transition-colors"
                     style={{
                       background: 'var(--color-background-secondary)',
                       color: 'var(--color-text-primary)',
                     }}
                   >
-                    取消
+                    <X size={14} />
+                    <span>取消</span>
                   </button>
                   <button
                     onClick={() => {
@@ -400,6 +478,8 @@ export default function UnifiedMessageBubble({
           ) : (
             <div className="prose prose-sm max-w-none dark:prose-invert">
               <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeSanitize]}
                 components={{
                   code({ className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || '');
@@ -447,10 +527,8 @@ export default function UnifiedMessageBubble({
           )}
 
           {isCurrentlyStreaming && (
-            <motion.span
-              animate={{ opacity: [0.4, 1, 0.4] }}
-              transition={{ duration: 0.8, repeat: Infinity }}
-              className="inline-block w-0.5 h-4 ml-0.5 rounded-sm align-middle"
+            <span
+              className="inline-block w-0.5 h-4 ml-0.5 rounded-sm align-middle animate-pulse"
               style={{ background: 'var(--color-primary)' }}
             />
           )}
@@ -493,210 +571,218 @@ export default function UnifiedMessageBubble({
               />
             </button>
 
-            <AnimatePresence>
-              {showSources && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="mt-3 space-y-3"
-                >
-                  {message.sources.map((source, index) => (
-                    <motion.div
-                      key={source.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      className="p-4 rounded-xl border transition-all hover:shadow-lg"
-                      style={{
-                        background: 'var(--color-surface)',
-                        border: '1px solid var(--color-border-light)',
-                      }}
-                    >
-                      <div className="flex items-start justify-between gap-3 mb-2">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-                            style={{
-                              background: 'var(--color-primary-alpha)',
-                              color: 'var(--color-primary)',
-                            }}
-                          >
-                            {index + 1}
-                          </div>
-                          <span
-                            className="text-sm font-semibold"
-                            style={{ color: 'var(--color-text-primary)' }}
-                          >
-                            {source.title}
-                          </span>
-                        </div>
-                        {source.relevance && (
-                          <div
-                            className="px-2 py-1 rounded-full text-xs font-medium"
-                            style={{
-                              background:
-                                source.relevance >= 0.9
-                                  ? 'var(--color-success-alpha)'
-                                  : source.relevance >= 0.7
-                                    ? 'var(--color-warning-alpha)'
-                                    : 'var(--color-background-secondary)',
-                              color:
-                                source.relevance >= 0.9
-                                  ? 'var(--color-success)'
-                                  : source.relevance >= 0.7
-                                    ? 'var(--color-warning)'
-                                    : 'var(--color-text-muted)',
-                            }}
-                          >
-                            相关度 {Math.round(source.relevance * 100)}%
-                          </div>
-                        )}
-                      </div>
-                      <p
-                        className="text-sm leading-relaxed"
-                        style={{ color: 'var(--color-text-secondary)' }}
-                      >
-                        {source.content}
-                      </p>
-                      {source.url && (
-                        <a
-                          href={source.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-2 inline-flex items-center gap-1 text-xs font-medium hover:underline"
-                          style={{ color: 'var(--color-primary)' }}
+            {showSources && (
+              <div className="mt-3 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                {message.sources.map((source, index) => (
+                  <div
+                    key={source.id}
+                    className="p-4 rounded-xl border transition-all hover:shadow-lg animate-in fade-in slide-in-from-left-2 duration-200"
+                    style={{
+                      background: 'var(--color-surface)',
+                      border: '1px solid var(--color-border-light)',
+                      animationDelay: `${index * 50}ms`,
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                          style={{
+                            background: 'var(--color-primary-alpha)',
+                            color: 'var(--color-primary)',
+                          }}
                         >
-                          <ExternalLink size={12} />
-                          查看原文
-                        </a>
+                          {index + 1}
+                        </div>
+                        <span
+                          className="text-sm font-semibold"
+                          style={{ color: 'var(--color-text-primary)' }}
+                        >
+                          {source.title}
+                        </span>
+                      </div>
+                      {source.relevance && (
+                        <div
+                          className="px-2 py-1 rounded-full text-xs font-medium"
+                          style={{
+                            background:
+                              source.relevance >= 0.9
+                                ? 'var(--color-success-alpha)'
+                                : source.relevance >= 0.7
+                                  ? 'var(--color-warning-alpha)'
+                                  : 'var(--color-background-secondary)',
+                            color:
+                              source.relevance >= 0.9
+                                ? 'var(--color-success)'
+                                : source.relevance >= 0.7
+                                  ? 'var(--color-warning)'
+                                  : 'var(--color-text-muted)',
+                          }}
+                        >
+                          相关度 {Math.round(source.relevance * 100)}%
+                        </div>
                       )}
-                    </motion.div>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
+                    </div>
+                    <p
+                      className="text-sm leading-relaxed"
+                      style={{ color: 'var(--color-text-secondary)' }}
+                    >
+                      {source.content}
+                    </p>
+                    {source.url && (
+                      <a
+                        href={source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-medium hover:underline"
+                        style={{ color: 'var(--color-primary)' }}
+                      >
+                        <ExternalLink size={12} />
+                        查看原文
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        <AnimatePresence>
-          {showActions && !isEditing && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.2 }}
-              className={`flex items-center gap-0.5 mt-2 ${isUser ? 'justify-end' : ''}`}
-            >
-              {!isUser && (
-                <>
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => onFeedback?.(message.id, 'helpful')}
-                    className="p-1.5 rounded-lg transition-colors"
-                    style={{
-                      color:
-                        message.feedback === 'helpful'
-                          ? 'var(--color-success)'
-                          : 'var(--color-text-muted)',
-                      background:
-                        message.feedback === 'helpful' ? 'rgba(34, 197, 94, 0.1)' : 'transparent',
-                    }}
-                    title="有帮助"
-                  >
-                    <ThumbsUp size={14} />
-                  </motion.button>
-
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => onFeedback?.(message.id, 'unclear')}
-                    className="p-1.5 rounded-lg transition-colors"
-                    style={{
-                      color:
-                        message.feedback === 'unclear'
-                          ? 'var(--color-error)'
-                          : 'var(--color-text-muted)',
-                      background:
-                        message.feedback === 'unclear' ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
-                    }}
-                    title="需改进"
-                  >
-                    <ThumbsDown size={14} />
-                  </motion.button>
-
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => onFavorite?.(message.id, message.is_favorite || false)}
-                    className="p-1.5 rounded-lg transition-colors"
-                    style={{
-                      color: message.is_favorite
-                        ? 'var(--color-accent)'
+        {showActions && !isEditing && (
+          <div
+            className={`flex items-center gap-0.5 mt-2 animate-in fade-in slide-in-from-top-2 duration-200 ${isUser ? 'justify-end' : ''}`}
+          >
+            {!isUser && (
+              <>
+                <button
+                  disabled={isCurrentlyStreaming}
+                  onClick={() => onFeedback?.(message.id, 'helpful')}
+                  className="p-1.5 rounded-lg transition-all duration-200 hover:scale-110 active:scale-90 disabled:hover:scale-100"
+                  style={{
+                    color:
+                      message.feedback === 'helpful'
+                        ? 'var(--color-success)'
                         : 'var(--color-text-muted)',
-                      background: message.is_favorite ? 'rgba(245, 158, 11, 0.1)' : 'transparent',
-                    }}
-                    title={message.is_favorite ? '取消收藏' : '收藏'}
-                  >
-                    <Star size={14} fill={message.is_favorite ? 'currentColor' : 'none'} />
-                  </motion.button>
-
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => onRegenerate?.(message.id)}
-                    className="p-1.5 rounded-lg transition-colors"
-                    style={{ color: 'var(--color-text-muted)' }}
-                    title="重新生成"
-                  >
-                    <RefreshCw size={14} />
-                  </motion.button>
-                </>
-              )}
-
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={handleCopy}
-                className="p-1.5 rounded-lg transition-colors"
-                style={{
-                  color: copied ? 'var(--color-success)' : 'var(--color-text-muted)',
-                  background: copied ? 'rgba(34, 197, 94, 0.1)' : 'transparent',
-                }}
-                title="复制"
-              >
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-              </motion.button>
-
-              {isUser && (
-                <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => setIsEditing(true)}
-                  className="p-1.5 rounded-lg transition-colors"
-                  style={{ color: 'var(--color-text-muted)' }}
-                  title="编辑"
+                    background:
+                      message.feedback === 'helpful' ? 'rgba(34, 197, 94, 0.1)' : 'transparent',
+                  }}
+                  title="有帮助"
                 >
-                  <Edit3 size={14} />
-                </motion.button>
-              )}
+                  <ThumbsUp size={14} />
+                </button>
 
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => onDelete?.(message.id)}
-                className="p-1.5 rounded-lg transition-colors"
-                style={{ color: 'var(--color-error)' }}
-                title="删除"
+                <button
+                  disabled={isCurrentlyStreaming}
+                  onClick={() => onFeedback?.(message.id, 'unclear')}
+                  className="p-1.5 rounded-lg transition-all duration-200 hover:scale-110 active:scale-90 disabled:hover:scale-100"
+                  style={{
+                    color:
+                      message.feedback === 'unclear'
+                        ? 'var(--color-error)'
+                        : 'var(--color-text-muted)',
+                    background:
+                      message.feedback === 'unclear' ? 'rgba(239, 68, 68, 0.1)' : 'transparent',
+                  }}
+                  title="需改进"
+                >
+                  <ThumbsDown size={14} />
+                </button>
+
+                <button
+                  disabled={isCurrentlyStreaming}
+                  onClick={() => onFavorite?.(message.id, message.is_favorite || false)}
+                  className="p-1.5 rounded-lg transition-all duration-200 hover:scale-110 active:scale-90 disabled:hover:scale-100"
+                  style={{
+                    color: message.is_favorite ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                    background: message.is_favorite ? 'rgba(245, 158, 11, 0.1)' : 'transparent',
+                  }}
+                  title={message.is_favorite ? '取消收藏' : '收藏'}
+                >
+                  <Star size={14} fill={message.is_favorite ? 'currentColor' : 'none'} />
+                </button>
+
+                <button
+                  disabled={isCurrentlyStreaming}
+                  onClick={() => onRegenerate?.(message.id)}
+                  className="p-1.5 rounded-lg transition-all duration-200 hover:scale-110 active:scale-90 disabled:hover:scale-100"
+                  style={{ color: 'var(--color-text-muted)' }}
+                  title="重新生成"
+                >
+                  <RefreshCw size={14} />
+                </button>
+              </>
+            )}
+
+            <button
+              disabled={isCurrentlyStreaming}
+              onClick={handleCopy}
+              className="p-1.5 rounded-lg transition-all duration-200 hover:scale-110 active:scale-90 disabled:hover:scale-100"
+              style={{
+                color: copied ? 'var(--color-success)' : 'var(--color-text-muted)',
+                background: copied ? 'rgba(34, 197, 94, 0.1)' : 'transparent',
+              }}
+              title="复制"
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+
+            <button
+              disabled={isCurrentlyStreaming}
+              onClick={() => onQuote?.(message)}
+              className="p-1.5 rounded-lg transition-all duration-200 hover:scale-110 active:scale-90 disabled:hover:scale-100"
+              style={{ color: 'var(--color-text-muted)' }}
+              title="引用回复"
+            >
+              <Quote size={14} />
+            </button>
+
+            {!isUser && (
+              <button
+                disabled={isCurrentlyStreaming}
+                onClick={handleSpeak}
+                className="p-1.5 rounded-lg transition-all duration-200 hover:scale-110 active:scale-90 disabled:hover:scale-100"
+                style={{
+                  color: isSpeaking ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                  background: isSpeaking ? 'var(--color-primary-alpha)' : 'transparent',
+                }}
+                title={isSpeaking ? (isPaused ? '继续朗读' : '暂停朗读') : '朗读'}
               >
-                <Trash2 size={14} />
-              </motion.button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                {isSpeaking ? (
+                  isPaused ? (
+                    <Play size={14} />
+                  ) : (
+                    <Pause size={14} />
+                  )
+                ) : (
+                  <Volume2 size={14} />
+                )}
+              </button>
+            )}
+
+            {isUser && (
+              <button
+                disabled={isCurrentlyStreaming}
+                onClick={() => setIsEditing(true)}
+                className="p-1.5 rounded-lg transition-all duration-200 hover:scale-110 active:scale-90 disabled:hover:scale-100"
+                style={{ color: 'var(--color-text-muted)' }}
+                title="编辑"
+              >
+                <Edit3 size={14} />
+              </button>
+            )}
+
+            <button
+              disabled={isCurrentlyStreaming}
+              onClick={() => onDelete?.(message.id)}
+              className="p-1.5 rounded-lg transition-all duration-200 hover:scale-110 active:scale-90 disabled:hover:scale-100"
+              style={{ color: 'var(--color-error)' }}
+              title="删除"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        )}
       </div>
-    </motion.div>
+    </div>
   );
 }

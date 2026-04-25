@@ -96,7 +96,7 @@ class RequestDeduplicator {
     }
   }
 
-  async execute<T = any>(
+  async execute<T = unknown>(
     config: AxiosRequestConfig,
     executor: (config: AxiosRequestConfig) => Promise<AxiosResponse<T>>
   ): Promise<AxiosResponse<T>> {
@@ -361,14 +361,14 @@ class EnhancedApiClient {
     return null;
   }
 
-  async get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
+  async get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.deduplicator.execute({ ...config, method: 'GET', url }, (cfg) =>
       this.instance.request<T>(cfg)
     );
     return response.data;
   }
 
-  async post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+  async post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.instance.request<T>({
       ...config,
       method: 'POST',
@@ -378,7 +378,7 @@ class EnhancedApiClient {
     return response.data;
   }
 
-  async put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+  async put<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.instance.request<T>({
       ...config,
       method: 'PUT',
@@ -388,7 +388,7 @@ class EnhancedApiClient {
     return response.data;
   }
 
-  async patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {
+  async patch<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.instance.request<T>({
       ...config,
       method: 'PATCH',
@@ -398,7 +398,7 @@ class EnhancedApiClient {
     return response.data;
   }
 
-  async delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T> {
+  async delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T> {
     const response = await this.instance.request<T>({
       ...config,
       method: 'DELETE',

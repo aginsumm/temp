@@ -98,6 +98,7 @@ class GraphErrorBoundary extends Component<Props, State> {
 
 export default GraphErrorBoundary;
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function checkWebGLSupport(): boolean {
   try {
     const canvas = document.createElement('canvas');
@@ -108,6 +109,7 @@ export function checkWebGLSupport(): boolean {
   }
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function checkCanvasSupport(): boolean {
   try {
     const canvas = document.createElement('canvas');

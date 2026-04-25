@@ -34,11 +34,11 @@ class OfflineStorage {
     });
   }
 
-  async addSession(session: any) {
+  async addSession(session: unknown) {
     return this.addToStore('sessions', session);
   }
 
-  async updateSession(session: any) {
+  async updateSession(session: unknown) {
     return this.putToStore('sessions', session);
   }
 
@@ -54,11 +54,11 @@ class OfflineStorage {
     return this.getFromStore('sessions', sessionId);
   }
 
-  async addMessage(message: any) {
+  async addMessage(message: unknown) {
     return this.addToStore('messages', message);
   }
 
-  async updateMessage(message: any) {
+  async updateMessage(message: unknown) {
     return this.putToStore('messages', message);
   }
 
@@ -71,13 +71,13 @@ class OfflineStorage {
   }
 
   async deleteMessages(sessionId: string) {
-    const messages = await this.getMessages(sessionId) as any[];
+    const messages = (await this.getMessages(sessionId)) as Array<{ id: string }>;
     for (const message of messages) {
       await this.deleteFromStore('messages', message.id);
     }
   }
 
-  async addPendingAction(action: any) {
+  async addPendingAction(action: unknown) {
     return this.addToStore('pending-actions', action);
   }
 
@@ -93,7 +93,7 @@ class OfflineStorage {
     return this.clearStore('pending-actions');
   }
 
-  private async addToStore(storeName: string, data: any) {
+  private async addToStore(storeName: string, data: unknown) {
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'));
@@ -109,7 +109,7 @@ class OfflineStorage {
     });
   }
 
-  private async putToStore(storeName: string, data: any) {
+  private async putToStore(storeName: string, data: unknown) {
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'));
@@ -157,7 +157,7 @@ class OfflineStorage {
     });
   }
 
-  private async getFromStoreByIndex(storeName: string, indexName: string, value: any) {
+  private async getFromStoreByIndex(storeName: string, indexName: string, value: string) {
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'));

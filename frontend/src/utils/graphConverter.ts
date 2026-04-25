@@ -6,12 +6,12 @@
 import type {
   Entity,
   Relation,
+  EntityType,
+  RelationType,
   GraphData,
   GraphNode,
   GraphEdge,
-  EntityType,
-  RelationType,
-} from '../types/chat';
+} from '../types/graph';
 import { CATEGORY_COLORS } from '../constants/categories';
 
 /**
@@ -48,6 +48,67 @@ export function calculateNodeSize(relevance: number, minSize = 20, maxSize = 50)
 }
 
 /**
+ * 实体去重和合并
+ * 基于名称和类型合并相同实体，保留最高的 relevance/importance
+ */
+function deduplicateEntities(entities: Entity[]): Entity[] {
+  const entityMap = new Map<string, Entity>();
+
+  entities.forEach((entity) => {
+    const key = `${entity.name.toLowerCase().trim()}_${entity.type}`;
+    const existing = entityMap.get(key);
+
+    if (!existing) {
+      entityMap.set(key, entity);
+    } else {
+      // 合并：保留更高的 relevance/importance
+      if (entity.description && !existing.description) {
+        existing.description = entity.description;
+      }
+      if (entity.relevance && (!existing.relevance || entity.relevance > existing.relevance)) {
+        existing.relevance = entity.relevance;
+      }
+      if (entity.importance && (!existing.importance || entity.importance > existing.importance)) {
+        existing.importance = entity.importance;
+      }
+      // 合并 metadata
+      if (entity.metadata) {
+        existing.metadata = { ...existing.metadata, ...entity.metadata };
+      }
+    }
+  });
+
+  return Array.from(entityMap.values());
+}
+
+/**
+ * 关系去重和合并
+ * 基于 source-target-type 合并相同关系
+ */
+function deduplicateRelations(relations: Relation[]): Relation[] {
+  const relationMap = new Map<string, Relation>();
+
+  relations.forEach((relation) => {
+    const key = `${relation.source}_${relation.target}_${relation.type}`;
+    const existing = relationMap.get(key);
+
+    if (!existing) {
+      relationMap.set(key, relation);
+    } else {
+      // 合并：保留更高的 confidence
+      if (
+        relation.confidence &&
+        (!existing.confidence || relation.confidence > existing.confidence)
+      ) {
+        existing.confidence = relation.confidence;
+      }
+    }
+  });
+
+  return Array.from(relationMap.values());
+}
+
+/**
  * 将 Entity 和 Relation 转换为统一的 GraphData
  * 这是主函数，两个模块都应该使用这个函数
  */
@@ -59,11 +120,15 @@ export function entitiesToGraphData(
     minRelevance?: number;
   }
 ): GraphData {
+  // 先去重
+  const uniqueEntities = deduplicateEntities(entities);
+  const uniqueRelations = deduplicateRelations(relations);
+
   // 过滤实体
-  let filteredEntities = entities;
+  let filteredEntities = uniqueEntities;
 
   if (options?.minRelevance) {
-    filteredEntities = entities.filter((e) => (e.relevance || 1) >= options.minRelevance!);
+    filteredEntities = uniqueEntities.filter((e) => (e.relevance || 1) >= options.minRelevance!);
   }
 
   if (options?.maxNodes && filteredEntities.length > options.maxNodes) {
@@ -113,7 +178,7 @@ export function entitiesToGraphData(
   const edges: GraphEdge[] = [];
   const entityIds = new Set(filteredEntities.map((e) => e.id));
 
-  relations.forEach((relation, index) => {
+  uniqueRelations.forEach((relation, index) => {
     if (entityIds.has(relation.source) && entityIds.has(relation.target)) {
       edges.push({
         id: relation.id || `edge_${index}`,
@@ -185,7 +250,7 @@ export function filterGraphData(
 
   // 按关系类型过滤
   if (filter.relationTypes && filter.relationTypes.length > 0) {
-    filteredEdges = filteredEdges.filter((e) => filter.relationTypes!.includes(e.relationType));
+    filteredEdges = filteredEdges.filter((e) => filter.relationTypes!.includes(e.relationType!));
   }
 
   // 按置信度过滤

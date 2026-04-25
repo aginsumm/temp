@@ -1,5 +1,5 @@
 class CacheManager {
-  private cache: Map<string, { data: any; timestamp: number; ttl: number }>;
+  private cache: Map<string, { data: unknown; timestamp: number; ttl: number }>;
   private defaultTTL: number = 5 * 60 * 1000;
 
   constructor() {
@@ -8,7 +8,7 @@ class CacheManager {
     this.startCleanupInterval();
   }
 
-  set(key: string, data: any, ttl?: number) {
+  set(key: string, data: unknown, ttl?: number) {
     this.cache.set(key, {
       data,
       timestamp: Date.now(),
@@ -17,7 +17,7 @@ class CacheManager {
     this.saveToStorage();
   }
 
-  get(key: string): any | null {
+  get(key: string): unknown | null {
     const item = this.cache.get(key);
     if (!item) return null;
 

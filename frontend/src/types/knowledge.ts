@@ -339,8 +339,8 @@ export function convertChatEntityToKnowledgeEntity(
     description: chatEntity.description,
     relevance: chatEntity.relevance,
     importance: overrides?.importance ?? 0.5,
-    region: overrides?.region ?? chatEntity.metadata?.region,
-    period: overrides?.period ?? chatEntity.metadata?.period,
+    region: overrides?.region ?? (chatEntity.metadata?.region as string | undefined),
+    period: overrides?.period ?? (chatEntity.metadata?.period as string | undefined),
     coordinates: overrides?.coordinates,
     metadata: overrides?.metadata ?? chatEntity.metadata,
     images: overrides?.images,
@@ -380,7 +380,7 @@ export function convertChatRelationToKnowledgeRelation(
   overrides?: Partial<KnowledgeRelationship>
 ): KnowledgeRelationship {
   return {
-    id: chatRelation.id,
+    id: chatRelation.id ?? `${chatRelation.source}-${chatRelation.target}-${chatRelation.type}`,
     source_id: chatRelation.source,
     target_id: chatRelation.target,
     relation_type: chatRelation.type,

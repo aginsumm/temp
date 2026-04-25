@@ -22,20 +22,20 @@ async function withRetry<T>(
   operationName: string,
   maxRetries: number = MAX_RETRIES
 ): Promise<T> {
-  let lastError: any;
+  let lastError: Error | unknown;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await operation();
-    } catch (error: any) {
+    } catch (error: unknown) {
       lastError = error;
 
-      // 如果是网络错误，尝试重试
+      const errorMessage = error instanceof Error ? error.message : String(error);
       const isNetworkError =
-        error.message?.includes('network') ||
-        error.message?.includes('fetch') ||
-        error.message?.includes('timeout') ||
-        error.code === 'NETWORK_ERROR';
+        errorMessage.includes('network') ||
+        errorMessage.includes('fetch') ||
+        errorMessage.includes('timeout') ||
+        (error as Record<string, unknown>)?.code === 'NETWORK_ERROR';
 
       if (!isNetworkError || attempt === maxRetries) {
         throw error;
@@ -174,18 +174,18 @@ class SnapshotService {
         'getSnapshot'
       );
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.warn('Failed to fetch snapshot:', error);
 
+      const errorObj = error as Record<string, unknown>;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStatus = errorObj?.status as number | undefined;
+
       const is404 =
-        error.status === 404 ||
-        error.message?.includes('404') ||
-        error.message?.includes('not found');
+        errorStatus === 404 || errorMessage.includes('404') || errorMessage.includes('not found');
       const isPermissionError =
-        error.status === 403 ||
-        error.message?.includes('permission') ||
-        error.message?.includes('无权');
-      const isNetworkError = error.message?.includes('network') || error.message?.includes('fetch');
+        errorStatus === 403 || errorMessage.includes('permission') || errorMessage.includes('无权');
+      const isNetworkError = errorMessage.includes('network') || errorMessage.includes('fetch');
 
       if (is404 || isPermissionError) {
         return null;
@@ -226,11 +226,7 @@ class SnapshotService {
       });
 
       const serverSnapshotIds = new Set(response.snapshots.map((s) => s.id));
-      const localOnlyNew = localSnapshots.filter(
-        (s) =>
-          !serverSnapshotIds.has(s.id) &&
-          new Date(s.created_at).getTime() > Date.now() - 24 * 60 * 60 * 1000
-      );
+      const localOnlyNew = localSnapshots.filter((s) => !serverSnapshotIds.has(s.id));
 
       const mergedSnapshots = [...response.snapshots, ...localOnlyNew].sort((a, b) => {
         const dateA = new Date(a.created_at).getTime();
@@ -345,7 +341,7 @@ class SnapshotService {
 
   async loadSharedSnapshot(shareToken: string): Promise<GraphSnapshot | null> {
     try {
-      const response = await apiClient.get<GraphSnapshot>(`/shared/graph/${shareToken}`);
+      const response = await apiClient.get<GraphSnapshot>(`shared/graph/${shareToken}`);
       return response;
     } catch (error) {
       console.warn('Failed to load shared snapshot:', error);

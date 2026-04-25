@@ -41,7 +41,7 @@ class LocalAuthService {
         created_at: new Date().toISOString(),
       };
 
-      users.push(guestUser as any);
+      users.push(guestUser as unknown as LocalUser);
       this.saveLocalUsers(users);
     }
   }

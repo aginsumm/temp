@@ -82,6 +82,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useI18n(): I18nContextType {
   const context = useContext(I18nContext);
   if (!context) {
@@ -90,15 +91,18 @@ export function useI18n(): I18nContextType {
   return context;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useTranslation() {
   const { t, language } = useI18n();
   return { t, language };
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useLanguage() {
   const { language, setLanguage } = useI18n();
   return { language, setLanguage };
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export { languageNames } from './messages';
 export type { Language } from './messages';

@@ -4,6 +4,16 @@ import { persist } from 'zustand/middleware';
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error';
 
+interface WebSocketIncomingMessage {
+  type: 'stream' | 'chat' | 'assistant' | 'error' | string;
+  id?: string;
+  chunk?: string;
+  content?: string;
+  timestamp?: number;
+  metadata?: Record<string, unknown>;
+  message?: string;
+}
+
 interface WebSocketMessage {
   id: string;
   type: 'user' | 'assistant' | 'system' | 'error';
@@ -32,7 +42,7 @@ interface WebSocketState {
 interface WebSocketActions {
   connect: (sessionId: string) => void;
   disconnect: () => void;
-  sendMessage: (content: string, metadata?: any) => void;
+  sendMessage: (content: string, metadata?: Record<string, unknown>) => void;
   clearMessages: () => void;
   updateMessage: (messageId: string, updates: Partial<WebSocketMessage>) => void;
 }
@@ -61,9 +71,14 @@ class WebSocketManager {
   private messageQueue: string[] = [];
   private pendingMessages: Map<
     string,
-    { timeout: NodeJS.Timeout; resolve: Function; reject: Function }
+    {
+      timeout: NodeJS.Timeout;
+      resolve: (value: WebSocketMessage) => void;
+      reject: (error: Error) => void;
+    }
   > = new Map();
-  private listeners: Map<string, Set<Function>> = new Map();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private listeners: Map<string, Set<(...args: any[]) => void>> = new Map();
   private sessionId: string | null = null;
 
   constructor(config: Partial<WebSocketConfig> = {}) {
@@ -124,7 +139,11 @@ class WebSocketManager {
     this.emit('status', 'disconnected');
   }
 
-  send(type: string, data: any, expectResponse: boolean = false): Promise<any> {
+  send(
+    type: string,
+    data: Record<string, unknown>,
+    expectResponse: boolean = false
+  ): Promise<WebSocketMessage | string> {
     return new Promise((resolve, reject) => {
       const message = {
         id: this.generateId(),
@@ -155,7 +174,8 @@ class WebSocketManager {
     });
   }
 
-  on(event: string, callback: Function): () => void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(event: string, callback: (...args: any[]) => void): () => void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
     }
@@ -166,7 +186,7 @@ class WebSocketManager {
     };
   }
 
-  private emit(event: string, data?: any): void {
+  private emit(event: string, data?: unknown): void {
     this.listeners.get(event)?.forEach((callback) => callback(data));
   }
 
@@ -180,7 +200,7 @@ class WebSocketManager {
           this.emit('message', message);
           break;
 
-        case 'response':
+        case 'response': {
           const pending = this.pendingMessages.get(message.requestId);
           if (pending) {
             clearTimeout(pending.timeout);
@@ -188,6 +208,7 @@ class WebSocketManager {
             this.pendingMessages.delete(message.requestId);
           }
           break;
+        }
 
         case 'pong':
           this.emit('heartbeat', Date.now());
@@ -247,7 +268,7 @@ class WebSocketManager {
   }
 
   private generateId(): string {
-    return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   }
 }
 
@@ -273,10 +294,10 @@ export const useWebSocketStore = create<WebSocketState & WebSocketActions>()(
         set({ status: 'disconnected', sessionId: null });
       },
 
-      sendMessage: async (content: string, metadata?: any) => {
+      sendMessage: async (content: string, metadata?: Record<string, unknown>) => {
         const state = get();
         const message: WebSocketMessage = {
-          id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
           type: 'user',
           content,
           timestamp: Date.now(),
@@ -345,9 +366,9 @@ export function useWebSocketChat(sessionId: string) {
       useWebSocketStore.setState({ status: newStatus });
     });
 
-    const unsubMessage = wsManager.on('message', (message: any) => {
+    const unsubMessage = wsManager.on('message', (message: WebSocketIncomingMessage) => {
       if (message.type === 'stream') {
-        setStreamingMessage((prev) => prev + message.chunk);
+        setStreamingMessage((prev) => prev + (message.chunk || ''));
         setIsTyping(true);
       } else if (message.type === 'chat' || message.type === 'assistant') {
         const newMessage: WebSocketMessage = {
@@ -372,7 +393,7 @@ export function useWebSocketChat(sessionId: string) {
       }
     });
 
-    const unsubError = wsManager.on('error', (error: any) => {
+    const unsubError = wsManager.on('error', (error: Error) => {
       useWebSocketStore.setState({ error: error.message || 'Unknown error' });
     });
 
@@ -391,7 +412,7 @@ export function useWebSocketChat(sessionId: string) {
   }, [sessionId, connect, streamingMessage]);
 
   const sendChatMessage = useCallback(
-    async (content: string, metadata?: any) => {
+    async (content: string, metadata?: Record<string, unknown>) => {
       setStreamingMessage('');
       await sendMessage(content, metadata);
     },

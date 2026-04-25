@@ -25,6 +25,7 @@ export default function FavoritesPage() {
 
   useEffect(() => {
     loadFavorites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadFavorites() {
@@ -146,7 +147,7 @@ export default function FavoritesPage() {
           <div className="relative">
             <select
               value={filterRole}
-              onChange={(e) => setFilterRole(e.target.value as any)}
+              onChange={(e) => setFilterRole(e.target.value as 'all' | 'user' | 'assistant')}
               className="appearance-none px-4 py-2 pr-8 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="all">全部</option>

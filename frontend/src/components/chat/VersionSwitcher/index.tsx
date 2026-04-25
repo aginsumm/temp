@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronLeft,
@@ -9,6 +9,7 @@ import {
   Sparkles,
   Eye,
   RotateCcw,
+  X,
 } from 'lucide-react';
 import { useToast } from '../../common/Toast';
 
@@ -63,21 +64,43 @@ export default function VersionSwitcher({
     setDirection(0);
   }, [currentIndex]);
 
-  if (!hasVersions && !isEdited) return null;
-
-  const handlePrev = () => {
+  const handlePrev = useCallback(() => {
     if (currentIndex > 0) {
       setDirection(-1);
       onSwitch(versions[currentIndex - 1].id, currentIndex - 1);
     }
-  };
+  }, [currentIndex, versions, onSwitch]);
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (currentIndex < versions.length - 1) {
       setDirection(1);
       onSwitch(versions[currentIndex + 1].id, currentIndex + 1);
     }
-  };
+  }, [currentIndex, versions, onSwitch]);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (showRestoreConfirm || viewingVersion) return;
+
+      if (e.key === 'ArrowLeft' && currentIndex > 0) {
+        e.preventDefault();
+        handlePrev();
+      } else if (e.key === 'ArrowRight' && currentIndex < versions.length - 1) {
+        e.preventDefault();
+        handleNext();
+      } else if (e.key === 'Escape') {
+        setShowAllVersions(false);
+      }
+    },
+    [currentIndex, versions.length, showRestoreConfirm, viewingVersion, handlePrev, handleNext]
+  );
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
+  if (!hasVersions && !isEdited) return null;
 
   const handleRestoreLatest = () => {
     setShowRestoreConfirm(true);
@@ -93,9 +116,14 @@ export default function VersionSwitcher({
     setShowRestoreConfirm(false);
   };
 
+  const switchToVersion = (versionId: string, index: number) => {
+    setDirection(index > currentIndex ? 1 : -1);
+    onSwitch(versionId, index);
+  };
+
   const variants = {
-    enter: (direction: number) => ({
-      x: direction > 0 ? 20 : -20,
+    enter: (dir: number) => ({
+      x: dir > 0 ? 20 : -20,
       opacity: 0,
       scale: 0.95,
     }),
@@ -104,14 +132,13 @@ export default function VersionSwitcher({
       opacity: 1,
       scale: 1,
     },
-    exit: (direction: number) => ({
-      x: direction < 0 ? 20 : -20,
+    exit: (dir: number) => ({
+      x: dir < 0 ? 20 : -20,
       opacity: 0,
       scale: 0.95,
     }),
   };
 
-  // 仅显示"已编辑"标签的情况：当消息被编辑但版本数据尚未加载完成时
   if (isEdited && !hasVersions) {
     return (
       <motion.div
@@ -141,6 +168,8 @@ export default function VersionSwitcher({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
       className={`mt-3 ${isUser ? 'flex flex-col items-end' : ''}`}
+      role="group"
+      aria-label="版本切换器"
     >
       <div
         ref={containerRef}
@@ -150,6 +179,8 @@ export default function VersionSwitcher({
           border: '1px solid var(--color-border-light)',
           boxShadow: '0 2px 8px -4px rgba(0, 0, 0, 0.05)',
         }}
+        role="toolbar"
+        aria-label="版本导航工具栏"
       >
         <motion.button
           onClick={handlePrev}
@@ -161,14 +192,19 @@ export default function VersionSwitcher({
             color: currentIndex === 0 ? 'var(--color-text-muted)' : 'var(--color-primary)',
             background: currentIndex === 0 ? 'transparent' : 'var(--color-primary-alpha)',
           }}
+          aria-label="上一版本"
+          aria-disabled={currentIndex === 0}
         >
           <ChevronLeft size={14} />
-          <span className="text-xs font-medium">上一版本</span>
+          <span className="text-xs font-medium hidden sm:inline">上一版本</span>
         </motion.button>
 
         <div
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
           style={{ background: 'var(--color-surface)' }}
+          role="status"
+          aria-live="polite"
+          aria-label={`当前版本 ${currentIndex + 1}，共 ${versions.length} 个版本`}
         >
           <GitBranch size={14} style={{ color: 'var(--color-text-muted)' }} />
           <AnimatePresence mode="wait" custom={direction}>
@@ -205,26 +241,27 @@ export default function VersionSwitcher({
             background:
               currentIndex === versions.length - 1 ? 'transparent' : 'var(--color-primary-alpha)',
           }}
+          aria-label="下一版本"
+          aria-disabled={currentIndex === versions.length - 1}
         >
-          <span className="text-xs font-medium">下一版本</span>
+          <span className="text-xs font-medium hidden sm:inline">下一版本</span>
           <ChevronRight size={14} />
         </motion.button>
       </div>
 
-      <div className={`flex items-center gap-3 mt-2 ${isUser ? 'justify-end' : ''}`}>
-        {/* 版本指示器 - 当版本数 <= 10 时显示所有圆点，否则只显示数字 */}
+      <div className={`flex items-center gap-3 mt-2 flex-wrap ${isUser ? 'justify-end' : ''}`}>
         {versions.length <= 10 ? (
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5" role="tablist" aria-label="版本列表">
             {versions.map((version, index) => (
               <motion.button
                 key={version.id}
-                onClick={() => {
-                  setDirection(index > currentIndex ? 1 : -1);
-                  onSwitch(version.id, index);
-                }}
+                onClick={() => switchToVersion(version.id, index)}
                 whileHover={{ scale: 1.15 }}
                 whileTap={{ scale: 0.9 }}
                 className="group relative"
+                role="tab"
+                aria-selected={index === currentIndex}
+                aria-label={`版本 ${index + 1} - ${formatTimeAgo(version.created_at)}`}
                 title={`版本 ${index + 1} - ${formatTimeAgo(version.created_at)}`}
               >
                 <div
@@ -243,7 +280,6 @@ export default function VersionSwitcher({
                     transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                   />
                 )}
-                {/* 悬停时显示版本信息和查看按钮 */}
                 <div
                   className="absolute -top-16 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20"
                   style={{
@@ -297,7 +333,8 @@ export default function VersionSwitcher({
               background: 'var(--color-background-secondary)',
               color: 'var(--color-text-muted)',
             }}
-            title="查看完整版本历史"
+            aria-expanded={showAllVersions}
+            aria-controls="version-history-panel"
           >
             <Eye size={12} />
             <span>{showAllVersions ? '收起' : versions.length} 个版本</span>
@@ -341,7 +378,6 @@ export default function VersionSwitcher({
               color: 'var(--color-success)',
               border: '1px solid var(--color-success)',
             }}
-            title="恢复到最新版本"
           >
             <RotateCcw size={12} />
             <span>恢复最新</span>
@@ -367,6 +403,7 @@ export default function VersionSwitcher({
       <AnimatePresence>
         {showAllVersions && versions.length > 2 && (
           <motion.div
+            id="version-history-panel"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
@@ -377,6 +414,8 @@ export default function VersionSwitcher({
               maxHeight: '400px',
               overflowY: 'auto',
             }}
+            role="listbox"
+            aria-label="版本历史列表"
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
@@ -384,9 +423,10 @@ export default function VersionSwitcher({
               </span>
               <button
                 onClick={() => setShowAllVersions(false)}
-                className="text-xs"
+                className="text-xs flex items-center gap-1"
                 style={{ color: 'var(--color-text-muted)' }}
               >
+                <X size={12} />
                 收起
               </button>
             </div>
@@ -395,8 +435,7 @@ export default function VersionSwitcher({
                 <motion.button
                   key={version.id}
                   onClick={() => {
-                    setDirection(index > currentIndex ? 1 : -1);
-                    onSwitch(version.id, index);
+                    switchToVersion(version.id, index);
                     setShowAllVersions(false);
                   }}
                   whileHover={{ scale: 1.01 }}
@@ -413,6 +452,8 @@ export default function VersionSwitcher({
                         ? '1px solid var(--color-primary)'
                         : '1px solid var(--color-border)',
                   }}
+                  role="option"
+                  aria-selected={index === currentIndex}
                 >
                   <div className="flex items-center gap-2">
                     <div
@@ -453,14 +494,10 @@ export default function VersionSwitcher({
                         background: 'var(--color-primary-alpha)',
                         color: 'var(--color-primary)',
                       }}
-                      title="查看此版本内容"
                     >
                       <Eye size={12} />
                       <span>查看</span>
                     </button>
-                    {index === currentIndex && (
-                      <Eye size={14} style={{ color: 'var(--color-primary)' }} />
-                    )}
                   </div>
                 </motion.button>
               ))}
@@ -469,7 +506,6 @@ export default function VersionSwitcher({
         )}
       </AnimatePresence>
 
-      {/* Restore Confirmation Dialog */}
       <AnimatePresence>
         {showRestoreConfirm && (
           <motion.div
@@ -478,16 +514,25 @@ export default function VersionSwitcher({
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
             onClick={() => setShowRestoreConfirm(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="restore-confirm-title"
+            aria-describedby="restore-confirm-desc"
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md mx-auto"
+              className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md mx-auto shadow-xl"
             >
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">确认恢复</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
+              <h3
+                id="restore-confirm-title"
+                className="text-lg font-semibold text-gray-900 dark:text-white mb-2"
+              >
+                确认恢复
+              </h3>
+              <p id="restore-confirm-desc" className="text-gray-600 dark:text-gray-400 mb-6">
                 确定要恢复到最新版本吗？当前版本将被保存为历史版本。
               </p>
               <div className="flex gap-3 justify-end">
@@ -509,7 +554,6 @@ export default function VersionSwitcher({
         )}
       </AnimatePresence>
 
-      {/* Version Detail View Dialog */}
       <AnimatePresence>
         {viewingVersion && (
           <motion.div
@@ -518,18 +562,25 @@ export default function VersionSwitcher({
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
             onClick={() => setViewingVersion(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="version-detail-title"
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col"
+              className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col shadow-xl"
             >
-              {/* Header */}
               <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex items-center gap-3">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">版本详情</h3>
+                  <h3
+                    id="version-detail-title"
+                    className="text-lg font-semibold text-gray-900 dark:text-white"
+                  >
+                    版本详情
+                  </h3>
                   <span className="text-sm px-2 py-1 rounded bg-primary-alpha text-primary">
                     版本 {versions.findIndex((v) => v.id === viewingVersion.id) + 1}
                   </span>
@@ -541,21 +592,13 @@ export default function VersionSwitcher({
                 </div>
                 <button
                   onClick={() => setViewingVersion(null)}
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
-                  title="关闭"
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700"
+                  aria-label="关闭版本详情"
                 >
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
+                  <X size={20} />
                 </button>
               </div>
 
-              {/* Info Bar */}
               <div className="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-700/50">
                 <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
                   <span className="flex items-center gap-1">
@@ -569,7 +612,6 @@ export default function VersionSwitcher({
                 </div>
               </div>
 
-              {/* Content */}
               <div className="flex-1 overflow-auto p-4">
                 <div className="prose dark:prose-invert max-w-none">
                   <div className="whitespace-pre-wrap text-gray-900 dark:text-gray-100 leading-relaxed">
@@ -578,7 +620,6 @@ export default function VersionSwitcher({
                 </div>
               </div>
 
-              {/* Footer Actions */}
               <div className="flex items-center justify-end gap-3 p-4 border-t border-gray-200 dark:border-gray-700">
                 <button
                   onClick={() => setViewingVersion(null)}
@@ -591,8 +632,7 @@ export default function VersionSwitcher({
                     onClick={() => {
                       const index = versions.findIndex((v) => v.id === viewingVersion.id);
                       if (index !== -1) {
-                        setDirection(1);
-                        onSwitch(viewingVersion.id, index);
+                        switchToVersion(viewingVersion.id, index);
                         toast.success('已恢复', '已恢复到此版本');
                       }
                       setViewingVersion(null);

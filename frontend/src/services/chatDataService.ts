@@ -40,6 +40,12 @@ interface UnifiedChatService {
     onComplete: (message: Message) => void,
     onError?: (error: Error) => void
   ) => Promise<() => void>;
+  regenerateMessageStream: (
+    messageId: string,
+    onChunk: (chunk: string) => void,
+    onComplete: (message: Message) => void,
+    onError?: (error: Error) => void
+  ) => Promise<() => void>;
   submitFeedback: (messageId: string, feedback: 'helpful' | 'unclear') => Promise<void>;
   toggleFavorite: (messageId: string, currentStatus?: boolean) => Promise<boolean>;
   getRecommendedQuestions: (sessionId?: string) => Promise<{ id: string; question: string }[]>;
@@ -97,21 +103,21 @@ class ChatDataService implements UnifiedChatService {
     maxRetries: number = MAX_RETRY_COUNT
   ): Promise<T> {
     let lastError: Error | null = null;
-    
+
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         return await operation();
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
         console.warn(`${operationName} attempt ${attempt + 1} failed:`, lastError.message);
-        
+
         if (attempt < maxRetries - 1) {
           const delay = RETRY_DELAY_BASE * Math.pow(2, attempt);
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
-    
+
     throw lastError || new Error(`${operationName} failed after ${maxRetries} retries`);
   }
 
@@ -125,27 +131,18 @@ class ChatDataService implements UnifiedChatService {
 
   async getSessions(): Promise<Session[]> {
     await this.ensureInitialized();
-    return this.withRetry(
-      () => chatRepository.getAllSessions(),
-      'getSessions'
-    );
+    return this.withRetry(() => chatRepository.getAllSessions(), 'getSessions');
   }
 
   async createSession(title = '新对话'): Promise<Session> {
     await this.ensureInitialized();
     const userId = getCurrentUserId();
-    return this.withRetry(
-      () => chatRepository.createSession(userId, title),
-      'createSession'
-    );
+    return this.withRetry(() => chatRepository.createSession(userId, title), 'createSession');
   }
 
   async deleteSession(sessionId: string): Promise<void> {
     await this.ensureInitialized();
-    return this.withRetry(
-      () => chatRepository.deleteSession(sessionId),
-      'deleteSession'
-    );
+    return this.withRetry(() => chatRepository.deleteSession(sessionId), 'deleteSession');
   }
 
   async updateSession(sessionId: string, updates: Partial<Session>): Promise<Session> {
@@ -156,18 +153,12 @@ class ChatDataService implements UnifiedChatService {
 
   async getMessages(sessionId: string): Promise<Message[]> {
     await this.ensureInitialized();
-    return this.withRetry(
-      () => chatRepository.getMessagesBySession(sessionId),
-      'getMessages'
-    );
+    return this.withRetry(() => chatRepository.getMessagesBySession(sessionId), 'getMessages');
   }
 
   async sendMessage(sessionId: string, content: string): Promise<Message> {
     await this.ensureInitialized();
-    return this.withRetry(
-      () => chatRepository.sendMessage(sessionId, content),
-      'sendMessage'
-    );
+    return this.withRetry(() => chatRepository.sendMessage(sessionId, content), 'sendMessage');
   }
 
   async sendMessageStream(
@@ -215,9 +206,76 @@ class ChatDataService implements UnifiedChatService {
             clearTimeout(streamState.timeoutId);
           }
           cleanup();
-          chatRepository.addMessage(message).catch(err => {
+          chatRepository.addMessage(message).catch((err) => {
             console.error('Failed to save AI message:', err);
           });
+          Promise.resolve(onComplete(message)).catch((err) => {
+            console.error('Error in onComplete callback:', err);
+          });
+        }
+      },
+      (error) => {
+        if (!streamState.aborted) {
+          cleanup();
+          if (onError) {
+            onError(error);
+          }
+        }
+      }
+    );
+
+    return () => {
+      streamState.aborted = true;
+      cleanup();
+      if (typeof abortFn === 'function') {
+        abortFn();
+      }
+    };
+  }
+
+  async regenerateMessageStream(
+    messageId: string,
+    onChunk: (chunk: string) => void,
+    onComplete: (message: Message) => void,
+    onError?: (error: Error) => void
+  ): Promise<() => void> {
+    await this.ensureInitialized();
+
+    const streamId = `regenerate_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const streamState: StreamState = {
+      aborted: false,
+      intervalId: null,
+      timeoutId: null,
+    };
+    this.activeStreams.set(streamId, streamState);
+
+    const cleanup = () => {
+      this.cleanupStream(streamId);
+    };
+
+    streamState.timeoutId = setTimeout(() => {
+      if (!streamState.aborted) {
+        streamState.aborted = true;
+        cleanup();
+        if (onError) {
+          onError(new Error('Stream timeout - 重新生成超时，请重试'));
+        }
+      }
+    }, STREAM_TIMEOUT);
+
+    const abortFn = await chatRepository.regenerateMessageStream(
+      messageId,
+      (chunk) => {
+        if (!streamState.aborted) {
+          onChunk(chunk);
+        }
+      },
+      (message) => {
+        if (!streamState.aborted) {
+          if (streamState.timeoutId) {
+            clearTimeout(streamState.timeoutId);
+          }
+          cleanup();
           Promise.resolve(onComplete(message)).catch((err) => {
             console.error('Error in onComplete callback:', err);
           });

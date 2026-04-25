@@ -1,31 +1,51 @@
 /**
- * 图谱数据同步服务
- * 用于在 Chat 和 Knowledge 模块之间同步图谱数据
- * 确保两个模块的图谱状态保持一致
+ * 图谱数据同步服务 v4
+ * 基于 graphStore 的统一数据同步层
+ * 所有图谱数据通过 graphStore 存储，本服务只负责事件分发
  */
 
-import { useState, useEffect } from 'react';
-import type { Entity, Relation } from '../types/chat';
+import type { Entity, Relation } from '../types/graph';
 import { useGraphStore } from '../stores/graphStore';
 
-export interface GraphSyncState {
+export enum SyncEventType {
+  UPDATE = 'UPDATE',
+  SNAPSHOT = 'SNAPSHOT',
+  CLEAR = 'CLEAR',
+  MERGE = 'MERGE',
+}
+
+export enum SyncSource {
+  CHAT = 'chat',
+  KNOWLEDGE = 'knowledge',
+  SNAPSHOT = 'snapshot',
+}
+
+export interface GraphSyncEvent {
+  type: SyncEventType;
+  source: SyncSource;
   entities: Entity[];
   relations: Relation[];
   keywords: string[];
   sessionId?: string;
   messageId?: string;
-  lastUpdated: number;
+  timestamp: number;
+  version: number;
 }
 
-type GraphSyncListener = (state: GraphSyncState) => void;
+type SyncListener = (event: GraphSyncEvent) => void;
 
 class GraphSyncService {
   private static instance: GraphSyncService;
-  private listeners: Set<GraphSyncListener> = new Set();
-  private eventListeners: Map<string, (event: Event) => void> = new Map();
+  private listeners: Map<string, Set<SyncListener>> = new Map();
+  private version: number = 0;
+  private unsubscribeFromStore: (() => void) | null = null;
+  private debounceTimer: NodeJS.Timeout | null = null;
+  private pendingEvent: GraphSyncEvent | null = null;
+  private lastNotifiedVersion = 0;
+  private readonly DEBOUNCE_DELAY = 100;
 
   private constructor() {
-    this.initEventListeners();
+    this.initStoreSubscription();
   }
 
   static getInstance(): GraphSyncService {
@@ -35,157 +55,112 @@ class GraphSyncService {
     return GraphSyncService.instance;
   }
 
-  private initEventListeners(): void {
-    // 监听 loadSnapshot 事件
-    const loadSnapshotHandler = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const { entities, relations, keywords, snapshot } = customEvent.detail;
+  /**
+   * 订阅 graphStore 的更新，自动分发事件（带防抖）
+   */
+  private initStoreSubscription(): void {
+    this.unsubscribeFromStore = useGraphStore.subscribe((state, prevState) => {
+      const entitiesChanged = state.entities !== prevState.entities;
+      const relationsChanged = state.relations !== prevState.relations;
+      const keywordsChanged = state.keywords !== prevState.keywords;
 
-      if (entities && entities.length > 0) {
-        // 更新 graphStore
-        useGraphStore.getState().updateGraphData(
-          entities,
-          relations || [],
-          keywords || [],
-          snapshot?.session_id,
-          snapshot?.message_id,
-          'snapshot'
-        );
+      if (entitiesChanged || relationsChanged || keywordsChanged) {
+        this.version++;
 
-        this.notifyListeners({
-          entities,
-          relations: relations || [],
-          keywords: keywords || [],
-          sessionId: snapshot?.session_id,
-          lastUpdated: Date.now(),
-        });
-      }
-    };
+        const event: GraphSyncEvent = {
+          type: SyncEventType.UPDATE,
+          source: (state.source as SyncSource) || SyncSource.CHAT,
+          entities: state.entities,
+          relations: state.relations,
+          keywords: state.keywords,
+          sessionId: state.sessionId || undefined,
+          messageId: state.messageId || undefined,
+          timestamp: state.lastUpdated,
+          version: this.version,
+        };
 
-    // 监听 restoreGraphState 事件
-    const restoreGraphStateHandler = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const { entities, relations, keywords } = customEvent.detail;
+        this.pendingEvent = event;
 
-      if (entities && entities.length > 0) {
-        // 更新 graphStore
-        useGraphStore.getState().updateGraphData(
-          entities,
-          relations || [],
-          keywords || [],
-          undefined,
-          undefined,
-          'snapshot'
-        );
+        if (this.debounceTimer) {
+          clearTimeout(this.debounceTimer);
+        }
 
-        this.notifyListeners({
-          entities,
-          relations: relations || [],
-          keywords: keywords || [],
-          lastUpdated: Date.now(),
-        });
-      }
-    };
-
-    // 监听 syncGraphFromChat 事件
-    const syncGraphFromChatHandler = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const { entities, relations, keywords, sessionId, messageId } = customEvent.detail;
-
-      if (entities && entities.length > 0) {
-        useGraphStore.getState().updateGraphData(
-          entities,
-          relations || [],
-          keywords || [],
-          sessionId,
-          messageId,
-          'chat'
-        );
-      }
-    };
-
-    // 监听 syncGraphFromKnowledge 事件
-    const syncGraphFromKnowledgeHandler = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const { entities, relations, keywords } = customEvent.detail;
-
-      if (entities && entities.length > 0) {
-        useGraphStore.getState().updateGraphData(
-          entities,
-          relations || [],
-          keywords || [],
-          undefined,
-          undefined,
-          'knowledge'
-        );
-      }
-    };
-
-    window.addEventListener('loadSnapshot', loadSnapshotHandler);
-    window.addEventListener('restoreGraphState', restoreGraphStateHandler);
-    window.addEventListener('syncGraphFromChat', syncGraphFromChatHandler);
-    window.addEventListener('syncGraphFromKnowledge', syncGraphFromKnowledgeHandler);
-
-    this.eventListeners.set('loadSnapshot', loadSnapshotHandler);
-    this.eventListeners.set('restoreGraphState', restoreGraphStateHandler);
-    this.eventListeners.set('syncGraphFromChat', syncGraphFromChatHandler);
-    this.eventListeners.set('syncGraphFromKnowledge', syncGraphFromKnowledgeHandler);
-  }
-
-  private notifyListeners(state: GraphSyncState): void {
-    this.listeners.forEach((listener) => {
-      try {
-        listener(state);
-      } catch (error) {
-        console.error('Graph sync listener error:', error);
+        this.debounceTimer = setTimeout(() => {
+          if (this.pendingEvent) {
+            this.notifyListeners(this.pendingEvent);
+            this.lastNotifiedVersion = this.pendingEvent.version;
+            this.pendingEvent = null;
+          }
+        }, this.DEBOUNCE_DELAY);
       }
     });
   }
 
   /**
-   * 订阅图谱状态变化
+   * 通知所有监听器
    */
-  subscribe(listener: GraphSyncListener): () => void {
-    this.listeners.add(listener);
-
-    // 立即通知当前状态
-    const graphState = useGraphStore.getState();
-    if (graphState.entities.length > 0) {
-      listener({
-        entities: graphState.entities,
-        relations: graphState.relations,
-        keywords: graphState.keywords,
-        sessionId: graphState.sessionId || undefined,
-        messageId: graphState.messageId || undefined,
-        lastUpdated: graphState.lastUpdated,
+  private notifyListeners(event: GraphSyncEvent): void {
+    if (import.meta.env.DEV) {
+      console.log('🔵 graphSyncService.notifyListeners:', {
+        source: event.source,
+        entities: event.entities.length,
+        relations: event.relations.length,
+        listenersCount: this.listeners.size,
       });
     }
 
-    return () => {
-      this.listeners.delete(listener);
-    };
+    this.listeners.forEach((listenerSet, moduleId) => {
+      if (import.meta.env.DEV) {
+        console.log(`  → 通知模块：${moduleId}, 监听器数量：${listenerSet.size}`);
+      }
+      listenerSet.forEach((listener) => {
+        try {
+          listener(event);
+        } catch (error) {
+          console.error('Graph sync listener error:', error);
+        }
+      });
+    });
   }
 
   /**
-   * 获取当前图谱状态
+   * 添加监听器
    */
-  getState(): GraphSyncState | null {
-    const graphState = useGraphStore.getState();
-    if (graphState.entities.length === 0) {
-      return null;
+  addListener(moduleId: string, listener: SyncListener): () => void {
+    if (!this.listeners.has(moduleId)) {
+      this.listeners.set(moduleId, new Set());
     }
-    return {
-      entities: graphState.entities,
-      relations: graphState.relations,
-      keywords: graphState.keywords,
-      sessionId: graphState.sessionId || undefined,
-      messageId: graphState.messageId || undefined,
-      lastUpdated: graphState.lastUpdated,
+
+    const listenerSet = this.listeners.get(moduleId)!;
+    listenerSet.add(listener);
+
+    const cleanup = () => {
+      this.removeListener(moduleId, listener);
     };
+
+    return cleanup;
   }
 
   /**
-   * 更新图谱数据（从 Chat 模块）
+   * 移除监听器
+   */
+  removeListener(moduleId: string, listener?: SyncListener): void {
+    const listenerSet = this.listeners.get(moduleId);
+    if (listenerSet) {
+      if (listener) {
+        listenerSet.delete(listener);
+      } else {
+        listenerSet.clear();
+      }
+      if (listenerSet.size === 0) {
+        this.listeners.delete(moduleId);
+      }
+    }
+  }
+
+  /**
+   * 从 Chat 模块更新图谱数据
+   * 使用增量合并，避免全量覆盖
    */
   updateFromChat(
     entities: Entity[],
@@ -194,100 +169,186 @@ class GraphSyncService {
     sessionId?: string,
     messageId?: string
   ): void {
-    useGraphStore.getState().updateGraphData(
-      entities,
-      relations,
-      keywords,
-      sessionId,
-      messageId,
-      'chat'
-    );
+    if (import.meta.env.DEV) {
+      console.log('🔵 graphSyncService.updateFromChat 被调用:', {
+        entities: entities.length,
+        relations: relations.length,
+        keywords: keywords.length,
+      });
+    }
 
-    // 触发事件通知 Knowledge 模块
-    const event = new CustomEvent('syncGraphFromChat', {
-      detail: {
-        entities,
-        relations,
-        keywords,
-        sessionId,
-        messageId,
-      },
-    });
-    window.dispatchEvent(event);
+    const currentState = useGraphStore.getState();
+    const hasExistingData = currentState.entities.length > 0 || currentState.relations.length > 0;
+
+    if (hasExistingData) {
+      useGraphStore.getState().mergeGraphData(entities, relations, keywords);
+    } else {
+      useGraphStore
+        .getState()
+        .updateGraphData(entities, relations, keywords, sessionId, messageId, 'chat');
+    }
+
+    if (import.meta.env.DEV) {
+      console.log('✅ graphStore 已更新，事件将自动分发');
+    }
   }
 
   /**
-   * 更新图谱数据（从 Knowledge 模块）
+   * 从 Knowledge 模块更新图谱数据
    */
   updateFromKnowledge(entities: Entity[], relations: Relation[], keywords: string[]): void {
-    useGraphStore.getState().updateGraphData(
-      entities,
-      relations,
-      keywords,
-      undefined,
-      undefined,
-      'knowledge'
-    );
-
-    // 触发事件通知 Chat 模块
-    const event = new CustomEvent('syncGraphFromKnowledge', {
-      detail: {
-        entities,
-        relations,
-        keywords,
-      },
-    });
-    window.dispatchEvent(event);
+    useGraphStore
+      .getState()
+      .updateGraphData(entities, relations, keywords, undefined, undefined, 'knowledge');
   }
 
   /**
-   * 清除图谱状态
+   * 从快照加载图谱数据
+   */
+  updateFromSnapshot(
+    entities: Entity[],
+    relations: Relation[],
+    keywords: string[],
+    sessionId?: string,
+    messageId?: string
+  ): void {
+    useGraphStore
+      .getState()
+      .updateGraphData(entities, relations, keywords, sessionId, messageId, 'snapshot');
+  }
+
+  /**
+   * 清空图谱数据
    */
   clear(): void {
     useGraphStore.getState().clearGraphData();
   }
 
   /**
-   * 销毁服务（移除所有事件监听）
+   * 获取当前图谱状态
+   */
+  getCurrentState(): {
+    entities: Entity[];
+    relations: Relation[];
+    keywords: string[];
+  } | null {
+    const state = useGraphStore.getState();
+    if (state.entities.length === 0 && state.relations.length === 0) {
+      return null;
+    }
+
+    return {
+      entities: state.entities,
+      relations: state.relations,
+      keywords: state.keywords,
+    };
+  }
+
+  /**
+   * 从 sessionStorage 恢复图谱状态
+   */
+  async restoreFromSessionStorage(sessionId: string): Promise<void> {
+    const stored = sessionStorage.getItem(`graph-storage-${sessionId}`);
+    if (stored) {
+      try {
+        const data = JSON.parse(stored);
+        this.updateFromSnapshot(
+          data.entities || [],
+          data.relations || [],
+          data.keywords || [],
+          sessionId,
+          undefined
+        );
+      } catch (error) {
+        console.error('Failed to restore graph from session storage:', error);
+      }
+    }
+  }
+
+  /**
+   * 订阅图谱数据更新
+   */
+  subscribe(
+    moduleId: string,
+    callback: (data: {
+      entities: Entity[];
+      relations: Relation[];
+      keywords: string[];
+      source: SyncSource;
+    }) => void
+  ): () => void {
+    const handler = (event: GraphSyncEvent) => {
+      if (event.source === moduleId) return;
+
+      callback({
+        entities: event.entities,
+        relations: event.relations,
+        keywords: event.keywords,
+        source: event.source,
+      });
+    };
+
+    return this.addListener(moduleId, handler);
+  }
+
+  /**
+   * 创建图谱同步订阅（简化版本，移除 React Hooks 依赖）
+   * 注意：这个方法已被废弃，建议直接使用 subscribe/unsubscribe
+   */
+  createGraphSync(
+    moduleId: string,
+    onSync?: (event: GraphSyncEvent) => void
+  ): {
+    subscribe: () => void;
+    unsubscribe: () => void;
+    updateFromChat: (
+      entities: Entity[],
+      relations: Relation[],
+      keywords: string[],
+      sessionId?: string,
+      messageId?: string
+    ) => void;
+    updateFromKnowledge: (entities: Entity[], relations: Relation[], keywords: string[]) => void;
+    updateFromSnapshot: (
+      entities: Entity[],
+      relations: Relation[],
+      keywords: string[],
+      sessionId?: string,
+      messageId?: string
+    ) => void;
+    clear: () => void;
+  } {
+    const listenerId = 'graphSync_' + moduleId;
+
+    return {
+      subscribe: () => {
+        if (onSync) {
+          this.addListener(listenerId, onSync);
+        }
+      },
+      unsubscribe: () => {
+        this.removeListener(listenerId);
+      },
+      updateFromChat: this.updateFromChat.bind(this),
+      updateFromKnowledge: this.updateFromKnowledge.bind(this),
+      updateFromSnapshot: this.updateFromSnapshot.bind(this),
+      clear: this.clear.bind(this),
+    };
+  }
+
+  /**
+   * 销毁服务
    */
   destroy(): void {
-    this.eventListeners.forEach((handler, eventName) => {
-      window.removeEventListener(eventName, handler);
-    });
-    this.eventListeners.clear();
+    if (this.unsubscribeFromStore) {
+      this.unsubscribeFromStore();
+    }
     this.listeners.clear();
   }
 }
 
-// 导出单例
 export const graphSyncService = GraphSyncService.getInstance();
 
-// 辅助 Hook：在组件中使用图谱同步
-export function useGraphSync(onSync?: (state: GraphSyncState) => void): {
-  state: GraphSyncState | null;
-  updateFromChat: typeof graphSyncService.updateFromChat;
-  updateFromKnowledge: typeof graphSyncService.updateFromKnowledge;
-  clear: typeof graphSyncService.clear;
-} {
-  const [state, setState] = useState<GraphSyncState | null>(null);
+export { GraphSyncService };
 
-  useEffect(() => {
-    const unsubscribe = graphSyncService.subscribe((newState) => {
-      setState(newState);
-      if (onSync) {
-        onSync(newState);
-      }
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [onSync]);
-
-  return {
-    state,
-    updateFromChat: graphSyncService.updateFromChat.bind(graphSyncService),
-    updateFromKnowledge: graphSyncService.updateFromKnowledge.bind(graphSyncService),
-    clear: graphSyncService.clear.bind(graphSyncService),
-  };
-}
+export default graphSyncService;

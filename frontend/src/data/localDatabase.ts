@@ -18,7 +18,7 @@
  */
 
 export const DB_NAME = 'HeritageAppDB';
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 
 export const STORES = {
   SESSIONS: 'sessions',
@@ -78,6 +78,9 @@ class LocalDatabase {
         }
         if (oldVersion < 4) {
           this.createV4Stores(db, transaction);
+        }
+        if (oldVersion < 5) {
+          this.createV5Stores(db, transaction);
         }
       };
     });
@@ -165,15 +168,11 @@ class LocalDatabase {
   }
 
   private createV4Stores(db: IDBDatabase, transaction: IDBTransaction): void {
-    const ensureStoreIndex = (
-      storeName: string,
-      indexName: string,
-      keyPath: string
-    ) => {
+    const ensureStoreIndex = (storeName: string, indexName: string, keyPath: string) => {
       if (!db.objectStoreNames.contains(storeName)) return;
-      
+
       const store = transaction.objectStore(storeName);
-      
+
       try {
         store.index(indexName);
       } catch {
@@ -189,6 +188,50 @@ class LocalDatabase {
     ensureStoreIndex(STORES.MESSAGES, 'createdAt', 'created_at');
     ensureStoreIndex(STORES.MESSAGES, 'role', 'role');
     ensureStoreIndex(STORES.MESSAGES, 'isFavorite', 'is_favorite');
+  }
+
+  private createV5Stores(db: IDBDatabase, transaction: IDBTransaction): void {
+    const ensureCompositeIndex = (storeName: string, indexName: string, keyPaths: string[]) => {
+      if (!db.objectStoreNames.contains(storeName)) return;
+
+      const store = transaction.objectStore(storeName);
+
+      try {
+        store.index(indexName);
+      } catch {
+        store.createIndex(indexName, keyPaths, { unique: false });
+      }
+    };
+
+    ensureCompositeIndex(STORES.MESSAGES, 'sessionId_createdAt', ['session_id', 'created_at']);
+    ensureCompositeIndex(STORES.MESSAGES, 'sessionId_role', ['session_id', 'role']);
+    ensureCompositeIndex(STORES.MESSAGES, 'sessionId_isFavorite', ['session_id', 'is_favorite']);
+    ensureCompositeIndex(STORES.MESSAGES, 'sessionId_createdAt_role', [
+      'session_id',
+      'created_at',
+      'role',
+    ]);
+
+    ensureCompositeIndex(STORES.SESSIONS, 'userId_updatedAt', ['user_id', 'updated_at']);
+    ensureCompositeIndex(STORES.SESSIONS, 'userId_isPinned', ['user_id', 'is_pinned']);
+    ensureCompositeIndex(STORES.SESSIONS, 'userId_updatedAt_isPinned', [
+      'user_id',
+      'updated_at',
+      'is_pinned',
+    ]);
+
+    ensureCompositeIndex(STORES.ENTITIES, 'type_region', ['type', 'region']);
+    ensureCompositeIndex(STORES.ENTITIES, 'type_importance', ['type', 'importance']);
+    ensureCompositeIndex(STORES.ENTITIES, 'type_period', ['type', 'period']);
+
+    ensureCompositeIndex(STORES.RELATIONSHIPS, 'sourceId_targetId', ['source_id', 'target_id']);
+    ensureCompositeIndex(STORES.RELATIONSHIPS, 'sourceId_relationType', [
+      'source_id',
+      'relation_type',
+    ]);
+
+    ensureCompositeIndex(STORES.SEARCH_HISTORY, 'userId_createdAt', ['user_id', 'created_at']);
+    ensureCompositeIndex(STORES.SEARCH_HISTORY, 'userId_keyword', ['user_id', 'keyword']);
   }
 
   async ensureInitialized(): Promise<void> {

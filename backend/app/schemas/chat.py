@@ -174,13 +174,35 @@ class ChatMessageRequest(BaseModel):
     session_id: str
     content: str
     message_type: str = "text"
+    resume_from: Optional[int] = None  # 断点续传：从第几个字符继续
+    file_urls: Optional[list[str]] = None  # 上传文件的 URL 列表
     
     class Config:
         json_schema_extra = {
             "example": {
                 "session_id": "session_001",
                 "content": "武汉木雕有哪些代表性技法？",
-                "message_type": "text"
+                "message_type": "text",
+                "file_urls": ["/uploads/images/xxx.jpg", "/uploads/documents/yyy.pdf"]
+            }
+        }
+
+
+class RecommendationRequest(BaseModel):
+    session_id: Optional[str] = None  # 会话 ID，用于获取对话历史
+    entities: Optional[list[str]] = None  # 实体列表
+    keywords: Optional[list[str]] = None  # 关键词列表
+    context: Optional[str] = None  # 上下文内容
+    limit: int = 6  # 推荐数量
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "session_id": "session_001",
+                "entities": ["传承人", "木雕"],
+                "keywords": ["非遗", "技艺"],
+                "context": "用户正在了解武汉木雕相关技艺",
+                "limit": 6
             }
         }
 

@@ -6,6 +6,8 @@ import { useGraphStore } from '../../stores/graphStore';
 import { useUIStore } from '../../stores/uiStore';
 import { chatDataService } from '../../services/chat';
 import { graphSyncService } from '../../services/graphSyncService';
+import { fileUploadService } from '../../services/fileUpload';
+import { categorizeError } from '../../services/errorHandler';
 import { useToast } from '../../components/common/Toast';
 import type {
   Entity,
@@ -15,29 +17,27 @@ import type {
   GraphSnapshot,
   MessageVersion,
 } from '../../types/chat';
+import type { UploadedFile } from '../../components/chat/UnifiedInputArea';
 
 import Sidebar from '../../components/chat/Sidebar';
 import RightPanel from '../../components/chat/RightPanel';
 import UnifiedInputArea from '../../components/chat/UnifiedInputArea';
-import UnifiedMessageBubble from '../../components/chat/UnifiedMessageBubble';
 import ChatToolbar from '../../components/chat/ChatToolbar';
 import CommandPalette from '../../components/chat/CommandPalette';
 import WelcomeScreen from '../../components/chat/WelcomeScreen';
 import MessageSearch from '../../components/chat/MessageSearch';
 import SessionSettings from '../../components/chat/SessionSettings';
 import KeyboardShortcuts from '../../components/chat/KeyboardShortcuts';
-import { TypingIndicator } from '../../components/chat/TypingIndicator';
 import { MessageQuote } from '../../components/chat/MessageQuote';
+import { VirtualMessageList } from '../../components/common/VirtualMessageList';
 import { useThemeStore } from '../../stores/themeStore';
+import { streamingLockManager } from '../../services/streamingLockManager';
 
 export default function EnhancedChatPage() {
   const { sessionId } = useParams();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<(() => void) | null>(null);
-  const [currentKeywords, setCurrentKeywords] = useState<string[]>([]);
-  const [currentEntities, setCurrentEntities] = useState<Entity[]>([]);
-  const [currentRelations, setCurrentRelations] = useState<Relation[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
   const [newMessageIds, setNewMessageIds] = useState(new Set<string>());
   const [quotedMessage, setQuotedMessage] = useState<Message | null>(null);
@@ -47,6 +47,8 @@ export default function EnhancedChatPage() {
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
   const [streamingContent, setStreamingContent] = useState<string>('');
+  const [isThinking, setIsThinking] = useState(false);
+  const typewriterIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const toast = useToast();
 
   const {
@@ -83,6 +85,9 @@ export default function EnhancedChatPage() {
   const { toggleMode } = useThemeStore();
 
   const currentSession = sessions.find((s) => s.id === currentSessionId);
+  const graphEntities = useGraphStore((state) => state.entities);
+  const graphRelations = useGraphStore((state) => state.relations);
+  const graphKeywords = useGraphStore((state) => state.keywords);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -98,7 +103,7 @@ export default function EnhancedChatPage() {
         e.preventDefault();
         setShowKeyboardShortcuts(true);
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === 'd') {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'D') {
         e.preventDefault();
         toggleMode();
       }
@@ -121,10 +126,101 @@ export default function EnhancedChatPage() {
     };
   }, [toggleMode, toggleSidebar]);
 
+  // 图谱状态恢复函数
+  const restoreGraphState = useCallback(async (targetSessionId: string) => {
+    try {
+      const savedGraphState = sessionStorage.getItem(`graphState_${targetSessionId}`);
+      if (!savedGraphState) {
+        const messages = useChatStore.getState().messagesBySession[targetSessionId] || [];
+        if (messages.length > 0) {
+          const lastAiMessage = [...messages]
+            .reverse()
+            .find((m) => m.role === 'assistant' && m.entities && m.entities.length > 0);
+          if (lastAiMessage) {
+            graphSyncService.updateFromSnapshot(
+              lastAiMessage.entities || [],
+              lastAiMessage.relations || [],
+              lastAiMessage.keywords || [],
+              targetSessionId,
+              lastAiMessage.id
+            );
+            if (import.meta.env.DEV) {
+              console.log('Restored graph state from last AI message');
+            }
+          }
+        }
+        return;
+      }
+
+      const { entities, relations, keywords, filters } = JSON.parse(savedGraphState);
+
+      if (!entities || !Array.isArray(entities) || entities.length === 0) {
+        if (import.meta.env.DEV) {
+          console.warn('Invalid graph state data');
+        }
+        return;
+      }
+
+      const isValid = entities.every((e) => {
+        const entity = e as Record<string, unknown>;
+        return entity.id && entity.name && entity.type;
+      });
+      if (!isValid) {
+        if (import.meta.env.DEV) {
+          console.warn('Graph state entities have invalid structure');
+        }
+        return;
+      }
+
+      const uniqueEntities = entities.filter(
+        (e: Record<string, unknown>, index: number, self: Array<Record<string, unknown>>) =>
+          index === self.findIndex((t) => t.id === e.id)
+      );
+
+      const uniqueRelations = (relations || []).filter(
+        (r: Record<string, unknown>, index: number, self: Array<Record<string, unknown>>) =>
+          index ===
+          self.findIndex(
+            (t) => `${t.source}-${t.target}-${t.type}` === `${r.source}-${r.target}-${r.type}`
+          )
+      );
+
+      graphSyncService.updateFromSnapshot(
+        uniqueEntities,
+        uniqueRelations,
+        keywords || [],
+        targetSessionId,
+        undefined
+      );
+
+      const event = new CustomEvent('restoreGraphState', {
+        detail: {
+          entities: uniqueEntities,
+          relations: uniqueRelations,
+          keywords,
+          filters,
+        },
+      });
+      window.dispatchEvent(event);
+
+      if (import.meta.env.DEV) {
+        console.log('Restored graph state from sessionStorage');
+      }
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn('Failed to restore graph state:', error);
+      }
+    }
+  }, []);
+
   useEffect(() => {
+    let isMounted = true;
+    let initTimeoutId: NodeJS.Timeout | null = null;
+
     const initChat = async () => {
       try {
-        // 使用 Store 的 initializeData 方法，统一管理初始化流程
+        setLoading(true);
+
         const {
           initializeData,
           createSession,
@@ -133,78 +229,68 @@ export default function EnhancedChatPage() {
 
         await initializeData();
 
-        // 在 initializeData 完成后重新获取最新的 sessions
-        const fetchedSessions = useChatStore.getState().sessions;
+        if (!isMounted) return;
+
+        const { sessions: fetchedSessions, currentSessionId: storeCurrentSessionId } =
+          useChatStore.getState();
 
         let targetSessionId = sessionId;
 
-        if (!targetSessionId && fetchedSessions.length > 0) {
-          targetSessionId = fetchedSessions[0].id;
-        } else if (!targetSessionId) {
-          const newSession = await createSession();
-          targetSessionId = newSession.id;
-        }
-
-        if (targetSessionId && fetchedSessions.some((s) => s.id === targetSessionId)) {
-          await switchSess(targetSessionId);
-
-          // 恢复该会话的图谱快照（如果存在）
-          try {
-            const savedGraphState = sessionStorage.getItem(`graphState_${targetSessionId}`);
-            if (savedGraphState) {
-              const { entities, relations, keywords, filters } = JSON.parse(savedGraphState);
-
-              if (entities && entities.length > 0) {
-                setCurrentEntities(entities);
-                if (keywords) setCurrentKeywords(keywords);
-                if (relations) setCurrentRelations(relations);
-
-                // 触发全局事件通知其他组件
-                const event = new CustomEvent('restoreGraphState', {
-                  detail: {
-                    entities,
-                    relations,
-                    keywords,
-                    filters,
-                  },
-                });
-                window.dispatchEvent(event);
-
-                console.log('Restored graph state from sessionStorage');
-              }
-            }
-          } catch (error) {
-            console.warn('Failed to restore graph state:', error);
+        if (!targetSessionId) {
+          if (
+            storeCurrentSessionId &&
+            fetchedSessions.some((s) => s.id === storeCurrentSessionId)
+          ) {
+            targetSessionId = storeCurrentSessionId;
+          } else if (fetchedSessions.length > 0) {
+            targetSessionId = fetchedSessions[0].id;
+          } else {
+            const newSession = await createSession();
+            targetSessionId = newSession.id;
           }
         }
 
-        setIsInitialized(true);
+        if (!isMounted) return;
+
+        if (targetSessionId) {
+          await switchSess(targetSessionId);
+
+          if (!isMounted) return;
+
+          await restoreGraphState(targetSessionId);
+        }
+
+        if (isMounted) {
+          setIsInitialized(true);
+        }
       } catch (error) {
-        console.error('Failed to initialize chat:', error);
-        setIsInitialized(true);
+        if (isMounted) {
+          const errorInfo = categorizeError(error);
+          toast.error('初始化失败', errorInfo.userMessage);
+          setIsInitialized(true);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
-    initChat();
-  }, [sessionId]);
+    initTimeoutId = setTimeout(() => {
+      initChat();
+    }, 0);
 
-  useEffect(() => {
-    if (autoScroll && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages, autoScroll]);
-
-  // 当消息变化时，自动更新图谱数据（显示最新消息的图谱）
-  useEffect(() => {
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage.role === 'assistant' && lastMessage.entities) {
-        setCurrentEntities(lastMessage.entities);
-        if (lastMessage.keywords) setCurrentKeywords(lastMessage.keywords);
-        if (lastMessage.relations) setCurrentRelations(lastMessage.relations);
+    return () => {
+      isMounted = false;
+      if (initTimeoutId) {
+        clearTimeout(initTimeoutId);
       }
-    }
-  }, [messages]);
+      streamingLockManager.clear();
+    };
+  }, [sessionId, setLoading, toast, restoreGraphState]);
+
+  // 自动滚动逻辑已移至 VirtualMessageList 组件中统一处理
+  // 避免双重滚动控制导致的冲突和性能问题
 
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -220,13 +306,22 @@ export default function EnhancedChatPage() {
     return () => container.removeEventListener('scroll', handleScroll);
   }, []);
 
+  useEffect(() => {
+    const handleMockFallback = () => {
+      toast.warning('服务降级', 'AI 服务暂时不可用，当前使用本地模拟数据');
+    };
+
+    window.addEventListener('chat:mockFallback', handleMockFallback);
+    return () => window.removeEventListener('chat:mockFallback', handleMockFallback);
+  }, [toast]);
+
   const handleCreateSession = useCallback(async () => {
     try {
       const newSession = await createSession();
       return newSession;
     } catch (error) {
-      console.error('Failed to create session:', error);
-      toast.error('创建失败', '无法创建新对话');
+      const errorInfo = categorizeError(error);
+      toast.error('创建失败', errorInfo.userMessage);
       return null;
     }
   }, [createSession, toast]);
@@ -293,165 +388,250 @@ export default function EnhancedChatPage() {
   // ========== 辅助函数：更新图谱数据 ==========
   const updateGraphData = useCallback(
     (entities?: Entity[], keywords?: string[], sources?: Source[], relations?: Relation[]) => {
-      if (entities) setCurrentEntities(entities);
-      if (keywords) setCurrentKeywords(keywords);
-      if (relations) setCurrentRelations(relations);
+      if (import.meta.env.DEV) {
+        console.log('🔵 updateGraphData 被调用:', {
+          entities: entities?.length || 0,
+          relations: relations?.length || 0,
+          keywords: keywords?.length || 0,
+        });
+      }
 
-      // 同时更新 chatStore 中的图谱数据
-      useChatStore.getState().updateGraphData(entities, relations, keywords);
-
-      // 使用 graphSyncService 更新图谱数据，确保知识图谱板块也能收到数据
       if (entities && entities.length > 0) {
         graphSyncService.updateFromChat(
           entities,
           relations || [],
           keywords || [],
-          sessionId,
+          currentSessionId || undefined,
           undefined
         );
-      }
 
-      console.debug('Graph data updated:', { entities, keywords, sources, relations });
+        if (import.meta.env.DEV) {
+          console.log('✅ graphSyncService.updateFromChat 已调用');
+        }
+      }
     },
-    [sessionId]
+    [currentSessionId]
   );
 
   // ========== 辅助函数：加载快照 ==========
-  const handleLoadSnapshot = useCallback(
-    (snapshot: GraphSnapshot) => {
-      // 更新所有图谱数据
-      if (snapshot.entities && snapshot.entities.length > 0) {
-        setCurrentEntities(snapshot.entities);
-      }
-      if (snapshot.keywords && snapshot.keywords.length > 0) {
-        setCurrentKeywords(snapshot.keywords);
-      }
-      if (snapshot.relations && snapshot.relations.length > 0) {
-        setCurrentRelations(snapshot.relations);
-      }
+  const handleLoadSnapshot = useCallback((snapshot: GraphSnapshot) => {
+    graphSyncService.updateFromSnapshot(
+      snapshot.entities || [],
+      snapshot.relations || [],
+      snapshot.keywords || [],
+      snapshot.session_id,
+      snapshot.message_id
+    );
 
-      // 更新统一的 graphStore
-      useGraphStore
-        .getState()
-        .updateGraphData(
-          snapshot.entities,
-          snapshot.relations,
-          snapshot.keywords,
-          snapshot.session_id,
-          snapshot.message_id,
-          'snapshot'
-        );
+    const event = new CustomEvent('loadSnapshot', {
+      detail: {
+        entities: snapshot.entities,
+        relations: snapshot.relations,
+        keywords: snapshot.keywords,
+      },
+    });
+    window.dispatchEvent(event);
+  }, []);
 
-      // 通过全局事件通知其他组件（如知识图谱）
-      const event = new CustomEvent('loadSnapshot', {
-        detail: {
-          entities: snapshot.entities,
-          relations: snapshot.relations,
-          keywords: snapshot.keywords,
-        },
-      });
-      window.dispatchEvent(event);
+  // ========== 打字机效果流式输出 ==========
+  const startTypewriterEffect = useCallback(
+    (
+      sessionId: string,
+      streamingMsgId: string,
+      fullContent: string,
+      aiMessage: Message,
+      onComplete: () => void
+    ) => {
+      let currentIndex = 0;
+      const totalLength = fullContent.length;
 
-      toast.success('快照已加载', '请在图谱标签页查看');
+      // 优化后的打字速度：更快更流畅
+      // 基础间隔 5ms，最大间隔 15ms
+      const baseInterval = Math.max(5, Math.min(15, 20 - totalLength / 200));
+
+      // 使用 requestAnimationFrame 或 setTimeout 批量更新，减少渲染次数
+      let pendingContent = '';
+      let lastUpdateTime = Date.now();
+      const UPDATE_INTERVAL = 16; // 约60fps
+
+      const typeNextChar = () => {
+        if (currentIndex < totalLength) {
+          // 每次显示 3-8 个字符，提升速度
+          const charsToShow = Math.floor(Math.random() * 5) + 3;
+          const nextIndex = Math.min(currentIndex + charsToShow, totalLength);
+          pendingContent = fullContent.slice(0, nextIndex);
+
+          currentIndex = nextIndex;
+
+          // 批量更新，减少 React 渲染次数
+          const now = Date.now();
+          if (now - lastUpdateTime >= UPDATE_INTERVAL || currentIndex >= totalLength) {
+            setStreamingContent(pendingContent);
+            updateMessage(streamingMsgId, {
+              content: pendingContent,
+              isStreaming: true,
+            });
+            lastUpdateTime = now;
+          }
+
+          // 更快的间隔
+          const randomInterval = baseInterval + Math.random() * 8;
+          typewriterIntervalRef.current = setTimeout(typeNextChar, randomInterval);
+        } else {
+          // 确保最后的内容被更新
+          setStreamingContent(fullContent);
+          updateMessage(streamingMsgId, {
+            content: fullContent,
+            isStreaming: true,
+          });
+          // 打字完成，更新最终状态
+          onComplete();
+        }
+      };
+
+      // 开始打字效果
+      typeNextChar();
     },
-    [toast]
+    [setStreamingContent, updateMessage]
   );
+
+  // 清理打字机效果
+  const clearTypewriterEffect = useCallback(() => {
+    if (typewriterIntervalRef.current) {
+      clearTimeout(typewriterIntervalRef.current);
+      typewriterIntervalRef.current = null;
+    }
+  }, []);
 
   // ========== 核心函数：流式响应处理 ==========
   const startStreamingResponse = useCallback(
-    async (sessionId: string, userContent: string, streamingMsgId: string) => {
-      setLoading(true);
-      setStreaming(true);
-      setStreamingContent('');
+    async (
+      sessionId: string,
+      userContent: string,
+      streamingMsgId: string,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      fileUrls?: string[]
+    ) => {
+      if (!streamingLockManager.acquire(streamingMsgId)) {
+        return () => {};
+      }
 
-      await updateMessage(streamingMsgId, { isStreaming: true });
+      // 清理之前的打字机效果
+      clearTypewriterEffect();
 
-      let accumulatedContent = '';
+      try {
+        setLoading(true);
+        setStreaming(true);
+        setIsThinking(true);
+        setStreamingContent('');
 
-      const abort = await chatDataService.sendMessageStream(
-        sessionId,
-        userContent,
-        (chunk) => {
-          accumulatedContent += chunk;
-          setStreamingContent(accumulatedContent);
-          updateMessage(streamingMsgId, {
-            content: accumulatedContent,
-            isStreaming: true,
-          });
-        },
-        async (aiMessage) => {
-          setStreamingContent('');
+        // 初始状态：显示思考中，内容为空
+        await updateMessage(streamingMsgId, {
+          content: '',
+          isStreaming: true,
+        });
 
-          // 获取当前消息，检查是否已有版本
-          const currentMsg = useChatStore
-            .getState()
-            .messagesBySession[sessionId]?.find((m) => m.id === streamingMsgId);
-          const existingVersions = currentMsg?.versions || [];
+        let fullContent = '';
+        let receivedAnyChunk = false;
 
-          // 创建版本
-          let versions = existingVersions;
-          if (aiMessage.content && aiMessage.content.trim()) {
-            if (existingVersions.length === 0) {
-              // 没有版本，创建初始版本（V1）
-              const initialVersion: MessageVersion = {
-                id: `version_${Date.now()}`,
-                content: aiMessage.content,
-                created_at: new Date().toISOString(),
-                is_current: true,
-              };
-              versions = [initialVersion];
-            } else {
-              // 有版本（重新生成），创建新版本
-              const newVersion: MessageVersion = {
-                id: `version_${Date.now()}`,
-                content: aiMessage.content,
-                created_at: new Date().toISOString(),
-                is_current: true,
-              };
-              // 将所有旧版本标记为 is_current: false，并添加新版本
-              versions = pruneVersions([
-                ...existingVersions.map((v) => ({ ...v, is_current: false })),
-                newVersion,
-              ]);
+        const abort = await chatDataService.sendMessageStream(
+          sessionId,
+          userContent,
+          (chunk) => {
+            // 接收到第一个 chunk 时，表示 AI 开始生成内容
+            if (!receivedAnyChunk) {
+              receivedAnyChunk = true;
             }
+            // 累积完整内容，但不立即显示
+            fullContent += chunk;
+          },
+          async (aiMessage) => {
+            // 内容生成完成，开始打字机效果
+            setIsThinking(false);
+
+            const currentMsg = useChatStore
+              .getState()
+              .messagesBySession[sessionId]?.find((m) => m.id === streamingMsgId);
+            const existingVersions = currentMsg?.versions || [];
+
+            let versions = existingVersions;
+            if (fullContent && fullContent.trim()) {
+              if (existingVersions.length === 0) {
+                const initialVersion: MessageVersion = {
+                  id: `version_${Date.now()}`,
+                  content: fullContent,
+                  created_at: new Date().toISOString(),
+                  is_current: true,
+                };
+                versions = [initialVersion];
+              } else {
+                const newVersion: MessageVersion = {
+                  id: `version_${Date.now()}`,
+                  content: fullContent,
+                  created_at: new Date().toISOString(),
+                  is_current: true,
+                };
+                versions = pruneVersions([
+                  ...existingVersions.map((v) => ({ ...v, is_current: false })),
+                  newVersion,
+                ]);
+              }
+            }
+
+            // 开始打字机效果流式输出
+            startTypewriterEffect(sessionId, streamingMsgId, fullContent, aiMessage, async () => {
+              // 打字效果完成后的回调
+              setStreamingContent('');
+
+              await updateMessage(streamingMsgId, {
+                content: fullContent,
+                sources: aiMessage.sources || [],
+                entities: aiMessage.entities || [],
+                keywords: aiMessage.keywords || [],
+                relations: aiMessage.relations || [],
+                versions,
+                isStreaming: false,
+              });
+              setNewMessageIds((prev) => new Set([...prev, streamingMsgId]));
+
+              const entities = aiMessage.entities || [];
+              const keywords = aiMessage.keywords || [];
+              const sources = aiMessage.sources || [];
+              const relations = aiMessage.relations || [];
+              updateGraphData(entities, keywords, sources, relations);
+
+              setLoading(false);
+              setStreaming(false);
+              setIsThinking(false);
+              streamingLockManager.release(streamingMsgId);
+            });
+          },
+          async (error) => {
+            clearTypewriterEffect();
+            setStreamingContent('');
+            setLoading(false);
+            setStreaming(false);
+            setIsThinking(false);
+
+            await updateMessage(streamingMsgId, {
+              content: '抱歉，生成回复时出现错误。请重试。',
+              isStreaming: false,
+            });
+            toast.error('发送失败', error.message || 'AI 回复生成失败');
+            streamingLockManager.release(streamingMsgId);
           }
+        );
 
-          await updateMessage(streamingMsgId, {
-            content: aiMessage.content,
-            sources: aiMessage.sources,
-            entities: aiMessage.entities,
-            keywords: aiMessage.keywords,
-            relations: aiMessage.relations,
-            versions,
-            isStreaming: false,
-          });
-          setNewMessageIds((prev) => new Set([...prev, streamingMsgId]));
-
-          // 更新图谱数据
-          updateGraphData(
-            aiMessage.entities,
-            aiMessage.keywords,
-            aiMessage.sources,
-            aiMessage.relations
-          );
-
-          setLoading(false);
-          setStreaming(false);
-        },
-        async (error) => {
-          setStreamingContent('');
-          setLoading(false);
-          setStreaming(false);
-
-          await updateMessage(streamingMsgId, {
-            content: '抱歉，生成回复时出现错误。请重试。',
-            isStreaming: false,
-          });
-          toast.error('发送失败', error.message || 'AI 回复生成失败');
-        }
-      );
-
-      return abort;
+        return () => {
+          clearTypewriterEffect();
+          abort();
+        };
+      } catch (error) {
+        clearTypewriterEffect();
+        setIsThinking(false);
+        streamingLockManager.release(streamingMsgId);
+        throw error;
+      }
     },
     [
       updateMessage,
@@ -461,14 +641,15 @@ export default function EnhancedChatPage() {
       setNewMessageIds,
       updateGraphData,
       toast,
+      startTypewriterEffect,
+      clearTypewriterEffect,
     ]
   );
 
   // ========== 主函数：发送消息 ==========
   const handleSendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, options?: { files?: UploadedFile[] }) => {
       if (!content || !content.trim()) {
-        console.warn('Empty message content');
         return;
       }
 
@@ -476,25 +657,49 @@ export default function EnhancedChatPage() {
         // 1. 确保有活跃会话
         const activeSessionId = await ensureActiveSession();
 
-        // 2. 构建并发送用户消息
+        // 2. 如果有文件，先上传文件
+        let fileUrls: string[] = [];
+        if (options?.files && options.files.length > 0) {
+          try {
+            toast.info('文件上传中', `正在上传 ${options.files.length} 个文件...`);
+
+            const uploadPromises = options.files.map(async (uploadedFile) => {
+              const response = await fileUploadService.uploadFile(uploadedFile.file);
+              return response.url;
+            });
+
+            fileUrls = await Promise.all(uploadPromises);
+            toast.success('上传成功', `${fileUrls.length} 个文件已上传`);
+          } catch (error) {
+            const errorInfo = categorizeError(error);
+            toast.error('文件上传失败', errorInfo.userMessage);
+          }
+        }
+
+        // 3. 构建用户消息（后端会处理文件 URL）
         const userMessage = buildUserMessage(activeSessionId, content);
         await addMessage(userMessage);
         setNewMessageIds((prev) => new Set([...prev, userMessage.id]));
         setQuotedMessage(null);
 
-        // 3. 创建流式消息
+        // 4. 创建流式消息
         const streamingMsgId = createStreamingMessage(activeSessionId).id!;
         const streamingMessage = { ...createStreamingMessage(activeSessionId), id: streamingMsgId };
         await addMessage(streamingMessage);
 
-        // 4. 启动流式响应
-        const abort = await startStreamingResponse(activeSessionId, content, streamingMsgId);
+        // 5. 启动流式响应（传递文件 URL 列表）
+        const abort = await startStreamingResponse(
+          activeSessionId,
+          content,
+          streamingMsgId,
+          fileUrls
+        );
         abortControllerRef.current = abort;
       } catch (error) {
-        console.error('Error in handleSendMessage:', error);
         setLoading(false);
         setStreaming(false);
-        toast.error('发送失败', error instanceof Error ? error.message : '发送消息时发生错误');
+        const errorInfo = categorizeError(error);
+        toast.error('发送失败', errorInfo.userMessage);
         throw error;
       }
     },
@@ -527,8 +732,8 @@ export default function EnhancedChatPage() {
         await updateMessage(messageId, { feedback });
         toast.success('感谢反馈', '您的反馈将帮助我们改进');
       } catch (error) {
-        console.error('Failed to submit feedback:', error);
-        toast.error('反馈失败', '无法提交反馈');
+        const errorInfo = categorizeError(error);
+        toast.error('反馈失败', errorInfo.userMessage);
       }
     },
     [updateMessage, toast]
@@ -542,8 +747,8 @@ export default function EnhancedChatPage() {
         toast.success(newStatus ? '已收藏' : '已取消收藏');
         window.dispatchEvent(new CustomEvent('favoriteChanged'));
       } catch (error) {
-        console.error('Failed to toggle favorite:', error);
-        toast.error('操作失败', '无法更新收藏状态');
+        const errorInfo = categorizeError(error);
+        toast.error('操作失败', errorInfo.userMessage);
       }
     },
     [updateMessage, toast]
@@ -601,7 +806,6 @@ export default function EnhancedChatPage() {
         addMessageVersion(messageId, newContent, versionGroupId);
         toast.success('已修改', '消息内容已更新，版本已保存');
       } catch (error) {
-        console.error('Failed to edit message:', error);
         toast.error('修改失败', '无法修改消息内容');
       }
     },
@@ -614,7 +818,6 @@ export default function EnhancedChatPage() {
         switchMessageVersion(messageId, versionId);
         // 移除成功提示，界面变化本身就是反馈
       } catch (error) {
-        console.error('Failed to switch version:', error);
         toast.error('切换失败', '无法切换消息版本');
       }
     },
@@ -676,7 +879,6 @@ export default function EnhancedChatPage() {
           toast.success('已重新生成', '答案已根据修改后的问题重新生成');
         }
       } catch (error) {
-        console.error('Failed to edit and regenerate:', error);
         toast.error('操作失败', '无法编辑并重新生成');
       }
     },
@@ -689,7 +891,6 @@ export default function EnhancedChatPage() {
         await deleteMessage(messageId);
         toast.success('已删除', '消息已删除');
       } catch (error) {
-        console.error('Failed to delete message:', error);
         toast.error('删除失败', '无法删除消息');
       }
     },
@@ -702,7 +903,6 @@ export default function EnhancedChatPage() {
         const { syncVersionForGroup } = useChatStore.getState();
         syncVersionForGroup(versionGroupId, versionIndex);
       } catch (error) {
-        console.error('Failed to sync version for group:', error);
         toast.error('同步失败', '无法同步版本组');
       }
     },
@@ -712,8 +912,8 @@ export default function EnhancedChatPage() {
   const handleQuestionClick = useCallback(
     (question: string) => {
       handleSendMessage(question).catch((error) => {
-        console.error('Failed to send question:', error);
-        toast.error('发送失败', '无法发送问题，请重试');
+        const errorInfo = categorizeError(error);
+        toast.error('发送失败', errorInfo.userMessage);
       });
     },
     [handleSendMessage, toast]
@@ -722,8 +922,8 @@ export default function EnhancedChatPage() {
   const handleKeywordClick = useCallback(
     (keyword: string) => {
       handleSendMessage(`${keyword}是什么？`).catch((error) => {
-        console.error('Failed to send keyword question:', error);
-        toast.error('发送失败', '无法发送问题，请重试');
+        const errorInfo = categorizeError(error);
+        toast.error('发送失败', errorInfo.userMessage);
       });
     },
     [handleSendMessage, toast]
@@ -738,11 +938,34 @@ export default function EnhancedChatPage() {
       if (sid === currentSessionId) return;
 
       // 清空当前图谱数据
-      setCurrentEntities([]);
-      setCurrentKeywords([]);
-      setCurrentRelations([]);
+      useGraphStore.getState().clearGraphData();
 
+      // 切换会话并等待消息加载完成
       await switchSession(sid);
+
+      // 确保消息已加载，然后恢复图谱数据
+      const newMessages = useChatStore.getState().messagesBySession[sid] || [];
+
+      // 查找最后一条包含实体数据的 AI 消息
+      const lastAiMessageWithEntities = [...newMessages]
+        .reverse()
+        .find((m) => m.role === 'assistant' && m.entities && m.entities.length > 0);
+
+      if (lastAiMessageWithEntities && lastAiMessageWithEntities.entities) {
+        graphSyncService.updateFromChat(
+          lastAiMessageWithEntities.entities,
+          lastAiMessageWithEntities.relations || [],
+          lastAiMessageWithEntities.keywords || [],
+          sid,
+          lastAiMessageWithEntities.id
+        );
+        if (import.meta.env.DEV) {
+          console.log('✅ 切换会话后自动恢复图谱数据:', {
+            entities: lastAiMessageWithEntities.entities.length,
+            relations: lastAiMessageWithEntities.relations?.length || 0,
+          });
+        }
+      }
     },
     [currentSessionId, switchSession]
   );
@@ -753,8 +976,8 @@ export default function EnhancedChatPage() {
         await deleteSession(sid);
         toast.success('已删除', '对话已删除');
       } catch (error) {
-        console.error('Failed to delete session:', error);
-        setError('删除会话失败');
+        const errorInfo = categorizeError(error);
+        setError(errorInfo.userMessage);
       }
     },
     [deleteSession, setError, toast]
@@ -941,34 +1164,24 @@ export default function EnhancedChatPage() {
               sessionId={currentSessionId || undefined}
             />
           ) : (
-            <div className="max-w-2xl mx-auto px-3 py-4 space-y-3">
-              {messages.map((message, index) => (
-                <div key={message.id}>
-                  <UnifiedMessageBubble
-                    message={message}
-                    onFeedback={handleFeedback}
-                    onFavorite={handleFavorite}
-                    onCopy={handleCopy}
-                    onRegenerate={handleRegenerate}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                    onSwitchVersion={handleSwitchVersion}
-                    onEditAndRegenerate={handleEditAndRegenerate}
-                    onSyncVersionForGroup={handleSyncVersionForGroup}
-                    isHistorical={!newMessageIds.has(message.id)}
-                    isLast={index === messages.length - 1}
-                    isStreaming={message.isStreaming === true}
-                  />
-                </div>
-              ))}
-
-              {isLoading &&
-                messages.length > 0 &&
-                messages[messages.length - 1]?.role === 'user' &&
-                !streamingContent && <TypingIndicator message="正在思考..." />}
-
-              <div ref={messagesEndRef} />
-            </div>
+            <VirtualMessageList
+              messages={messages}
+              isLoading={isLoading}
+              isThinking={isThinking}
+              streamingContent={streamingContent}
+              newMessageIds={newMessageIds}
+              onFeedback={handleFeedback}
+              onFavorite={handleFavorite}
+              onCopy={handleCopy}
+              onRegenerate={handleRegenerate}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onSwitchVersion={handleSwitchVersion}
+              onEditAndRegenerate={handleEditAndRegenerate}
+              onSyncVersionForGroup={handleSyncVersionForGroup}
+              onQuote={setQuotedMessage}
+              messagesEndRef={messagesEndRef}
+            />
           )}
         </div>
 
@@ -986,6 +1199,7 @@ export default function EnhancedChatPage() {
               </div>
             )}
             <UnifiedInputArea
+              sessionId={currentSessionId || undefined}
               onSend={handleSendMessage}
               isLoading={isLoading}
               isStreaming={isStreaming}
@@ -1022,9 +1236,9 @@ export default function EnhancedChatPage() {
       </div>
 
       <RightPanel
-        keywords={currentKeywords}
-        entities={currentEntities}
-        relations={currentRelations}
+        keywords={graphKeywords}
+        entities={graphEntities}
+        relations={graphRelations}
         sessionId={currentSessionId ?? undefined}
         messageId={messages.length > 0 ? messages[messages.length - 1].id : undefined}
         onKeywordClick={handleKeywordClick}

@@ -1,9 +1,10 @@
 import { localDatabase, STORES } from '../localDatabase';
 import type { ChatSession, ChatMessage } from '../models';
-import type { Session, Message, Entity, Source } from '../../types/chat';
+import type { Session, Message, Entity, Source, Relation, ChatResponse } from '../../types/chat';
+import { entityExtractor, type ExtractedEntity } from '../../services/entityExtractor';
 
 function generateId(): string {
-  return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }
 
 function sessionToDb(session: Session): ChatSession {
@@ -44,6 +45,7 @@ function messageToDb(message: Message): ChatMessage {
     sources: message.sources,
     entities: message.entities,
     keywords: message.keywords,
+    relations: message.relations,
     feedback: message.feedback,
     is_favorite: message.is_favorite,
     versions: message.versions,
@@ -63,6 +65,7 @@ function dbToMessage(db: ChatMessage): Message {
     sources: db.sources,
     entities: db.entities,
     keywords: db.keywords,
+    relations: db.relations,
     feedback: db.feedback,
     is_favorite: db.is_favorite,
     versions: db.versions,
@@ -81,18 +84,22 @@ const HERITAGE_RESPONSES = [
 ];
 
 const HERITAGE_KEYWORDS = [
-  '传承', '技艺', '非遗', '传统', '文化',
-  '工艺', '匠心', '民俗', '手艺', '古老',
-  '历史', '艺术', '民间', '国粹', '经典',
+  '传承',
+  '技艺',
+  '非遗',
+  '传统',
+  '文化',
+  '工艺',
+  '匠心',
+  '民俗',
+  '手艺',
+  '古老',
+  '历史',
+  '艺术',
+  '民间',
+  '国粹',
+  '经典',
 ];
-
-const ENTITY_TEMPLATES: Record<string, { type: Entity['type']; description: string }> = {
-  '传承人': { type: 'inheritor', description: '非物质文化遗产传承人' },
-  '技艺': { type: 'technique', description: '传统技艺技法' },
-  '工艺': { type: 'technique', description: '传统制作工艺' },
-  '历史': { type: 'period', description: '历史时期背景' },
-  '保护': { type: 'technique', description: '非遗保护措施' },
-};
 
 const RECOMMENDED_QUESTIONS = [
   { id: 'q1', question: '什么是非物质文化遗产？' },
@@ -142,27 +149,97 @@ function extractKeywords(message: string): string[] {
 }
 
 function extractEntities(message: string): Entity[] {
-  const entities: Entity[] = [];
-  let entityId = 0;
+  const extractedEntities = entityExtractor.extract(message);
 
-  Object.entries(ENTITY_TEMPLATES).forEach(([keyword, template]) => {
-    if (message.includes(keyword)) {
-      entities.push({
-        id: `entity_${++entityId}_${Date.now()}`,
-        name: keyword,
-        type: template.type,
-        description: template.description,
-        relevance: 0.85,
-      });
-    }
+  return extractedEntities.map((entity: ExtractedEntity) => {
+    const mappedType = mapEntityType(entity.type, entity.text);
+    return {
+      id: `entity_${entity.type}_${entity.startIndex}_${Date.now()}`,
+      name: entity.text,
+      type: mappedType,
+      description: getEntityDescription(mappedType),
+      relevance: entity.confidence,
+    };
   });
+}
 
-  return entities.slice(0, 5);
+function mapEntityType(extractedType: string, entityText?: string): Entity['type'] {
+  const typeMap: Record<string, Entity['type']> = {
+    // 人物相关
+    person: 'inheritor',
+    organization: 'inheritor',
+    // 地理位置
+    location: 'region',
+    // 时间相关
+    date: 'period',
+    // 技艺/概念相关
+    number: 'technique',
+    concept: 'technique',
+    // 作品/产品
+    product: 'work',
+  };
+
+  // 基于实体文本内容的智能推断
+  if (entityText) {
+    const text = entityText.toLowerCase();
+
+    // 检查是否是材料相关
+    const materialKeywords = [
+      '丝',
+      '绸',
+      '棉',
+      '麻',
+      '竹',
+      '木',
+      '陶',
+      '瓷',
+      '纸',
+      '墨',
+      '颜料',
+      '染料',
+    ];
+    if (materialKeywords.some((kw) => text.includes(kw))) {
+      return 'material';
+    }
+
+    // 检查是否是图案/纹样相关
+    const patternKeywords = ['纹', '图案', '花', '龙凤', '云纹', '几何', '图腾'];
+    if (patternKeywords.some((kw) => text.includes(kw))) {
+      return 'pattern';
+    }
+
+    // 检查是否是作品相关
+    const workKeywords = ['作品', '画作', '雕塑', '器物', '器具', '服饰', '建筑'];
+    if (workKeywords.some((kw) => text.includes(kw))) {
+      return 'work';
+    }
+
+    // 检查是否是传承人相关（包含特定称谓）
+    const inheritorKeywords = ['大师', '传承人', '艺人', '工匠', '先生', '女士'];
+    if (inheritorKeywords.some((kw) => text.includes(kw))) {
+      return 'inheritor';
+    }
+  }
+
+  return typeMap[extractedType] || 'technique';
+}
+
+function getEntityDescription(entityType: string): string {
+  const descriptions: Record<string, string> = {
+    inheritor: '非遗传承人或相关人物',
+    technique: '传统技艺或工艺',
+    work: '非遗相关作品或产品',
+    pattern: '传统图案或纹样',
+    region: '地理位置或区域',
+    period: '历史时期',
+    material: '传统材料或原料',
+  };
+  return descriptions[entityType] || '提取的实体';
 }
 
 function generateSources(message: string): Source[] {
   const sources: Source[] = [];
-  
+
   if (message.includes('传承') || message.includes('技艺')) {
     sources.push({
       id: 'source_1',
@@ -295,7 +372,7 @@ class ChatRepository {
 
   async addMessage(message: Message | Omit<Message, 'id' | 'created_at'>): Promise<Message> {
     const hasId = 'id' in message && message.id !== undefined;
-    
+
     const newMessage: ChatMessage = {
       ...message,
       id: hasId ? message.id : generateId(),
@@ -460,103 +537,417 @@ class ChatRepository {
     return aiMessage;
   }
 
- async sendMessageStream(
+  async sendMessageStream(
     sessionId: string,
     content: string,
     onChunk: (chunk: string) => void,
     onComplete: (message: Message) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    onStatusChange?: (status: 'connecting' | 'streaming' | 'complete' | 'error') => void
   ): Promise<() => void> {
-    const userMessage: Message = {
-      id: generateId(),
-      session_id: sessionId,
-      role: 'user',
-      content,
-      created_at: new Date().toISOString(),
-      keywords: [],
-      entities: [],
-      sources: [],
-    };
-    await this.addMessage(userMessage);
     let isAborted = false;
+    const controller = new AbortController();
+    const STREAM_TIMEOUT = 60000; // 60秒超时
+    const MAX_RETRIES = 1; // 网络错误时重试1次
+    let retryCount = 0;
 
-    (async () => {
+    const executeStream = async (): Promise<void> => {
       try {
         const token = localStorage.getItem('token') || '';
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        // 🌟 强行请求真实的流式接口
-        const response = await fetch(`http://localhost:8000/api/v1/chat/stream`, {
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+
+        onStatusChange?.('connecting');
+
+        // 创建超时控制器
+        const timeoutController = new AbortController();
+        const timeoutId = setTimeout(() => {
+          timeoutController.abort();
+        }, STREAM_TIMEOUT);
+
+        const response = await fetch(`${apiBaseUrl}/chat/stream`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
             session_id: sessionId,
             content: content,
-            message_type: 'text'
-          })
+            message_type: 'text',
+          }),
+          signal: AbortSignal.any([controller.signal, timeoutController.signal]),
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const errText = await response.text();
-          throw new Error(`HTTP error! status: ${response.status}, body: ${errText}`);
+          let errorType = 'UNKNOWN_ERROR';
+
+          if (response.status === 401) {
+            errorType = 'AUTH_ERROR';
+          } else if (response.status === 429) {
+            errorType = 'RATE_LIMIT_ERROR';
+          } else if (response.status >= 500) {
+            errorType = 'SERVER_ERROR';
+          }
+
+          throw new Error(`[${errorType}] HTTP ${response.status}: ${errText}`);
         }
+
+        onStatusChange?.('streaming');
 
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
-        let lastResponse: any = null;
+        let lastResponse: ChatResponse | null = null;
+        let latestEntities: Entity[] = [];
+        let latestKeywords: string[] = [];
+        let latestRelations: Relation[] = [];
+        let fullContent = '';
+        let sseBuffer = '';
+        let lastActivityTime = Date.now();
+        const ACTIVITY_TIMEOUT = 30000; // 30秒无活动超时
 
         if (reader) {
           while (!isAborted) {
-            const { done, value } = await reader.read();
-            if (done) break;
+            // 检查活动超时
+            if (Date.now() - lastActivityTime > ACTIVITY_TIMEOUT) {
+              throw new Error('[STREAM_TIMEOUT] 流式响应超时，30秒无数据');
+            }
 
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
+            try {
+              const { done, value } = await Promise.race([
+                reader.read(),
+                new Promise<never>((_, reject) =>
+                  setTimeout(() => reject(new Error('[READ_TIMEOUT] 读取超时')), 10000)
+                ),
+              ]);
 
-            for (const line of lines) {
-              const trimmedLine = line.trim();
-              if (trimmedLine && trimmedLine.startsWith('data: ')) {
+              if (done) break;
+
+              lastActivityTime = Date.now();
+              sseBuffer += decoder.decode(value, { stream: true });
+              const events = sseBuffer.split('\n\n');
+              sseBuffer = events.pop() || '';
+
+              for (const rawEvent of events) {
+                const dataLines = rawEvent
+                  .split('\n')
+                  .map((line) => line.trim())
+                  .filter((line) => line.startsWith('data:'))
+                  .map((line) => line.replace(/^data:\s?/, ''));
+
+                if (dataLines.length === 0) continue;
+                const payload = dataLines.join('\n');
+                if (payload === '[DONE]') continue;
+
                 try {
-                  const jsonStr = trimmedLine.substring(6);
-                  if (jsonStr === '[DONE]') continue; 
-                  
-                  const data = JSON.parse(jsonStr);
+                  const data = JSON.parse(payload);
                   if (data.type === 'content_chunk' || data.type === 'content') {
-                    onChunk(data.content);
+                    const chunkText = String(data.content || '');
+                    fullContent += chunkText;
+                    onChunk(chunkText);
+                  } else if (data.type === 'entities') {
+                    latestEntities = Array.isArray(data.entities) ? data.entities : [];
+                  } else if (data.type === 'keywords') {
+                    latestKeywords = Array.isArray(data.keywords) ? data.keywords : [];
+                  } else if (data.type === 'relations') {
+                    latestRelations = Array.isArray(data.relations) ? data.relations : [];
                   } else if (data.type === 'complete') {
                     lastResponse = data.response || data;
+                  } else if (data.type === 'error') {
+                    throw new Error(`[STREAM_ERROR] ${data.message || '流式响应错误'}`);
                   }
-                } catch (e) {
-                  // 忽略不完整的 JSON 块解析错误
+                } catch (parseError) {
+                  if (parseError instanceof SyntaxError) {
+                    // JSON 解析失败，可能是不完整的事件，等待后续分片
+                    continue;
+                  }
+                  throw parseError;
                 }
               }
+            } catch (readError: unknown) {
+              if (readError instanceof Error && readError.message.includes('READ_TIMEOUT')) {
+                console.warn('⚠️ 读取超时，继续等待...');
+                continue;
+              }
+              throw readError;
             }
           }
         }
 
+        if (!lastResponse && fullContent.trim()) {
+          const responseId = generateId();
+          lastResponse = {
+            message_id: responseId,
+            content: fullContent,
+            entities: latestEntities,
+            keywords: latestKeywords,
+            relations: latestRelations,
+            sources: [],
+            created_at: new Date().toISOString(),
+            role: 'assistant',
+          };
+        }
+
         if (lastResponse && !isAborted) {
           const aiMessage: Message = {
-            id: lastResponse.message_id || lastResponse.id || generateId(),
+            id: lastResponse.message_id || generateId(),
             session_id: sessionId,
             role: 'assistant',
-            content: lastResponse.content || '',
+            content: lastResponse.content || fullContent || '',
             created_at: lastResponse.created_at || new Date().toISOString(),
             sources: lastResponse.sources || [],
-            entities: lastResponse.entities || [],
-            keywords: lastResponse.keywords || []
+            entities: lastResponse.entities || latestEntities || [],
+            keywords: lastResponse.keywords || latestKeywords || [],
+            relations: lastResponse.relations || latestRelations || [],
           };
           await this.addMessage(aiMessage);
+          onStatusChange?.('complete');
           onComplete(aiMessage);
         }
-      } catch (error) {
-        console.error('🔥 真实流式请求彻底报错:', error);
-        if (onError && !isAborted) onError(error as Error);
-      }
-    })();
+      } catch (error: unknown) {
+        if (isAborted) return;
 
-    return () => { isAborted = true; };
+        // 判断错误类型
+        let shouldRetry = false;
+        let errorMessage = '未知错误';
+
+        const err = error instanceof Error ? error : new Error(String(error));
+
+        if (err.name === 'AbortError') {
+          errorMessage = '请求已取消';
+        } else if (err.message.includes('STREAM_TIMEOUT') || err.message.includes('READ_TIMEOUT')) {
+          errorMessage = '响应超时，请稍后重试';
+        } else if (err.message.includes('AUTH_ERROR')) {
+          errorMessage = '认证失败，请重新登录';
+        } else if (err.message.includes('RATE_LIMIT_ERROR')) {
+          errorMessage = '请求过于频繁，请稍后重试';
+        } else if (err.message.includes('SERVER_ERROR')) {
+          errorMessage = '服务器错误，请稍后重试';
+          shouldRetry = retryCount < MAX_RETRIES;
+        } else if (
+          err.message.includes('NetworkError') ||
+          err.message.includes('Failed to fetch')
+        ) {
+          errorMessage = '网络连接失败，请检查网络';
+          shouldRetry = retryCount < MAX_RETRIES;
+        } else {
+          errorMessage = err.message || '请求失败';
+          shouldRetry = retryCount < MAX_RETRIES && !err.message.includes('[STREAM_ERROR]');
+        }
+
+        console.error(`🔥 流式请求失败 (重试 ${retryCount}/${MAX_RETRIES}):`, errorMessage);
+
+        // 重试逻辑
+        if (shouldRetry) {
+          retryCount++;
+          const delay = 1000 * retryCount; // 指数退避
+          console.log(`⏳ ${delay}ms 后重试...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+
+          if (!isAborted) {
+            await executeStream();
+            return;
+          }
+        }
+
+        // 不再重试，报告错误
+        console.error('❌ 流式请求最终失败:', errorMessage);
+        if (onError) onError(new Error(errorMessage));
+        onStatusChange?.('error');
+      }
+    };
+
+    executeStream();
+
+    return () => {
+      isAborted = true;
+      controller.abort();
+    };
   }
+
+  async regenerateMessageStream(
+    messageId: string,
+    onChunk: (chunk: string) => void,
+    onComplete: (message: Message) => void,
+    onError?: (error: Error) => void,
+    onStatusChange?: (status: 'connecting' | 'streaming' | 'complete' | 'error') => void
+  ): Promise<() => void> {
+    let isAborted = false;
+    const controller = new AbortController();
+    const STREAM_TIMEOUT = 60000;
+    const MAX_RETRIES = 1;
+    let retryCount = 0;
+
+    const executeStream = async (): Promise<void> => {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+
+        onStatusChange?.('connecting');
+
+        const timeoutController = new AbortController();
+        const timeoutId = setTimeout(() => {
+          timeoutController.abort();
+        }, STREAM_TIMEOUT);
+
+        const response = await fetch(`${apiBaseUrl}/chat/message/${messageId}/regenerate/stream`, {
+          method: 'POST',
+          headers,
+          signal: AbortSignal.any([controller.signal, timeoutController.signal]),
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errText = await response.text();
+          let errorType = 'UNKNOWN_ERROR';
+
+          if (response.status === 401) {
+            errorType = 'AUTH_ERROR';
+          } else if (response.status === 429) {
+            errorType = 'RATE_LIMIT_ERROR';
+          } else if (response.status >= 500) {
+            errorType = 'SERVER_ERROR';
+          }
+
+          throw new Error(`[${errorType}] HTTP ${response.status}: ${errText}`);
+        }
+
+        onStatusChange?.('streaming');
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let latestEntities: Entity[] = [];
+        let latestKeywords: string[] = [];
+        let latestRelations: Relation[] = [];
+        let fullContent = '';
+        let sseBuffer = '';
+        let lastActivityTime = Date.now();
+        const ACTIVITY_TIMEOUT = 30000;
+
+        if (reader) {
+          while (!isAborted) {
+            if (Date.now() - lastActivityTime > ACTIVITY_TIMEOUT) {
+              throw new Error('[STREAM_TIMEOUT] 流式响应超时，30秒无数据');
+            }
+
+            try {
+              const { done, value } = await Promise.race([
+                reader.read(),
+                new Promise<never>((_, reject) =>
+                  setTimeout(() => reject(new Error('[READ_TIMEOUT] 读取超时')), 10000)
+                ),
+              ]);
+
+              if (done) break;
+
+              lastActivityTime = Date.now();
+              sseBuffer += decoder.decode(value, { stream: true });
+              const events = sseBuffer.split('\n\n');
+              sseBuffer = events.pop() || '';
+
+              for (const rawEvent of events) {
+                const dataLines = rawEvent
+                  .split('\n')
+                  .map((line) => line.trim())
+                  .filter((line) => line.startsWith('data:'))
+                  .map((line) => line.replace(/^data:\s?/, ''));
+
+                for (const dataStr of dataLines) {
+                  try {
+                    const data = JSON.parse(dataStr);
+
+                    if (data.type === 'content_chunk') {
+                      fullContent += data.content;
+                      onChunk(data.content);
+                    } else if (data.type === 'entities') {
+                      latestEntities = data.entities || [];
+                    } else if (data.type === 'keywords') {
+                      latestKeywords = data.keywords || [];
+                    } else if (data.type === 'relations') {
+                      latestRelations = data.relations || [];
+                    } else if (data.type === 'complete') {
+                      const regeneratedMessage: Message = {
+                        id: messageId,
+                        session_id: '',
+                        role: 'assistant',
+                        content: fullContent,
+                        created_at: new Date().toISOString(),
+                        entities: latestEntities,
+                        keywords: latestKeywords,
+                        relations: latestRelations,
+                        sources: [],
+                      };
+                      onComplete(regeneratedMessage);
+                      onStatusChange?.('complete');
+                      return;
+                    } else if (data.type === 'error') {
+                      throw new Error(data.message || '重新生成失败');
+                    }
+                  } catch (parseError) {
+                    console.warn('Failed to parse SSE event:', dataStr, parseError);
+                  }
+                }
+              }
+            } catch (readError) {
+              const error = readError as Error & { message?: string };
+              if (error.message?.includes('READ_TIMEOUT')) {
+                continue;
+              }
+              throw readError;
+            }
+          }
+        }
+
+        if (!isAborted && fullContent) {
+          const regeneratedMessage: Message = {
+            id: messageId,
+            session_id: '',
+            role: 'assistant',
+            content: fullContent,
+            created_at: new Date().toISOString(),
+            entities: latestEntities,
+            keywords: latestKeywords,
+            relations: latestRelations,
+            sources: [],
+          };
+          onComplete(regeneratedMessage);
+          onStatusChange?.('complete');
+        }
+      } catch (error) {
+        const err = error as Error & { message?: string };
+        const errorMessage = err.message || '重新生成失败';
+
+        if (
+          (errorMessage.includes('网络') || errorMessage.includes('Network')) &&
+          retryCount < MAX_RETRIES
+        ) {
+          retryCount++;
+          console.log(`🔄 网络错误，重试 ${retryCount}/${MAX_RETRIES}...`);
+          await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
+          await executeStream();
+          return;
+        }
+
+        console.error('❌ 重新生成最终失败:', errorMessage);
+        if (onError) onError(new Error(errorMessage));
+        onStatusChange?.('error');
+      }
+    };
+
+    executeStream();
+
+    return () => {
+      isAborted = true;
+      controller.abort();
+    };
+  }
+
   async submitFeedback(messageId: string, feedback: 'helpful' | 'unclear'): Promise<void> {
     await this.updateMessage(messageId, { feedback });
   }

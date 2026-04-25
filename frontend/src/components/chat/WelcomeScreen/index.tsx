@@ -21,6 +21,8 @@ interface WelcomeScreenProps {
   onQuestionClick: (question: string) => void;
   userName?: string;
   sessionId?: string;
+  entities?: Array<{ id: string; name: string; type: string }>;
+  keywords?: string[];
 }
 
 interface RecommendedQuestion {
@@ -121,6 +123,8 @@ export default function WelcomeScreen({
   onQuestionClick,
   userName,
   sessionId,
+  entities,
+  keywords,
 }: WelcomeScreenProps) {
   const [currentTip, setCurrentTip] = useState(0);
   const [greeting, setGreeting] = useState('');
@@ -152,17 +156,18 @@ export default function WelcomeScreen({
   // 加载个性化推荐问题
   useEffect(() => {
     const loadRecommendations = async () => {
-      if (!sessionId) {
-        // 没有 sessionId 时使用默认问题
-        setQuestions([]);
-        return;
-      }
-
       setIsLoading(true);
       try {
-        const data = await chatApi.getRecommendations(sessionId);
+        const data = await chatApi.getRecommendations({
+          session_id: sessionId,
+          entities: entities?.map((e) => e.name) || [],
+          keywords,
+          limit: 6,
+        });
         if (data && data.questions) {
           setQuestions(data.questions);
+        } else {
+          setQuestions([]);
         }
       } catch (error) {
         console.warn('Failed to load recommendations:', error);
@@ -173,7 +178,7 @@ export default function WelcomeScreen({
     };
 
     loadRecommendations();
-  }, [sessionId]);
+  }, [sessionId, entities, keywords]);
 
   return (
     <div

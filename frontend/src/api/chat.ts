@@ -13,6 +13,8 @@ import type {
   Relation,
 } from '../types/chat';
 
+const STREAM_TIMEOUT = 60000;
+
 function transformSession(data: Record<string, unknown>): Session {
   return {
     id: data.id as string,
@@ -62,6 +64,7 @@ function transformMessage(data: Record<string, unknown>) {
     sources: ((data.sources as unknown[]) || []) as Source[],
     entities,
     keywords: data.keywords as string[],
+    relations: ((data.relations as unknown[]) || []) as Relation[],
     feedback: data.feedback as 'helpful' | 'unclear' | null | undefined,
     is_favorite: (data.is_favorite as boolean) || false,
     is_edited: (data.is_edited as boolean) || false,
@@ -86,7 +89,7 @@ export const chatApi = {
     try {
       const response = await apiAdapterManager.request<ChatResponse>({
         method: 'POST',
-        url: '/api/v1/chat/message',
+        url: '/chat/message',
         data: {
           session_id: request.session_id,
           content: request.content,
@@ -95,8 +98,8 @@ export const chatApi = {
       });
       return response.data;
     } catch (error) {
-      console.error('🔥 普通接口请求失败，拒绝使用假数据！', error);
-      throw error; // 强行抛出错误，绝对不返回假数据
+      console.error('API error in sendMessage:', error);
+      throw error;
     }
   },
 
@@ -106,129 +109,190 @@ export const chatApi = {
     onComplete: (response: ChatResponse) => void,
     onEntities?: (entities: Entity[]) => void,
     onKeywords?: (keywords: string[]) => void,
-    onRelations?: (relations: Relation[]) => void
-  ): Promise<void> => {
-    try {
-      const token = localStorage.getItem('token') || '';
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+    onRelations?: (relations: Relation[]) => void,
+    onInterrupt?: (partialContent: string) => void
+  ): Promise<{ abort: () => void }> => {
+    const controller = new AbortController();
+    // 将变量声明提升到函数顶部，确保 catch 块可以访问
+    let accumulatedContent = '';
 
-      // 🚨 终极核心修改：绕过所有代理和拦截器，直接强行请求后端的真实完整地址！
-      const baseUrl = 'http://localhost:8000/api/v1'; 
-      
-      const response = await fetch(`${baseUrl}/chat/stream`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          session_id: request.session_id,
-          content: request.content,
-          message_type: request.message_type || 'text',
-        }),
-        signal: controller.signal,
-      });
+    const executeStream = async () => {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
 
-      // 如果后端没返回成功状态，直接抛出错误，进入 catch
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let lastResponse: ChatResponse | null = null;
-      let lastActivityTime = Date.now();
+        const response = await fetch(`${baseUrl}/chat/stream`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            session_id: request.session_id,
+            content: request.content,
+            message_type: request.message_type || 'text',
+            file_urls: request.file_urls || [],
+          }),
+          signal: controller.signal,
+        });
 
-      if (reader) {
-        let done = false;
-        while (!done) {
-          const readPromise = reader.read();
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
 
-          const result = await Promise.race([
-            readPromise,
-            new Promise<{ done: boolean; value?: Uint8Array }>((_, reject) => {
-              setTimeout(() => {
-                if (Date.now() - lastActivityTime > STREAM_TIMEOUT) {
-                  reject(new Error('Stream read timeout'));
-                }
-              }, STREAM_TIMEOUT);
-            }),
-          ]);
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let lastResponse: ChatResponse | null = null;
+        let lastActivityTime = Date.now();
+        let sseBuffer = '';
+        // accumulatedContent 已在函数顶部声明
+        let latestEntities: Entity[] = [];
+        let latestKeywords: string[] = [];
+        let latestRelations: Relation[] = [];
 
-          const { done: readerDone, value } = result;
-          done = readerDone;
-          if (done) break;
+        if (reader) {
+          let done = false;
+          while (!done) {
+            const readPromise = reader.read();
+            const timeoutPromise = new Promise<{ done: boolean; value?: Uint8Array }>(
+              (_, reject) => {
+                setTimeout(() => {
+                  if (Date.now() - lastActivityTime > STREAM_TIMEOUT) {
+                    reject(new Error('Stream read timeout'));
+                  }
+                }, STREAM_TIMEOUT);
+              }
+            );
+            const result = await Promise.race([readPromise, timeoutPromise]);
 
-          lastActivityTime = Date.now();
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
+            const { done: readerDone, value } = result;
+            done = readerDone;
+            if (done) break;
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
+            lastActivityTime = Date.now();
+            sseBuffer += decoder.decode(value, { stream: true });
+            const events = sseBuffer.split('\n\n');
+            sseBuffer = events.pop() || '';
+
+            for (const rawEvent of events) {
+              const dataLines = rawEvent
+                .split('\n')
+                .map((line) => line.trim())
+                .filter((line) => line.startsWith('data:'))
+                .map((line) => line.replace(/^data:\s?/, ''));
+
+              if (dataLines.length === 0) continue;
+              const payload = dataLines.join('\n');
+              if (payload === '[DONE]') continue;
+
               try {
-                const data = JSON.parse(line.slice(6));
+                const data = JSON.parse(payload);
                 if (data.type === 'content_chunk' || data.type === 'content') {
-                  onChunk(data.content);
+                  const chunkText = String(data.content || '');
+                  accumulatedContent += chunkText;
+                  onChunk(chunkText);
                 } else if (data.type === 'entities') {
-                  // 处理实体数据
-                  const entities = data.entities || [];
-                  onEntities?.(entities);
+                  latestEntities = Array.isArray(data.entities) ? data.entities : [];
+                  onEntities?.(latestEntities);
                 } else if (data.type === 'keywords') {
-                  // 处理关键词数据
-                  const keywords = data.keywords || [];
-                  onKeywords?.(keywords);
+                  latestKeywords = Array.isArray(data.keywords) ? data.keywords : [];
+                  onKeywords?.(latestKeywords);
                 } else if (data.type === 'relations') {
-                  // 处理关系数据
-                  const relations = data.relations || [];
-                  onRelations?.(relations);
+                  latestRelations = Array.isArray(data.relations) ? data.relations : [];
+                  onRelations?.(latestRelations);
                 } else if (data.type === 'complete') {
                   lastResponse = {
                     message_id: data.message_id,
-                    content: data.content,
+                    content: data.content || accumulatedContent,
                     role: 'assistant',
                     sources: data.sources || [],
-                    entities: data.entities || [],
-                    keywords: data.keywords || [],
-                    relations: data.relations || [],
+                    entities: data.entities || latestEntities,
+                    keywords: data.keywords || latestKeywords,
+                    relations: data.relations || latestRelations,
                     created_at: new Date().toISOString(),
                   };
                 } else if (data.type === 'error') {
                   throw new Error(data.message || 'Stream error');
                 }
-              } catch {
-                console.warn('Failed to parse SSE data:', line);
+              } catch (parseError) {
+                if (parseError instanceof Error && parseError.message.includes('Stream error')) {
+                  throw parseError;
+                }
+                console.warn('Failed to parse SSE data event, skipping:', payload.slice(0, 100));
               }
             }
           }
         }
-      }
 
-      clearTimeout(timeoutId);
-      if (lastResponse) {
-        onComplete(lastResponse);
-      }
-
-    } catch (error) {
-      console.warn('Stream API unavailable, using local mock response');
-      await mockChatService.sendMessageStream(
-        request.session_id,
-        request.content,
-        onChunk,
-        (aiMessage) => {
-          onComplete({
-            message_id: aiMessage.id,
-            content: aiMessage.content,
+        if (!lastResponse && accumulatedContent.trim()) {
+          lastResponse = {
+            message_id: `msg_${Date.now()}`,
+            content: accumulatedContent,
             role: 'assistant',
-            sources: (aiMessage.sources || []) as Source[],
-            entities: (aiMessage.entities || []) as Entity[],
-            keywords: aiMessage.keywords || [],
-            created_at: aiMessage.created_at,
-          });
+            sources: [],
+            entities: latestEntities,
+            keywords: latestKeywords,
+            relations: latestRelations,
+            created_at: new Date().toISOString(),
+          };
         }
-      );
-    }
+
+        if (lastResponse) {
+          onComplete(lastResponse);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          console.log('Stream aborted by user');
+          if (onInterrupt && accumulatedContent.trim()) {
+            onInterrupt(accumulatedContent);
+          }
+          return;
+        }
+
+        console.warn('Stream error, falling back to mock response');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('chat:mockFallback', {
+              detail: { sessionId: request.session_id, content: request.content },
+            })
+          );
+        }
+        try {
+          await mockChatService.sendMessageStream(
+            request.session_id,
+            request.content,
+            onChunk,
+            (aiMessage) => {
+              onComplete({
+                message_id: aiMessage.id,
+                content: aiMessage.content,
+                role: 'assistant',
+                sources: (aiMessage.sources || []) as Source[],
+                entities: (aiMessage.entities || []) as Entity[],
+                keywords: aiMessage.keywords || [],
+                relations: aiMessage.relations || [],
+                created_at: aiMessage.created_at,
+              });
+            }
+          );
+        } catch (mockError) {
+          console.error('Mock response also failed:', mockError);
+          throw error;
+        }
+      }
+    };
+
+    executeStream();
+
+    return {
+      abort: () => {
+        controller.abort();
+      },
+    };
   },
 
   getSessions: async (page = 1, pageSize = 20): Promise<SessionListResponse> => {
@@ -568,7 +632,13 @@ export const chatApi = {
     };
   },
 
-  getRecommendations: async (sessionId: string) => {
+  getRecommendations: async (params?: {
+    session_id?: string;
+    entities?: string[];
+    keywords?: string[];
+    context?: string;
+    limit?: number;
+  }) => {
     if (apiAdapterManager.shouldUseLocal()) {
       return {
         questions: [
@@ -583,9 +653,15 @@ export const chatApi = {
       const response = await apiAdapterManager.request<{
         questions: Array<{ id: string; question: string }>;
       }>({
-        method: 'GET',
+        method: 'POST',
         url: '/chat/recommendations',
-        params: { session_id: sessionId },
+        data: {
+          session_id: params?.session_id,
+          entities: params?.entities || [],
+          keywords: params?.keywords || [],
+          context: params?.context,
+          limit: params?.limit || 6,
+        },
       });
       return response.data;
     } catch (error) {

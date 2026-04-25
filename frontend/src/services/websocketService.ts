@@ -1,4 +1,4 @@
-type MessageHandler = (data: any) => void;
+type MessageHandler = (data: unknown) => void;
 type ConnectionHandler = (connected: boolean) => void;
 
 interface WebSocketOptions {
@@ -18,7 +18,7 @@ class WebSocketService {
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private heartbeatTimeout: NodeJS.Timeout | null = null;
   private isConnected = false;
-  private messageQueue: any[] = [];
+  private messageQueue: unknown[] = [];
 
   constructor(options: WebSocketOptions) {
     this.options = {
@@ -50,8 +50,11 @@ class WebSocketService {
           this.isConnected = false;
           this.notifyConnectionHandlers(false);
           this.stopHeartbeat();
-          
-          if (this.options.reconnect && this.reconnectAttempts < (this.options.maxReconnectAttempts || 5)) {
+
+          if (
+            this.options.reconnect &&
+            this.reconnectAttempts < (this.options.maxReconnectAttempts || 5)
+          ) {
             this.scheduleReconnect();
           }
         };
@@ -91,7 +94,7 @@ class WebSocketService {
   private scheduleReconnect(): void {
     this.reconnectAttempts++;
     console.log(`Scheduling reconnect attempt ${this.reconnectAttempts}`);
-    
+
     this.reconnectTimeout = setTimeout(() => {
       this.connect().catch(console.error);
     }, this.options.reconnectInterval);
@@ -119,7 +122,7 @@ class WebSocketService {
     }
   }
 
-  send(data: any): boolean {
+  send(data: unknown): boolean {
     if (!this.isConnected || !this.ws) {
       this.messageQueue.push(data);
       return false;
@@ -159,12 +162,13 @@ class WebSocketService {
     };
   }
 
-  private handleMessage(data: any): void {
-    const messageType = data.type;
-    
+  private handleMessage(data: unknown): void {
+    const dataObj = data as Record<string, unknown>;
+    const messageType = dataObj.type as string;
+
     const handlers = this.messageHandlers.get(messageType);
     if (handlers) {
-      handlers.forEach(handler => {
+      handlers.forEach((handler) => {
         try {
           handler(data);
         } catch (error) {
@@ -175,7 +179,7 @@ class WebSocketService {
 
     const allHandlers = this.messageHandlers.get('*');
     if (allHandlers) {
-      allHandlers.forEach(handler => {
+      allHandlers.forEach((handler) => {
         try {
           handler(data);
         } catch (error) {
@@ -186,7 +190,7 @@ class WebSocketService {
   }
 
   private notifyConnectionHandlers(connected: boolean): void {
-    this.connectionHandlers.forEach(handler => {
+    this.connectionHandlers.forEach((handler) => {
       try {
         handler(connected);
       } catch (error) {
@@ -210,8 +214,8 @@ class WebSocketService {
 
 const getWebSocketUrl = (): string => {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = import.meta.env.VITE_API_BASE_URL 
-    ? new URL(import.meta.env.VITE_API_BASE_URL).host 
+  const host = import.meta.env.VITE_API_BASE_URL
+    ? new URL(import.meta.env.VITE_API_BASE_URL).host
     : window.location.host;
   return `${protocol}//${host}/api/v1/ws`;
 };
@@ -228,9 +232,10 @@ export const useWebSocket = () => {
   return {
     connect: () => websocketService.connect(),
     disconnect: () => websocketService.disconnect(),
-    send: (data: any) => websocketService.send(data),
+    send: (data: unknown) => websocketService.send(data),
     subscribe: (type: string, handler: MessageHandler) => websocketService.subscribe(type, handler),
-    onConnectionChange: (handler: ConnectionHandler) => websocketService.onConnectionChange(handler),
+    onConnectionChange: (handler: ConnectionHandler) =>
+      websocketService.onConnectionChange(handler),
     isConnected: () => websocketService.getConnectionStatus(),
     subscribeToChannel: (channel: string) => websocketService.subscribeToChannel(channel),
     unsubscribeFromChannel: (channel: string) => websocketService.unsubscribeFromChannel(channel),

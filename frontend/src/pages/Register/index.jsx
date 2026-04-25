@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Lock, Mail, ArrowRight, Sparkles, Wifi, WifiOff, Loader2 } from 'lucide-react';
+import { User, Lock, ArrowRight, Sparkles, Wifi, WifiOff, Loader2 } from 'lucide-react';
 import { useAuthStore } from '../../stores/authStore';
 import { useToast } from '../../components/common/Toast';
 
@@ -13,7 +13,6 @@ export default function Register() {
     useAuthStore();
 
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [checkingBackend, setCheckingBackend] = useState(true);

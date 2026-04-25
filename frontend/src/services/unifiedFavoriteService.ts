@@ -15,7 +15,7 @@ export interface UnifiedFavoriteItem {
   content_type: 'chat_message' | 'knowledge_entity' | 'knowledge_relationship';
   content_id: string;
   content: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   created_at: string;
   updated_at?: string;
 }
@@ -101,7 +101,7 @@ class UnifiedFavoriteService {
     contentType: 'chat_message' | 'knowledge_entity' | 'knowledge_relationship',
     content: string,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _metadata?: Record<string, any>
+    _metadata?: Record<string, unknown>
   ): Promise<UnifiedFavoriteItem> {
     try {
       let favoriteItem: UnifiedFavoriteItem;
@@ -205,7 +205,7 @@ class UnifiedFavoriteService {
       contentId: string;
       contentType: 'chat_message' | 'knowledge_entity';
       content: string;
-      metadata?: Record<string, any>;
+      metadata?: Record<string, unknown>;
     }>
   ): Promise<UnifiedFavoriteItem[]> {
     const results: UnifiedFavoriteItem[] = [];

@@ -75,7 +75,7 @@ export interface KnowledgeEntityFull {
   region?: string;
   period?: string;
   coordinates?: { lat: number; lng: number };
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   importance: number;
   created_at: string;
   updated_at: string;
@@ -87,7 +87,7 @@ export interface Relationship {
   target_id: string;
   relation_type: string;
   weight: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   created_at: string;
 }
 
@@ -154,7 +154,7 @@ export interface GraphData {
 export interface PendingOperation {
   id: string;
   type: string;
-  data: any;
+  data: unknown;
   timestamp: number;
   retryCount: number;
   maxRetries?: number;

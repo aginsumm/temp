@@ -258,7 +258,7 @@ export function supportsLocal(featureName: string): boolean {
  */
 export function getBackendRequiredFeatures(): string[] {
   return Object.entries(FEATURE_CONFIG)
-    .filter(([_, config]) => config.mode === 'backend-required')
+    .filter(([, config]) => config.mode === 'backend-required')
     .map(([name]) => name);
 }
 
@@ -267,7 +267,7 @@ export function getBackendRequiredFeatures(): string[] {
  */
 export function getLocalSupportedFeatures(): string[] {
   return Object.entries(FEATURE_CONFIG)
-    .filter(([_, config]) => config.mode !== 'backend-required')
+    .filter(([, config]) => config.mode !== 'backend-required')
     .map(([name]) => name);
 }
 

@@ -6,41 +6,116 @@ export function toCamelCase(str: string): string {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
 
-export function keysToSnakeCase<T extends Record<string, any>>(obj: T): Record<string, any> {
+export function keysToSnakeCase(
+  obj: Record<string, unknown> | Record<string, unknown>[]
+): Record<string, unknown> | Record<string, unknown>[] {
   if (obj === null || typeof obj !== 'object') {
     return obj;
   }
-  
+
   if (Array.isArray(obj)) {
-    return obj.map((item) => keysToSnakeCase(item));
+    return obj.map((item) => keysToSnakeCase(item as Record<string, unknown>)) as Record<
+      string,
+      unknown
+    >[];
   }
-  
-  const result: Record<string, any> = {};
+
+  const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     const newKey = toSnakeCase(key);
-    result[newKey] = typeof value === 'object' && value !== null ? keysToSnakeCase(value) : value;
+    result[newKey] =
+      typeof value === 'object' && value !== null
+        ? keysToSnakeCase(value as Record<string, unknown>)
+        : value;
   }
   return result;
 }
 
-export function keysToCamelCase<T extends Record<string, any>>(obj: T): Record<string, any> {
+export function keysToCamelCase(
+  obj: Record<string, unknown> | Record<string, unknown>[]
+): Record<string, unknown> | Record<string, unknown>[] {
   if (obj === null || typeof obj !== 'object') {
     return obj;
   }
-  
+
   if (Array.isArray(obj)) {
-    return obj.map((item) => keysToCamelCase(item));
+    return obj.map((item) => keysToCamelCase(item as Record<string, unknown>)) as Record<
+      string,
+      unknown
+    >[];
   }
-  
-  const result: Record<string, any> = {};
+
+  const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     const newKey = toCamelCase(key);
-    result[newKey] = typeof value === 'object' && value !== null ? keysToCamelCase(value) : value;
+    result[newKey] =
+      typeof value === 'object' && value !== null
+        ? keysToCamelCase(value as Record<string, unknown>)
+        : value;
   }
   return result;
 }
 
-export function transformSessionResponse(data: any): any {
+interface SourceData {
+  id?: string;
+  title?: string;
+  content?: string;
+  url?: string;
+  page?: number;
+  relevance?: number;
+}
+
+interface EntityData {
+  id?: string;
+  name?: string;
+  type?: string;
+  description?: string;
+  properties?: Record<string, unknown>;
+}
+
+interface SessionData {
+  id: string;
+  user_id?: string;
+  title?: string;
+  created_at?: string;
+  updated_at?: string;
+  message_count?: number;
+  is_pinned?: boolean;
+}
+
+interface MessageData {
+  id: string;
+  session_id?: string;
+  role?: string;
+  content?: string;
+  created_at?: string;
+  sources?: SourceData[];
+  entities?: EntityData[];
+  keywords?: string[];
+  feedback?: string;
+  is_favorite?: boolean;
+}
+
+interface ChatData {
+  message_id?: string;
+  content?: string;
+  role?: string;
+  sources?: SourceData[];
+  entities?: EntityData[];
+  keywords?: string[];
+  created_at?: string;
+}
+
+interface FavoriteData {
+  id: string;
+  user_id?: string;
+  message_id?: string;
+  message_content?: string;
+  session_id?: string;
+  created_at?: string;
+}
+
+export function transformSessionResponse(data: SessionData) {
   return {
     id: data.id,
     userId: data.user_id,
@@ -52,14 +127,14 @@ export function transformSessionResponse(data: any): any {
   };
 }
 
-export function transformMessageResponse(data: any): any {
+export function transformMessageResponse(data: MessageData) {
   return {
     id: data.id,
     sessionId: data.session_id,
     role: data.role,
     content: data.content,
     createdAt: data.created_at,
-    sources: data.sources?.map((s: any) => ({
+    sources: data.sources?.map((s: SourceData) => ({
       id: s.id,
       title: s.title,
       content: s.content,
@@ -67,7 +142,7 @@ export function transformMessageResponse(data: any): any {
       page: s.page,
       relevance: s.relevance,
     })),
-    entities: data.entities?.map((e: any) => ({
+    entities: data.entities?.map((e: EntityData) => ({
       id: e.id,
       name: e.name,
       type: e.type,
@@ -80,12 +155,12 @@ export function transformMessageResponse(data: any): any {
   };
 }
 
-export function transformChatResponse(data: any): any {
+export function transformChatResponse(data: ChatData) {
   return {
     messageId: data.message_id,
     content: data.content,
     role: data.role,
-    sources: data.sources?.map((s: any) => ({
+    sources: data.sources?.map((s: SourceData) => ({
       id: s.id,
       title: s.title,
       content: s.content,
@@ -93,7 +168,7 @@ export function transformChatResponse(data: any): any {
       page: s.page,
       relevance: s.relevance,
     })),
-    entities: data.entities?.map((e: any) => ({
+    entities: data.entities?.map((e: EntityData) => ({
       id: e.id,
       name: e.name,
       type: e.type,
@@ -104,7 +179,7 @@ export function transformChatResponse(data: any): any {
   };
 }
 
-export function transformFavoriteResponse(data: any): any {
+export function transformFavoriteResponse(data: FavoriteData) {
   return {
     id: data.id,
     userId: data.user_id,

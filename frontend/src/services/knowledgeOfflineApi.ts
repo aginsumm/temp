@@ -5,6 +5,7 @@ import {
   SearchRequest,
   SearchResponse,
   EntityCreate,
+  EntityUpdate,
   RelationshipCreate,
 } from '../api/knowledge';
 import {
@@ -101,7 +102,7 @@ class KnowledgeOfflineApiService {
   ): Promise<GraphData> {
     const cachedGraph = await knowledgeOfflineStorage.getCachedGraphData();
     if (cachedGraph && !centerEntityId) {
-      return cachedGraph;
+      return cachedGraph as unknown as GraphData;
     }
 
     const entities = await knowledgeOfflineStorage.getAllEntities();
@@ -132,9 +133,9 @@ class KnowledgeOfflineApiService {
     }));
 
     return {
-      nodes,
-      edges,
-      categories: this.getCategories(),
+      nodes: nodes as unknown as GraphData['nodes'],
+      edges: edges as unknown as GraphData['edges'],
+      categories: this.getCategories() as unknown as GraphData['categories'],
     };
   }
 
@@ -356,12 +357,16 @@ class KnowledgeOfflineApiService {
       case 'create_entity':
         await knowledgeApi.createEntity(op.data as EntityCreate);
         break;
-      case 'update_entity':
-        await knowledgeApi.updateEntity(op.data.id as string, op.data);
+      case 'update_entity': {
+        const updateData = op.data as EntityUpdate & { id?: string };
+        await knowledgeApi.updateEntity(updateData.id as string, updateData as EntityUpdate);
         break;
-      case 'delete_entity':
-        await knowledgeApi.deleteEntity(op.data.id as string);
+      }
+      case 'delete_entity': {
+        const deleteData = op.data as { id?: string };
+        await knowledgeApi.deleteEntity(deleteData.id as string);
         break;
+      }
       case 'create_relationship':
         await knowledgeApi.createRelationship(op.data as RelationshipCreate);
         break;
@@ -385,8 +390,8 @@ class KnowledgeOfflineApiService {
 
   private async cacheGraphData(data: GraphData, centerEntityId?: string): Promise<void> {
     await knowledgeOfflineStorage.cacheGraphData({
-      nodes: data.nodes,
-      edges: data.edges,
+      nodes: data.nodes as unknown as unknown[],
+      edges: data.edges as unknown as unknown[],
       categories: data.categories || [],
     });
 

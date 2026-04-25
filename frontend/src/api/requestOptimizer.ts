@@ -5,8 +5,8 @@ interface CacheItem<T> {
 }
 
 class RequestOptimizer {
-  private pendingRequests: Map<string, Promise<any>> = new Map();
-  private cache: Map<string, CacheItem<any>> = new Map();
+  private pendingRequests: Map<string, Promise<unknown>> = new Map();
+  private cache: Map<string, CacheItem<unknown>> = new Map();
   private readonly DEDUPE_WINDOW = 100;
   private readonly DEFAULT_TTL = 5 * 60 * 1000;
 
@@ -26,16 +26,20 @@ class RequestOptimizer {
     return promise;
   }
 
-  async withCache<T>(key: string, requestFn: () => Promise<T>, ttl: number = this.DEFAULT_TTL): Promise<T> {
+  async withCache<T>(
+    key: string,
+    requestFn: () => Promise<T>,
+    ttl: number = this.DEFAULT_TTL
+  ): Promise<T> {
     const cached = this.cache.get(key);
     const now = Date.now();
 
     if (cached && now - cached.timestamp < cached.ttl) {
-      return cached.data;
+      return cached.data as T;
     }
 
     const data = await this.dedupe(key, requestFn);
-    
+
     this.cache.set(key, {
       data,
       timestamp: now,
@@ -51,13 +55,13 @@ class RequestOptimizer {
     batchSize: number = 10
   ): Promise<R[]> {
     const results: R[] = [];
-    
+
     for (let i = 0; i < items.length; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
       const batchResults = await batchFn(batch);
       results.push(...batchResults);
     }
-    
+
     return results;
   }
 
@@ -74,7 +78,7 @@ class RequestOptimizer {
       }
     });
 
-    keysToDelete.forEach(key => this.cache.delete(key));
+    keysToDelete.forEach((key) => this.cache.delete(key));
   }
 
   getCacheStats(): { size: number; keys: string[] } {
@@ -92,24 +96,19 @@ class RetryManager {
       maxRetries?: number;
       delay?: number;
       backoff?: boolean;
-      shouldRetry?: (error: any) => boolean;
+      shouldRetry?: (error: unknown) => boolean;
     } = {}
   ): Promise<T> {
-    const {
-      maxRetries = 3,
-      delay = 1000,
-      backoff = true,
-      shouldRetry = () => true,
-    } = options;
+    const { maxRetries = 3, delay = 1000, backoff = true, shouldRetry = () => true } = options;
 
-    let lastError: any;
-    
+    let lastError: unknown;
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         return await fn();
       } catch (error) {
         lastError = error;
-        
+
         if (attempt === maxRetries || !shouldRetry(error)) {
           throw error;
         }
@@ -123,12 +122,12 @@ class RetryManager {
   }
 
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
 
 class RequestQueue {
-  private queue: Array<() => Promise<any>> = [];
+  private queue: Array<() => Promise<unknown>> = [];
   private running = 0;
   private maxConcurrent: number;
 
@@ -178,7 +177,7 @@ export const requestOptimizer = new RequestOptimizer();
 export const retryManager = new RetryManager();
 export const requestQueue = new RequestQueue();
 
-export function createOptimizedRequest<T extends (...args: any[]) => Promise<any>>(
+export function createOptimizedRequest<T extends (...args: unknown[]) => Promise<unknown>>(
   fn: T,
   options: {
     cacheKey?: (...args: Parameters<T>) => string;
@@ -187,9 +186,7 @@ export function createOptimizedRequest<T extends (...args: any[]) => Promise<any
   } = {}
 ): T {
   return (async (...args: Parameters<T>) => {
-    const key = options.cacheKey 
-      ? options.cacheKey(...args) 
-      : `${fn.name}:${JSON.stringify(args)}`;
+    const key = options.cacheKey ? options.cacheKey(...args) : `${fn.name}:${JSON.stringify(args)}`;
 
     if (options.dedupe !== false) {
       if (options.ttl) {

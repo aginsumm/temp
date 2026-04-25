@@ -1,3 +1,5 @@
+import type { EntityCreate, RelationshipCreate, EntityUpdate } from '../api/knowledge';
+
 const DB_NAME = 'KnowledgeGraphDB';
 const DB_VERSION = 1;
 
@@ -17,7 +19,7 @@ export interface CachedEntity {
   region?: string;
   period?: string;
   coordinates?: { lat: number; lng: number };
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   importance: number;
   created_at: string;
   updated_at: string;
@@ -30,7 +32,7 @@ export interface CachedRelationship {
   target_id: string;
   relation_type: string;
   weight: number;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   created_at: string;
   cachedAt: number;
 }
@@ -38,9 +40,9 @@ export interface CachedRelationship {
 export interface GraphCacheData {
   id: string;
   data: {
-    nodes: any[];
-    edges: any[];
-    categories: any[];
+    nodes: unknown[];
+    edges: unknown[];
+    categories: unknown[];
   };
   cachedAt: number;
   expiresAt: number;
@@ -60,9 +62,14 @@ export interface SearchHistoryItem {
 
 export interface PendingOperation {
   id: string;
-  type: 'create_entity' | 'update_entity' | 'delete_entity' | 
-        'create_relationship' | 'update_relationship' | 'delete_relationship';
-  data: any;
+  type:
+    | 'create_entity'
+    | 'update_entity'
+    | 'delete_entity'
+    | 'create_relationship'
+    | 'update_relationship'
+    | 'delete_relationship';
+  data: EntityCreate | EntityUpdate | RelationshipCreate | { id?: string };
   timestamp: number;
   retryCount: number;
   maxRetries: number;
@@ -75,7 +82,7 @@ class KnowledgeOfflineStorageService {
 
   async init(): Promise<void> {
     if (this.isInitialized) return;
-    
+
     if (this.initPromise) {
       return this.initPromise;
     }
@@ -166,7 +173,7 @@ class KnowledgeOfflineStorageService {
       const store = transaction.objectStore(STORES.ENTITIES);
       const now = Date.now();
 
-      entities.forEach(entity => {
+      entities.forEach((entity) => {
         store.put({ ...entity, cachedAt: now });
       });
 
@@ -213,7 +220,10 @@ class KnowledgeOfflineStorageService {
   async deleteEntity(id: string): Promise<void> {
     await this.ensureInitialized();
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction([STORES.ENTITIES, STORES.RELATIONSHIPS], 'readwrite');
+      const transaction = this.db!.transaction(
+        [STORES.ENTITIES, STORES.RELATIONSHIPS],
+        'readwrite'
+      );
 
       const entityStore = transaction.objectStore(STORES.ENTITIES);
       entityStore.delete(id);
@@ -225,7 +235,7 @@ class KnowledgeOfflineStorageService {
       const deleteRelated = (index: IDBIndex) => {
         const keysRequest = index.getAllKeys(id);
         keysRequest.onsuccess = () => {
-          keysRequest.result.forEach(key => relStore.delete(key));
+          keysRequest.result.forEach((key) => relStore.delete(key));
         };
       };
 
@@ -255,7 +265,7 @@ class KnowledgeOfflineStorageService {
       const store = transaction.objectStore(STORES.RELATIONSHIPS);
       const now = Date.now();
 
-      relationships.forEach(rel => {
+      relationships.forEach((rel) => {
         store.put({ ...rel, cachedAt: now });
       });
 
@@ -387,7 +397,9 @@ class KnowledgeOfflineStorageService {
     });
   }
 
-  async addPendingOperation(operation: Omit<PendingOperation, 'id' | 'timestamp' | 'retryCount'>): Promise<void> {
+  async addPendingOperation(
+    operation: Omit<PendingOperation, 'id' | 'timestamp' | 'retryCount'>
+  ): Promise<void> {
     await this.ensureInitialized();
     return new Promise((resolve, reject) => {
       const store = this.getStore(STORES.PENDING_OPERATIONS, 'readwrite');
@@ -454,30 +466,35 @@ class KnowledgeOfflineStorageService {
     });
   }
 
-  async searchEntitiesLocal(query: string, filters?: {
-    category?: string;
-    region?: string[];
-    period?: string[];
-  }): Promise<CachedEntity[]> {
+  async searchEntitiesLocal(
+    query: string,
+    filters?: {
+      category?: string;
+      region?: string[];
+      period?: string[];
+    }
+  ): Promise<CachedEntity[]> {
     await this.ensureInitialized();
     const allEntities = await this.getAllEntities();
     const lowerQuery = query.toLowerCase();
 
-    return allEntities.filter(entity => {
-      const matchesQuery = !query || 
+    return allEntities.filter((entity) => {
+      const matchesQuery =
+        !query ||
         entity.name.toLowerCase().includes(lowerQuery) ||
         (entity.description?.toLowerCase().includes(lowerQuery) ?? false);
 
-      const matchesCategory = !filters?.category || 
-        filters.category === 'all' || 
-        entity.type === filters.category;
+      const matchesCategory =
+        !filters?.category || filters.category === 'all' || entity.type === filters.category;
 
-      const matchesRegion = !filters?.region || 
-        filters.region.length === 0 || 
+      const matchesRegion =
+        !filters?.region ||
+        filters.region.length === 0 ||
         (entity.region && filters.region.includes(entity.region));
 
-      const matchesPeriod = !filters?.period || 
-        filters.period.length === 0 || 
+      const matchesPeriod =
+        !filters?.period ||
+        filters.period.length === 0 ||
         (entity.period && filters.period.includes(entity.period));
 
       return matchesQuery && matchesCategory && matchesRegion && matchesPeriod;
@@ -497,7 +514,7 @@ class KnowledgeOfflineStorageService {
     const pendingCount = await this.getPendingOperationsCount();
 
     const entitiesByType: Record<string, number> = {};
-    entities.forEach(entity => {
+    entities.forEach((entity) => {
       entitiesByType[entity.type] = (entitiesByType[entity.type] || 0) + 1;
     });
 
@@ -528,7 +545,13 @@ class KnowledgeOfflineStorageService {
     await this.ensureInitialized();
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(
-        [STORES.ENTITIES, STORES.RELATIONSHIPS, STORES.GRAPH_CACHE, STORES.SEARCH_HISTORY, STORES.PENDING_OPERATIONS],
+        [
+          STORES.ENTITIES,
+          STORES.RELATIONSHIPS,
+          STORES.GRAPH_CACHE,
+          STORES.SEARCH_HISTORY,
+          STORES.PENDING_OPERATIONS,
+        ],
         'readwrite'
       );
 

@@ -48,8 +48,8 @@ export const CATEGORY_CONFIG: CategoryConfig[] = [
     value: 'period',
     label: '时期',
     color: '#6366F1',
-    colorVar: 'var(--color-primary)',
-    gradient: ['var(--color-primary)', 'var(--color-primary-hover)'],
+    colorVar: 'var(--color-indigo)',
+    gradient: ['var(--color-indigo)', 'var(--color-indigo-hover)'],
   },
   {
     value: 'material',
