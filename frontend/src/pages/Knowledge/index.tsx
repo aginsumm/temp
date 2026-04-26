@@ -14,16 +14,14 @@ import { useGraphStore } from '../../stores/graphStore';
 
 const KnowledgeGraph = lazy(() => import('../../components/knowledge/KnowledgeGraph'));
 const ListView = lazy(() => import('../../components/knowledge/ListView'));
-const SearchPanel = lazy(() => import('../../components/knowledge/SearchPanel'));
+// 注意：移除了 SearchPanel 的引入，因为我们用不到上方搜索了
 const FilterPanel = lazy(() => import('../../components/knowledge/FilterPanel'));
 
 export default function KnowledgePage() {
   const { viewMode, setViewMode, setSelectedNode, toggleFilterPanel, filterPanelCollapsed } =
     useKnowledgeGraphStore();
-  // 【新增】引入 graphStore 的 action 和状态
   const lastUpdated = useGraphStore((state) => state.lastUpdated);
   const [relations, setRelations] = useState<Relation[]>([]); 
-  // 【新增】增加关系状态
   const [isPending, startTransitionFn] = useTransition();
   const [entities, setEntities] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(false);
@@ -36,8 +34,6 @@ export default function KnowledgePage() {
 
   const handleFilterChange = useCallback((filters: any) => {
     console.log('Filter changed:', filters);
-    // 筛选条件变化时，触发图谱重新加载
-    // 这里通过更新 store 中的 filter 状态来触发 KnowledgeGraph 重新加载
   }, []);
 
   const viewButtons = [
@@ -100,14 +96,13 @@ export default function KnowledgePage() {
     }
   }, []);
 
-const handleLoadSnapshot = useCallback(async (snapshot: GraphSnapshot) => {
+  const handleLoadSnapshot = useCallback(async (snapshot: GraphSnapshot) => {
     try {
       const fullSnapshot = await snapshotService.getSnapshot(snapshot.id);
       if (!fullSnapshot) {
         return;
       }
 
-      // 1. 同步到全局状态，KnowledgeGraph 组件内部监听到变化会自动绘制图谱！
       graphSyncService.updateFromSnapshot(
         fullSnapshot.entities,
         fullSnapshot.relations,
@@ -116,7 +111,6 @@ const handleLoadSnapshot = useCallback(async (snapshot: GraphSnapshot) => {
         fullSnapshot.message_id
       );
 
-      // 2. 同步到局部状态，确保如果切换到“列表视图”也能看到导入的数据
       const mappedEntities = fullSnapshot.entities.map((e) => ({
         ...e,
         importance: e.importance ?? 0.5,
@@ -124,7 +118,7 @@ const handleLoadSnapshot = useCallback(async (snapshot: GraphSnapshot) => {
       setEntities(mappedEntities);
 
       setShowSnapshots(false);
-      toast.success('导入成功', '图谱已更新'); // 给个成功提示
+      toast.success('导入成功', '图谱已更新'); 
     } catch (error) {
       console.error('Failed to load snapshot:', error);
       toast.error('导入失败');
@@ -181,229 +175,144 @@ const handleLoadSnapshot = useCallback(async (snapshot: GraphSnapshot) => {
   return (
     <div
       data-testid="knowledge-page-root"
-      className="h-[calc(100vh-4rem)] min-h-0 relative overflow-hidden flex flex-col"
+      className="h-[calc(100vh-4rem)] w-full relative overflow-hidden flex"
       style={{ background: 'var(--gradient-background)' }}
     >
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute top-0 left-1/4 w-96 h-96 rounded-full blur-3xl animate-pulse"
-          style={{ background: 'var(--color-primary)', opacity: 0.08 }}
-        />
-        <div
-          className="absolute bottom-0 right-1/4 w-96 h-96 rounded-full blur-3xl animate-pulse"
-          style={{ background: 'var(--color-secondary)', opacity: 0.08, animationDelay: '1s' }}
-        />
-        <div
-          className="absolute top-1/2 left-1/2 w-96 h-96 rounded-full blur-3xl animate-pulse"
-          style={{ background: 'var(--color-accent)', opacity: 0.05, animationDelay: '2s' }}
-        />
-
-        <div
-          className="absolute inset-0 bg-[linear-gradient(var(--color-border-light)_1px,transparent_1px),linear-gradient(90deg,var(--color-border-light)_1px,transparent_1px)] bg-[size:50px_50px]"
-          style={{ opacity: 0.3 }}
-        />
+      {/* 背景动画 (移到底层) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-0 left-1/4 w-96 h-96 rounded-full blur-3xl animate-pulse" style={{ background: 'var(--color-primary)', opacity: 0.08 }} />
+        <div className="absolute bottom-0 right-1/4 w-96 h-96 rounded-full blur-3xl animate-pulse" style={{ background: 'var(--color-secondary)', opacity: 0.08, animationDelay: '1s' }} />
+        <div className="absolute top-1/2 left-1/2 w-96 h-96 rounded-full blur-3xl animate-pulse" style={{ background: 'var(--color-accent)', opacity: 0.05, animationDelay: '2s' }} />
+        <div className="absolute inset-0 bg-[linear-gradient(var(--color-border-light)_1px,transparent_1px),linear-gradient(90deg,var(--color-border-light)_1px,transparent_1px)] bg-[size:50px_50px]" style={{ opacity: 0.3 }} />
       </div>
 
-      <div className="relative z-10 container mx-auto px-4 py-6 flex flex-col h-full min-h-0">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-4 flex-shrink-0"
-        >
-          <div>
-            <motion.h1
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              className="text-3xl font-bold mb-1"
-              style={{
-                background: 'var(--gradient-primary)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}
-            >
-              知识图谱
-            </motion.h1>
-            <motion.p
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 }}
-              className="text-xs"
-              style={{ color: 'var(--color-text-muted)' }}
-            >
-              探索知识关联网络
-            </motion.p>
-          </div>
-        </motion.div>
+      {/* 1. 左侧：侧边栏筛选面板 */}
+      <aside
+        className={`relative z-20 border-r transition-all duration-300 ease-in-out flex flex-col shadow-xl
+          ${filterPanelCollapsed ? 'w-0 overflow-hidden opacity-0' : 'w-80 opacity-100'}
+        `}
+        style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+      >
+        {/* 顶部标题栏 */}
+        <div className="p-4 border-b flex-shrink-0 flex items-center justify-between" style={{ borderColor: 'var(--color-border)' }}>
+          <h2 className="text-lg font-bold" style={{ color: 'var(--color-text-primary)' }}>数据筛选</h2>
+        </div>
+        {/* 筛选器滚动区 */}
+        <div className="flex-1 overflow-y-auto p-4">
+          <Suspense fallback={<ListSkeleton />}>
+            <FilterPanel onFilterChange={handleFilterChange} />
+          </Suspense>
+        </div>
+      </aside>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="mb-4"
-        >
-          <div
-            className="backdrop-blur-xl rounded-2xl p-2"
-            style={{
-              background: 'var(--gradient-card)',
-              border: '1px solid var(--color-border)',
-              boxShadow: 'var(--color-shadow)',
+      {/* 2. 右侧：主体内容区 */}
+      <main className="flex-1 flex flex-col min-w-0 relative z-10 h-full">
+        
+        {/* 悬浮在内容区左上角的工具栏 */}
+        <div className="absolute top-4 left-6 z-20 flex items-center gap-3">
+          
+          {/* 收起/展开侧边栏按钮 */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={toggleFilterPanel}
+            className="p-2.5 rounded-xl shadow-lg backdrop-blur-md border transition-all"
+            style={{ 
+              background: 'var(--color-surface)', 
+              color: 'var(--color-text-secondary)', 
+              borderColor: 'var(--color-border)' 
             }}
+            title={filterPanelCollapsed ? "展开筛选" : "收起筛选"}
           >
-            <div className="flex items-center justify-between">
-              <div className="flex gap-2">
-                {viewButtons.map(({ mode, icon: Icon, label }) => (
-                  <motion.button
-                    key={mode}
-                    onClick={() => startTransitionFn(() => setViewMode(mode))}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl transition-all relative overflow-hidden"
-                    style={{
-                      background:
-                        viewMode === mode ? 'var(--gradient-primary)' : 'var(--color-surface)',
-                      color:
-                        viewMode === mode
-                          ? 'var(--color-text-inverse)'
-                          : 'var(--color-text-secondary)',
-                      border: viewMode === mode ? 'none' : '1px solid var(--color-border)',
-                    }}
-                  >
-                    <Icon size={16} />
-                    <span className="text-sm font-medium">{label}</span>
-                    {viewMode === mode && (
-                      <motion.div
-                        layoutId="activeView"
-                        className="absolute inset-0 rounded-xl"
-                        initial={false}
-                        transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-                        style={{ background: 'rgba(255,255,255,0.1)' }}
-                      />
-                    )}
-                  </motion.button>
-                ))}
-              </div>
+            <SlidersHorizontal size={18} />
+          </motion.button>
 
-              <div className="flex items-center gap-2">
-                <motion.button
-                  onClick={() => setShowSnapshots(true)}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all"
-                  style={{
-                    background: 'var(--gradient-primary)',
-                    color: 'var(--color-text-inverse)',
-                    border: 'none',
-                  }}
-                >
-                  <Bookmark size={14} />
-                  <span className="text-sm">快照</span>
-                </motion.button>
-
-                <motion.button
-                  onClick={() => handleExport('json')}
-                  disabled={exporting}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl transition-all disabled:opacity-50"
-                  style={{
-                    background: 'var(--color-surface)',
-                    color: 'var(--color-text-secondary)',
-                    border: '1px solid var(--color-border)',
-                  }}
-                >
-                  <Download size={14} />
-                  <span className="text-sm">{exporting ? '导出中...' : '导出'}</span>
-                </motion.button>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="flex-1 min-h-0 flex gap-4"
-        >
-          <div className="flex-1 min-h-0 flex flex-col">
-            <div className="mb-4 flex-shrink-0">
-              <Suspense fallback={<div className="h-32" />}>
-                <SearchPanel />
-              </Suspense>
-            </div>
-            <div
-              className="backdrop-blur-xl rounded-2xl overflow-hidden relative h-full flex"
-              style={{
-                background: 'var(--gradient-card)',
-                border: '1px solid var(--color-border)',
-                boxShadow: 'var(--color-shadow)',
-              }}
-            >
-              <div
-                className="absolute inset-0 pointer-events-none"
+          {/* 视图切换按钮 */}
+          <div 
+            className="flex backdrop-blur-md rounded-xl p-1 shadow-lg border" 
+            style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
+          >
+            {viewButtons.map(({ mode, icon: Icon, label }) => (
+              <button
+                key={mode}
+                onClick={() => startTransitionFn(() => setViewMode(mode))}
+                className="p-2.5 rounded-lg transition-colors flex items-center gap-2"
                 style={{
-                  background:
-                    'linear-gradient(90deg, var(--color-primary), var(--color-secondary), var(--color-accent))',
-                  opacity: 0.05,
+                  background: viewMode === mode ? 'var(--gradient-primary)' : 'transparent',
+                  color: viewMode === mode ? 'var(--color-text-inverse)' : 'var(--color-text-secondary)'
                 }}
-              />
-
-              {!filterPanelCollapsed && (
-                <Suspense fallback={<div className="w-80" />}>
-                  <FilterPanel onFilterChange={handleFilterChange} />
-                </Suspense>
-              )}
-
-              <div className="flex-1 min-h-0 relative">
-                <motion.button
-                  onClick={toggleFilterPanel}
-                  className="absolute top-4 left-4 z-20 p-2 rounded-lg shadow-lg transition-all"
-                  style={{
-                    background: 'var(--color-surface)',
-                    color: 'var(--color-text-secondary)',
-                  }}
-                  title={filterPanelCollapsed ? '打开筛选' : '关闭筛选'}
-                >
-                  <SlidersHorizontal size={18} />
-                </motion.button>
-
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={viewMode}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.3 }}
-                    className={`relative z-10 h-full w-full ${isPending ? 'opacity-50' : ''}`}
-                  >
-                    {viewMode === 'graph' && (
-                      <ErrorBoundary>
-                        <Suspense fallback={<GraphSkeleton />}>
-                          <KnowledgeGraph />
-                        </Suspense>
-                      </ErrorBoundary>
-                    )}
-                    {viewMode === 'list' && (
-                      <ErrorBoundary>
-                        <Suspense fallback={<ListSkeleton />}>
-                          <ListView
-                            entities={entities}
-                            onEntityClick={handleEntityClick}
-                            loading={loading}
-                          />
-                        </Suspense>
-                      </ErrorBoundary>
-                    )}
-                  </motion.div>
-                </AnimatePresence>
-              </div>
-            </div>
+                title={label}
+              >
+                <Icon size={16} />
+                {viewMode === mode && <span className="text-sm font-medium px-1">{label}</span>}
+              </button>
+            ))}
           </div>
-        </motion.div>
-      </div>
 
-      {/* 快照面板 */}
+          {/* 右侧工具组（快照/导出） */}
+          <div className="flex gap-2">
+            <motion.button
+              onClick={() => setShowSnapshots(true)}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all shadow-lg"
+              style={{ background: 'var(--gradient-primary)', color: 'var(--color-text-inverse)', border: 'none' }}
+            >
+              <Bookmark size={16} />
+              <span className="text-sm font-medium">快照库</span>
+            </motion.button>
+
+            <motion.button
+              onClick={() => handleExport('json')}
+              disabled={exporting}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all shadow-lg disabled:opacity-50 border"
+              style={{ background: 'var(--color-surface)', color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }}
+            >
+              <Download size={16} />
+              <span className="text-sm font-medium">{exporting ? '处理中...' : '导出'}</span>
+            </motion.button>
+          </div>
+        </div>
+
+        {/* 动态视图渲染区域 */}
+        <div className="flex-1 w-full h-full relative">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={viewMode}
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.02 }}
+              transition={{ duration: 0.3 }}
+              className={`absolute inset-0 flex flex-col ${isPending ? 'opacity-50' : ''}`}
+            >
+              {viewMode === 'graph' ? (
+                <ErrorBoundary>
+                  <Suspense fallback={<GraphSkeleton />}>
+                    <KnowledgeGraph />
+                  </Suspense>
+                </ErrorBoundary>
+              ) : (
+                <ErrorBoundary>
+                  <Suspense fallback={<ListSkeleton />}>
+                    {/* 给 ListView 一个好看的内边距，因为它现在占满整个右侧了 */}
+                    <div className="flex-1 w-full h-full p-8 mt-16 overflow-hidden">
+                      <ListView
+                        entities={entities}
+                        onEntityClick={handleEntityClick}
+                        loading={loading}
+                      />
+                    </div>
+                  </Suspense>
+                </ErrorBoundary>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </main>
+
+      {/* 快照弹窗保持不变 */}
       <AnimatePresence>
         {showSnapshots && (
           <motion.div

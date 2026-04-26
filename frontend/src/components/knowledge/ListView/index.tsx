@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { MapPin, Star, Clock, Search, Database } from 'lucide-react';
 import { Entity } from '../../../api/knowledge';
 import { getCategoryColor, getCategoryLabel } from '../../../constants/categories';
+import useKnowledgeGraphStore from '../../../stores/knowledgeGraphStore';
 
 interface ListViewProps {
   entities: Entity[];
@@ -10,6 +12,41 @@ interface ListViewProps {
 }
 
 export default function ListView({ entities, onEntityClick, loading }: ListViewProps) {
+  // 【新增】：获取全局筛选状态
+  const { filters } = useKnowledgeGraphStore();
+
+  // 【核心修改】：强大的多条件数据过滤引擎
+  const visibleEntities = useMemo(() => {
+    if (!entities) return [];
+
+    return entities.filter((entity) => {
+      // 1. 关键词筛选 (匹配名称或描述)
+      const query = filters.searchQuery?.toLowerCase() || '';
+      const matchesSearch = query === '' || 
+        entity.name?.toLowerCase().includes(query) || 
+        entity.description?.toLowerCase().includes(query);
+
+      // 2. 分类筛选
+      const matchesCategory = !filters.categories || filters.categories.length === 0 || 
+        filters.categories.includes(entity.type || (entity as any).category);
+
+      // 3. 地区筛选 (使用 as any 兼容未在 Store 接口中声明的扩展字段)
+      const filterRegions = (filters as any).regions || [];
+      const matchesRegion = filterRegions.length === 0 || filterRegions.includes(entity.region);
+
+      // 4. 时期筛选
+      const filterPeriods = (filters as any).periods || [];
+      const matchesPeriod = filterPeriods.length === 0 || filterPeriods.includes(entity.period);
+
+      // 5. 重要性筛选 (兼容后端传过来的不同字段名如 importance/relevance/value)
+      const entityImportance = entity.importance ?? (entity as any).relevance ?? (entity as any).value ?? 0;
+      const matchesImportance = entityImportance >= (filters.minImportance || 0);
+
+      // 只有同时满足所有条件的实体才会被展示
+      return matchesSearch && matchesCategory && matchesRegion && matchesPeriod && matchesImportance;
+    });
+  }, [entities, filters]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -26,7 +63,8 @@ export default function ListView({ entities, onEntityClick, loading }: ListViewP
     );
   }
 
-  if (!entities || entities.length === 0) {
+  // 【修改】：使用 visibleEntities 替换原来的 entities 判断
+  if (!visibleEntities || visibleEntities.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
         <motion.div
@@ -73,7 +111,7 @@ export default function ListView({ entities, onEntityClick, loading }: ListViewP
             className="text-sm mb-6"
             style={{ color: 'var(--color-text-muted)' }}
           >
-            尝试调整筛选条件或使用其他关键词
+            尝试调整侧边栏的筛选条件或使用其他关键词
           </motion.p>
           <motion.div
             initial={{ opacity: 0 }}
@@ -90,7 +128,7 @@ export default function ListView({ entities, onEntityClick, loading }: ListViewP
             >
               <Database size={14} className="inline mr-2" style={{ color: 'var(--color-info)' }} />
               <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                数据库查询中...
+                数据已通过多重条件过滤
               </span>
             </div>
           </motion.div>
@@ -102,8 +140,9 @@ export default function ListView({ entities, onEntityClick, loading }: ListViewP
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {entities.map((entity, index) => {
-          const categoryColor = getCategoryColor(entity.type);
+        {/* 【修改】：渲染时遍历过滤后的 visibleEntities 数组 */}
+        {visibleEntities.map((entity, index) => {
+          const categoryColor = getCategoryColor(entity.type || (entity as any).category);
 
           return (
             <motion.div
@@ -139,7 +178,7 @@ export default function ListView({ entities, onEntityClick, loading }: ListViewP
                       color: 'var(--color-text-inverse)',
                     }}
                   >
-                    {getCategoryLabel(entity.type)}
+                    {getCategoryLabel(entity.type || (entity as any).category)}
                   </motion.span>
                   <motion.div
                     initial={{ scale: 0 }}
@@ -157,7 +196,7 @@ export default function ListView({ entities, onEntityClick, loading }: ListViewP
                       style={{ color: 'var(--color-warning)' }}
                     />
                     <span className="text-xs font-bold" style={{ color: 'var(--color-warning)' }}>
-                      {(entity.importance * 100).toFixed(0)}%
+                      {((entity.importance ?? (entity as any).relevance ?? 0.5) * 100).toFixed(0)}%
                     </span>
                   </motion.div>
                 </div>

@@ -19,13 +19,23 @@ import { useThemeStore } from '../../../stores/themeStore';
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '../../../constants/categories';
 import type { Entity, Relation, GraphNode, EntityType } from '../../../types/graph';
 
-const ENTITY_COLORS: Record<EntityType, string> = CATEGORY_COLORS;
-
 const ENTITY_LABELS: Record<EntityType, string> = CATEGORY_LABELS;
 
-/**
- * HTML 转义函数，防止 XSS 攻击
- */
+const getExactHexColor = (categoryName: string | undefined) => {
+  const cat = String(categoryName || 'unknown').toLowerCase();
+  if (cat.includes('inheritor') || cat.includes('传承人')) return '#a855f7'; 
+  if (cat.includes('material') || cat.includes('材料')) return '#22c55e'; 
+  if (cat.includes('region') || cat.includes('location') || cat.includes('地域') || cat.includes('地点')) return '#06b6d4'; 
+  if (cat.includes('period') || cat.includes('时期') || cat.includes('年代')) return '#3b82f6'; 
+  if (cat.includes('technique') || cat.includes('skill') || cat.includes('技艺')) return '#f59e0b'; 
+  if (cat.includes('work') || cat.includes('作品')) return '#ef4444'; 
+  if (cat.includes('pattern') || cat.includes('图案')) return '#ec4899'; 
+  if (cat.includes('organization') || cat.includes('机构')) return '#6366f1'; 
+  
+  const orig = CATEGORY_COLORS[cat as EntityType];
+  return (orig && !orig.includes('var')) ? orig : '#8b5cf6'; 
+};
+
 function escapeHtml(unsafe: string): string {
   return unsafe
     .replace(/&/g, '&amp;')
@@ -101,6 +111,9 @@ export default function DynamicGraphPanel({
       backgroundColor: bgColor,
       tooltip: {
         trigger: 'item',
+        // 【核心修改】：这两个属性突破侧边栏限制
+        appendToBody: true, // 挂载到全局 body 上，无视父级的 overflow:hidden
+        confine: true,      // 强制在浏览器视口内，防止被屏幕边缘切掉
         backgroundColor: isDark ? '#1e293b' : '#ffffff',
         borderColor: borderColor,
         borderWidth: 2,
@@ -113,13 +126,13 @@ export default function DynamicGraphPanel({
           if (param.dataType === 'node' && param.data) {
             const data = param.data as Record<string, unknown>;
             const category = data.category as EntityType;
-            const color = ENTITY_COLORS[category] || '#666666';
+            const color = getExactHexColor(category);
             const value = (data.value as number) ?? 0.5;
             const name = escapeHtml(String(data.name || ''));
             const description = data.description as string | undefined;
-            const safeDescription = description ? escapeHtml(description.slice(0, 80)) : '';
+            // 【修改】：给 tooltip 加上 max-width 和 white-space 保证文字自动换行
             return `
-              <div style="padding: 12px; min-width: 200px;">
+              <div style="padding: 12px; min-width: 200px; max-width: 320px; white-space: normal; word-wrap: break-word;">
                 <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                   <div style="width: 12px; height: 12px; border-radius: 50%; background: ${color}; box-shadow: 0 0 10px ${color}"></div>
                   <strong style="color: var(--color-primary); font-size: 16px;">${name}</strong>
@@ -131,7 +144,7 @@ export default function DynamicGraphPanel({
                   <span style="color: var(--color-text-secondary);">重要性:</span>
                   <span style="color: var(--color-warning); font-weight: bold;">${(value * 100).toFixed(0)}%</span>
                 </div>
-                ${safeDescription ? `<div style="color: var(--color-text-secondary); font-size: 13px; margin-top: 4px;">${safeDescription}...</div>` : ''}
+                ${description ? `<div style="color: var(--color-text-secondary); font-size: 13px; margin-top: 8px; line-height: 1.5; border-top: 1px solid var(--color-border); padding-top: 8px;">${escapeHtml(description)}</div>` : ''}
               </div>
             `;
           }
@@ -140,7 +153,7 @@ export default function DynamicGraphPanel({
           const target = escapeHtml(String(data?.target || ''));
           const relationType = escapeHtml(String(data?.relationType || '关联'));
           return `
-            <div style="padding: 12px; min-width: 200px;">
+            <div style="padding: 12px; min-width: 150px; max-width: 300px; white-space: normal;">
               <div style="color: var(--color-primary); font-size: 14px; margin-bottom: 8px;">
                 ${source} → ${target}
               </div>
@@ -160,7 +173,7 @@ export default function DynamicGraphPanel({
           layout: 'force',
           data: graphData.nodes.map((node) => {
             const isSelected = selectedNode?.id === node.id;
-            const color = ENTITY_COLORS[node.category] || '#666666';
+            const color = getExactHexColor(node.category);
 
             return {
               ...node,
@@ -168,8 +181,9 @@ export default function DynamicGraphPanel({
               itemStyle: {
                 ...node.itemStyle,
                 color: color,
-                borderColor: isSelected ? 'var(--color-warning)' : 'var(--color-border)',
-                borderWidth: isSelected ? 4 : 2,
+                // 【修复】：去除常驻黑边，选中时才显示高亮圆环
+                borderColor: isSelected ? 'var(--color-warning)' : 'transparent',
+                borderWidth: isSelected ? 3 : 0,
                 shadowBlur: 15,
                 shadowColor: color,
                 shadowOffsetX: 0,
@@ -411,7 +425,6 @@ export default function DynamicGraphPanel({
       });
       onSaveSnapshot?.();
       
-      // 新增：给用户明确的跳转引导
       toast.success('快照保存成功', '请前往顶部导航栏的【智能图谱】界面的“快照”中导入查看');
     } catch (error) {
       console.error('Failed to save snapshot:', error);
@@ -513,7 +526,7 @@ export default function DynamicGraphPanel({
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               onClick={item.onClick}
-              className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
+              className="w-8 h-8 rounded-lg flex items-center justify-center transition-all z-10"
               style={{
                 background: 'var(--color-surface)',
                 border: '1px solid var(--color-border-light)',
@@ -531,7 +544,7 @@ export default function DynamicGraphPanel({
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="absolute bottom-2 right-2 flex gap-1"
+          className="absolute bottom-2 right-2 flex gap-1 z-10"
         >
           <motion.button
             whileHover={{ scale: 1.05 }}
@@ -570,7 +583,7 @@ export default function DynamicGraphPanel({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="absolute bottom-12 left-2 right-2 p-3 rounded-lg"
+            className="absolute bottom-12 left-2 right-2 p-3 rounded-lg z-20"
             style={{
               background: 'var(--color-surface)',
               border: '1px solid var(--color-border-light)',
@@ -582,7 +595,7 @@ export default function DynamicGraphPanel({
                 <div className="flex items-center gap-2 mb-1">
                   <div
                     className="w-3 h-3 rounded-full"
-                    style={{ background: ENTITY_COLORS[selectedNode.category] }}
+                    style={{ background: getExactHexColor(selectedNode.category) }}
                   />
                   <span
                     className="font-medium text-sm"
@@ -621,7 +634,8 @@ export default function DynamicGraphPanel({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute top-2 left-2 px-2 py-1 rounded text-xs"
+            // 【保护】：给左上角的纯名字标签也加上防超框处理
+            className="absolute top-2 left-2 px-2 py-1 rounded text-xs pointer-events-none z-50 max-w-[80%] truncate"
             style={{
               background: 'var(--color-surface)',
               border: '1px solid var(--color-border-light)',
