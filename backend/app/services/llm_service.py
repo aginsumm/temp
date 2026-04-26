@@ -78,7 +78,7 @@ class LLMService:
         self.fallback_enabled = True
         
         # 备用模型
-        self.primary_model = "qwen-max"
+        self.primary_model = "qwen-turbo"
         self.fallback_models = ["qwen-turbo", "qwen-plus"]
         self.current_model_index = 0
         
