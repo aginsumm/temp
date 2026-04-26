@@ -1,36 +1,30 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as echarts from 'echarts';
-import { knowledgeApi, GraphData as KnowledgeGraphData, GraphNode } from '../../../api/knowledge';
+import { knowledgeApi, GraphData as KnowledgeGraphData } from '../../../api/knowledge';
 import useKnowledgeGraphStore from '../../../stores/knowledgeGraphStore';
 import { useGraphStore } from '../../../stores/graphStore';
 import { useThemeStore } from '../../../stores/themeStore';
-import { ZoomIn, ZoomOut, RotateCcw, Activity, Minimize2, Smartphone } from 'lucide-react';
-import { graphOptimizer } from '../../../utils/graphOptimizer';
+import { Activity, Minimize2 } from 'lucide-react';
 import { GraphSkeleton } from '../../common/Skeleton';
 import { useToast } from '../../common/Toast';
 import { graphSyncService } from '../../../services/graphSyncService';
 import { getCategoryColor, getCategoryLabel } from '../../../constants/categories';
-import type { Entity, EntityType, RelationType } from '../../../types/graph';
+import type { Entity, RelationType } from '../../../types/graph';
 
 export default function KnowledgeGraph() {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryCountRef = useRef(0);
   const [rawGraphData, setRawGraphData] = useState<KnowledgeGraphData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const [, setIsFullscreen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-  const [showMobileControls, setShowMobileControls] = useState(false);
+  const [, setRetryCount] = useState(0);
+  const [isMobile, ] = useState(false);
 
-  const { selectedNode, highlightedNodes, layoutType, setSelectedNode, setHighlightedNodes } =
+  const { selectedNode, highlightedNodes, layoutType, setSelectedNode, setHighlightedNodes, filters } =
     useKnowledgeGraphStore();
 
-  // 订阅统一的 graphStore
   const graphStoreEntities = useGraphStore((state) => state.entities);
   const graphStoreRelations = useGraphStore((state) => state.relations);
 
@@ -42,17 +36,17 @@ export default function KnowledgeGraph() {
     lodLevel: number;
   } | null>(null);
 
-  // 【核心修复 1】：最安全的映射方式，不限制 source，有数据就画！
   useEffect(() => {
     if (graphStoreEntities.length > 0) {
       const knowledgeGraphData: KnowledgeGraphData = {
         // @ts-ignore
-        // 约 45 行左右
         nodes: graphStoreEntities.map((e: any) => ({
           id: String(e.id || Math.random()),
           name: e.name || '未知',
           category: e.type || e.category || 'unknown',
-          description: e.description || e.metadata?.description || '', // 【新增】保留描述字段
+          description: e.description || e.metadata?.description || '',
+          region: e.region || e.metadata?.region || '',
+          period: e.period || e.metadata?.period || '',
           value: e.relevance || e.importance || e.value || 0.5,
           itemStyle: {
             color: getCategoryColor((e.type || e.category || 'unknown') as string),
@@ -78,20 +72,16 @@ export default function KnowledgeGraph() {
     }
   }, [graphStoreEntities, graphStoreRelations]);
 
-  // 【核心修复 2】：彻底绕过会把无坐标节点删光的优化器！
-  // 约 108 行左右
-const graphData = useMemo(() => {
-  if (!rawGraphData) return null;
-  return rawGraphData;
-}, [rawGraphData]);
+  const graphData = useMemo(() => {
+    if (!rawGraphData) return null;
+    return rawGraphData;
+  }, [rawGraphData]);
 
-// 【新增】实时获取选中节点的详细信息
-const selectedNodeData = useMemo(() => {
-  if (!selectedNode || !graphData) return null;
-  return graphData.nodes.find(n => String(n.id) === String(selectedNode));
-}, [selectedNode, graphData]);
+  const selectedNodeData = useMemo(() => {
+    if (!selectedNode || !graphData) return null;
+    return graphData.nodes.find(n => String(n.id) === String(selectedNode));
+  }, [selectedNode, graphData]);
 
-  // 手动更新性能面板（因为绕过了优化器，我们需要自己告诉面板多少个节点）
   useEffect(() => {
     if (graphData) {
       setPerformanceStats({
@@ -102,7 +92,6 @@ const selectedNodeData = useMemo(() => {
     }
   }, [graphData]);
 
-  // 【核心修复 3】：防止视图切换时洗掉快照数据
   useEffect(() => {
     if (graphStoreEntities.length === 0) {
       loadGraphData();
@@ -110,9 +99,7 @@ const selectedNodeData = useMemo(() => {
       setLoading(false);
     }
     return () => {
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-      }
+      if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
       if (chartInstance.current) {
         chartInstance.current.dispose();
         chartInstance.current = null;
@@ -126,7 +113,6 @@ const selectedNodeData = useMemo(() => {
       setLoading(true);
       setError(null);
       const data = await knowledgeApi.getGraphData();
-
       if (!data || !data.nodes) throw new Error('无效的图谱数据');
 
       setRawGraphData(data);
@@ -154,11 +140,6 @@ const selectedNodeData = useMemo(() => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '未知错误';
       setError(errorMessage);
-      if (retryCountRef.current < 3) {
-        const nextRetry = retryCountRef.current + 1;
-        setRetryCount((prev) => prev + 1);
-        retryTimeoutRef.current = setTimeout(() => loadGraphData(), 1000 * nextRetry);
-      }
     } finally {
       setLoading(false);
     }
@@ -167,36 +148,63 @@ const selectedNodeData = useMemo(() => {
   const renderGraph = useCallback(() => {
     if (!chartInstance.current || !graphData) return;
 
-    const isDark = resolvedMode === 'dark';
-    const textColor = 'var(--color-text-primary)';
-
-    // 【新增：中英双语绝对颜色翻译官】
-    // 确保无论后端传来的是中文还是英文，都能精准染上你想要的颜色
     const getExactHexColor = (categoryName: string | undefined) => {
       const cat = String(categoryName || 'unknown').toLowerCase();
-      // 传承人：偏紫
       if (cat.includes('inheritor') || cat.includes('传承人')) return '#a855f7'; 
-      // 材料：更偏绿
       if (cat.includes('material') || cat.includes('材料')) return '#22c55e'; 
-      // 地域：偏青色 (Cyan)
       if (cat.includes('region') || cat.includes('location') || cat.includes('地域') || cat.includes('地点')) return '#06b6d4'; 
-      // 时期：更偏蓝
-      if (cat.includes('period') || cat.includes('时期') || cat.includes('年代') || cat.includes('朝代')) return '#3b82f6'; 
+      if (cat.includes('period') || cat.includes('时期') || cat.includes('年代')) return '#3b82f6'; 
+      if (cat.includes('technique') || cat.includes('skill') || cat.includes('技艺')) return '#f59e0b'; 
+      if (cat.includes('work') || cat.includes('作品')) return '#ef4444'; 
+      if (cat.includes('pattern') || cat.includes('图案')) return '#ec4899'; 
+      if (cat.includes('organization') || cat.includes('机构')) return '#6366f1'; 
       
-      // 其他兜底分类颜色
-      if (cat.includes('technique') || cat.includes('skill') || cat.includes('技艺')) return '#f59e0b'; // 橙色
-      if (cat.includes('work') || cat.includes('作品')) return '#ef4444'; // 红色
-      if (cat.includes('pattern') || cat.includes('图案')) return '#ec4899'; // 粉色
-      if (cat.includes('organization') || cat.includes('机构')) return '#6366f1'; // 靛蓝
-      
-      // 如果都不匹配，尝试用你原本的函数，若失败则给个默认浅灰蓝
       const orig = getCategoryColor(cat);
       return (orig && !orig.includes('var')) ? orig : '#8b5cf6'; 
     };
 
-    // 清洗节点并强制打上精确颜色
+    const hasActiveFilters = () => {
+      return (
+        filters.searchQuery !== '' ||
+        (filters.categories && filters.categories.length > 0) ||
+        ((filters as any).regions && (filters as any).regions.length > 0) ||
+        ((filters as any).periods && (filters as any).periods.length > 0) ||
+        (filters.minImportance || 0) > 0
+      );
+    };
+
+    const isNodeMatch = (n: any) => {
+      const query = filters.searchQuery?.toLowerCase() || '';
+      const matchesSearch = query === '' || 
+        n.name?.toLowerCase().includes(query) || 
+        (n.description && n.description.toLowerCase().includes(query));
+
+      const matchesCategory = !filters.categories || filters.categories.length === 0 || 
+        filters.categories.includes(n.category);
+
+      const filterRegions = (filters as any).regions || [];
+      const matchesRegion = filterRegions.length === 0 || filterRegions.includes(n.region);
+
+      const filterPeriods = (filters as any).periods || [];
+      const matchesPeriod = filterPeriods.length === 0 || filterPeriods.includes(n.period);
+
+      const matchesImportance = (n.value || 0) >= (filters.minImportance || 0);
+
+      return matchesSearch && matchesCategory && matchesRegion && matchesPeriod && matchesImportance;
+    };
+
+    const isFilterActive = hasActiveFilters();
+    // 根据系统暗亮色模式给彩色文字加一点描边，防止看不清
+    const textBorderColor = resolvedMode === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.6)';
+
     const validNodes = graphData.nodes.map(n => {
       const finalColor = getExactHexColor(n.category);
+      const match = !isFilterActive || isNodeMatch(n);
+      
+      const opacity = isFilterActive ? (match ? 1 : 0.15) : 1;
+      const labelOpacity = isFilterActive ? (match ? 1 : 0) : 1; 
+      const shadowBlur = isFilterActive ? (match ? 15 : 0) : 10;
+
       return {
         ...n,
         id: String(n.id),
@@ -205,45 +213,58 @@ const selectedNodeData = useMemo(() => {
         itemStyle: {
           ...n.itemStyle,
           color: finalColor,
-          borderColor: 'rgba(255,255,255,0.8)',
+          opacity: opacity,
+          borderColor: `rgba(255,255,255,${match ? 0.8 : 0})`,
           borderWidth: 1.5,
-          shadowBlur: 10,
+          shadowBlur: shadowBlur,
           shadowColor: finalColor
         },
         label: {
           show: true,
-          color: textColor,
+          // 【完美修复】：文字颜色直接等于节点本身的 finalColor，永远不会乱变！
+          color: finalColor, 
+          opacity: labelOpacity,
           position: 'right',
           formatter: '{b}',
-          fontSize: 12
+          fontSize: 12,
+          fontWeight: 'bold', // 彩色文字加粗，增强可读性
+          textBorderColor: textBorderColor, // 轻微描边，防止文字融入背景
+          textBorderWidth: 1
         }
       };
     });
 
-    // 清洗连线
     const validEdges = graphData.edges.filter(e => 
       validNodes.some(n => n.id === String(e.source)) && 
       validNodes.some(n => n.id === String(e.target))
-    ).map(e => ({
-      ...e,
-      source: String(e.source),
-      target: String(e.target),
-    }));
+    ).map(e => {
+      const edgeOpacity = isFilterActive ? 0.15 : 0.5;
+      return {
+        ...e,
+        source: String(e.source),
+        target: String(e.target),
+        lineStyle: {
+          color: '#9ca3af',
+          width: 1.5,
+          curveness: 0.2,
+          opacity: edgeOpacity
+        }
+      };
+    });
 
     const option = {
       backgroundColor: 'transparent',
       tooltip: { show: true },
       animation: true,
-      animationDuration: 1500,
+      animationDurationUpdate: 500, 
       series: [
         {
           type: 'graph',
-          layout: 'force',
+          layout: layoutType || 'force',
           progressive: 0,
           coordinateSystem: 'view',
           data: validNodes,
           links: validEdges,
-          // 强制右上角的图例 (Legend) 也使用相同的精确颜色
           categories: (graphData.categories || []).map(c => ({ 
             name: getCategoryLabel(c.name),
             itemStyle: { color: getExactHexColor(c.name) } 
@@ -251,43 +272,41 @@ const selectedNodeData = useMemo(() => {
           roam: true,
           draggable: true,
           force: {
-            repulsion: 2000,
+            repulsion: 2500,
             gravity: 0.1,
-            edgeLength: [200, 400],
+            edgeLength: [150, 300],
             layoutAnimation: true
-          },
-          lineStyle: {
-            color: 'var(--color-border)',
-            width: 2,
-            curveness: 0.2,
-            opacity: 0.6
           },
           emphasis: {
             focus: 'adjacency',
-            lineStyle: { width: 4 }
+            lineStyle: { 
+              color: '#000000', 
+              width: 4,         
+              opacity: 1        
+            }
+          },
+          blur: {
+            itemStyle: { opacity: 0.15 },
+            lineStyle: { opacity: 0.1 } 
           }
         }
       ]
     };
 
-    chartInstance.current.setOption(option, true);
+    chartInstance.current.setOption(option, false);
     
-    // 重新绑定点击事件
     if (chartInstance.current) {
       chartInstance.current.off('click');
       chartInstance.current.on('click', (params: any) => {
         if (params.dataType === 'node' && params.data?.id) {
-          setSelectedNode(params.data.id);
-        }else {
-      // 【新增】点击画布背景时，清空选中状态，详情框会自动消失
-      setSelectedNode(null);
-      setHighlightedNodes([]);
-    }
+          setSelectedNode(String(params.data.id));
+        } else {
+          setSelectedNode(null);
+          setHighlightedNodes([]);
+        }
       });
     }
-  }, [graphData, layoutType, selectedNode, highlightedNodes, resolvedMode]);
-  const renderGraphRef = useRef(renderGraph);
-  renderGraphRef.current = renderGraph;
+  }, [graphData, layoutType, selectedNode, highlightedNodes, resolvedMode, filters]);
 
   useEffect(() => {
     if (graphData && chartRef.current) {
@@ -296,7 +315,7 @@ const selectedNodeData = useMemo(() => {
       }
       renderGraph();
     }
-  }, [graphData, layoutType, selectedNode, highlightedNodes]);
+  }, [graphData, layoutType, selectedNode, highlightedNodes, filters]);
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -308,72 +327,70 @@ const selectedNodeData = useMemo(() => {
   }, [graphData]);
 
   if (loading) return <GraphSkeleton />;
-
   if (error) return <div>加载失败: {error}</div>;
 
   return (
     <div className="relative w-full h-full">
       <div ref={chartRef} className="w-full h-full" style={{ minHeight: '400px' }} />
-      {/* 底部和顶部的各种控制按钮保持不动 */}
+      
       {performanceStats && !isMobile && (
-        <div className="absolute top-4 right-4 z-10 px-3 py-2 rounded-lg shadow-lg text-xs" style={{ background: 'var(--color-surface)' }}>
-          <div className="flex items-center gap-1"><Activity size={12} /><span>{performanceStats.fps} FPS</span></div>
-          <div className="mt-1">{performanceStats.nodeCount} 节点</div>
+        <div className="absolute top-4 right-4 z-10 px-3 py-2 rounded-lg shadow-lg text-xs" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+          <div className="flex items-center gap-1"><Activity size={12} style={{ color: 'var(--color-primary)' }} /><span>{performanceStats.fps} FPS</span></div>
+          <div className="mt-1 opacity-70">{performanceStats.nodeCount} 节点</div>
         </div>
       )}
-    {/* 【新增】选中节点的简要描述框 */}
-    <AnimatePresence>
-      {selectedNodeData && (
-        <motion.div
-          initial={{ opacity: 0, y: 20, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 20, scale: 0.95 }}
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 w-[90%] max-w-lg overflow-hidden backdrop-blur-xl rounded-2xl shadow-2xl border"
-          style={{ 
-            background: 'var(--gradient-card)',
-            borderColor: 'var(--color-border)'
-          }}
-        >
-          <div className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div 
-                  className="w-3 h-3 rounded-full" 
-                  style={{ 
-                    backgroundColor: getCategoryColor(selectedNodeData.category), 
-                    boxShadow: `0 0 10px ${getCategoryColor(selectedNodeData.category)}` 
-                  }} 
-                />
-                <h3 className="font-bold text-lg" style={{ color: 'var(--color-primary)' }}>
-                  {selectedNodeData.name}
-                </h3>
-                <span className="text-xs px-2 py-0.5 rounded-full border" style={{ color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }}>
-                  {getCategoryLabel(selectedNodeData.category)}
-                </span>
+
+      {/* 底部详情卡片 */}
+      <AnimatePresence>
+        {selectedNodeData && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 w-[90%] max-w-lg overflow-hidden backdrop-blur-xl rounded-2xl shadow-2xl border"
+            style={{ 
+              background: 'var(--gradient-card)',
+              borderColor: 'var(--color-border)'
+            }}
+          >
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-3 h-3 rounded-full" 
+                    style={{ 
+                      backgroundColor: getCategoryColor(selectedNodeData.category), 
+                      boxShadow: `0 0 10px ${getCategoryColor(selectedNodeData.category)}` 
+                    }} 
+                  />
+                  <h3 className="font-bold text-lg" style={{ color: 'var(--color-primary)' }}>
+                    {selectedNodeData.name}
+                  </h3>
+                  <span className="text-xs px-2 py-0.5 rounded-full border" style={{ color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }}>
+                    {getCategoryLabel(selectedNodeData.category)}
+                  </span>
+                </div>
+                <button 
+                  onClick={() => setSelectedNode(null)}
+                  className="p-1 hover:bg-white/10 rounded-full transition-colors"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  <Minimize2 size={18} />
+                </button>
               </div>
-              <button 
-                onClick={() => setSelectedNode(null)}
-                className="p-1 hover:bg-white/10 rounded-full transition-colors"
-                style={{ color: 'var(--color-text-muted)' }}
-              >
-                <Minimize2 size={18} />
-              </button>
+              
+              <p className="text-sm leading-relaxed overflow-y-auto max-h-32 pr-2" style={{ color: 'var(--color-text-primary)' }}>
+                {((selectedNodeData as any).description as string) || '暂无详细描述...'}
+              </p>
             </div>
             
-            <p className="text-sm leading-relaxed overflow-y-auto max-h-32 pr-2" style={{ color: 'var(--color-text-primary)' }}>
-              {/* 使用 as any 绕过 GraphNode 的 unknown 限制，并确保它是 string */}
-              {((selectedNodeData as any).description as string) || '暂无详细描述...'}
-            </p>
-          </div>
-          
-          {/* 装饰性底条 */}
-          <div 
-            className="h-1 w-full" 
-            style={{ background: getCategoryColor(selectedNodeData.category) }} 
-          />
-        </motion.div>
-      )}
-    </AnimatePresence>
-  </div>
-);
+            <div 
+              className="h-1 w-full" 
+              style={{ background: getCategoryColor(selectedNodeData.category) }} 
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }

@@ -47,8 +47,10 @@ export default function Header() {
         boxShadow: 'var(--color-shadow)',
       }}
     >
-      <div className="h-full px-4 lg:px-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="relative h-full px-4 lg:px-6 flex items-center justify-between">
+        
+        {/* 左侧 Logo */}
+        <div className="flex items-center gap-4 relative z-10">
           <Link to="/" className="flex items-center gap-3 group">
             <motion.div
               className="w-10 h-10 flex items-center justify-center shadow-md group-hover:shadow-lg transition-shadow"
@@ -65,7 +67,8 @@ export default function Header() {
           </Link>
         </div>
 
-        <nav className="hidden lg:flex items-center gap-1">
+        {/* 绝对居中的导航栏 */}
+        <nav className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden lg:flex items-center gap-1">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
@@ -73,27 +76,37 @@ export default function Header() {
               <Link
                 key={item.path}
                 to={item.path}
-                className="relative px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 flex items-center gap-2"
+                className="relative px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2"
                 style={{
                   color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
                   background: active ? 'var(--color-primary-light)' : 'transparent',
                 }}
               >
+                {/* 1. 图标正常显示 */}
                 {Icon && <Icon size={18} />}
-                {item.label}
-                {active && (
-                  <motion.div
-                    layoutId="activeNav"
-                    className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full"
-                    style={{ background: 'var(--gradient-secondary)' }}
-                  />
-                )}
+                
+                {/* 2. 【核心修复】：单独用一个 relative 的 span 包裹文字 */}
+                <span className="relative inline-block">
+                  {item.label}
+                  
+                  {/* 3. 让下划线只相对文字的 span 居中，无视左边图标的影响 */}
+                  {active && (
+                    <motion.div
+                      layoutId="activeNavIndicator"
+                      // w-full 保证下划线长度刚好和上面文字的长度一模一样
+                      className="absolute -bottom-2 left-0 right-0 mx-auto w-full h-[2.5px] rounded-full pointer-events-none"
+                      style={{ background: 'var(--gradient-secondary)' }}
+                      transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                    />
+                  )}
+                </span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="flex items-center gap-2">
+        {/* 右侧 工具栏 */}
+        <div className="flex items-center gap-2 relative z-10">
           <button
             type="button"
             className="lg:hidden inline-flex items-center justify-center w-10 h-10 rounded-lg transition-colors"
@@ -129,14 +142,12 @@ export default function Header() {
                 }}
               >
                 {user?.avatar ? (
-                  // 如果有头像，显示图片
                   <img
                     src={user.avatar}
                     alt={displayName}
                     className="w-full h-full object-cover rounded-full"
                   />
                 ) : (
-                  // 如果没有头像，显示首字符
                   <span>{displayChar}</span>
                 )}
               </div>
@@ -178,7 +189,7 @@ export default function Header() {
                 </Link>
                 <hr style={{ borderColor: 'var(--color-border-light)', margin: '0.5rem 0' }} />
                 <button
-                  className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors hover:bg-red-500/10"
                   style={{ color: 'var(--color-error)' }}
                   onClick={handleLogout}
                 >
@@ -191,6 +202,7 @@ export default function Header() {
         </div>
       </div>
 
+      {/* 移动端菜单 */}
       {mobileMenuOpen && (
         <motion.div
           initial={{ opacity: 0, height: 0 }}
