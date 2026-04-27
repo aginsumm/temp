@@ -169,26 +169,6 @@ export default function Homepage() {
           animate="visible"
           className="relative z-20 max-w-5xl mx-auto flex flex-col items-center text-center"
         >
-          {/* 标题徽章 */}
-          <motion.div
-            variants={itemVariants}
-            className="inline-flex items-center gap-3 px-6 py-3 rounded-full mb-8 shadow-xl backdrop-blur-md"
-            style={{
-              background: 'rgba(0,0,0,0.3)',
-              border: '1px solid rgba(218,165,32,0.5)',
-            }}
-          >
-            <motion.div animate={{ rotate: [0, 360] }} transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}>
-              <Star size={18} style={{ color: '#ffd700' }} fill="#ffd700" />
-            </motion.div>
-            <span className="text-base font-semibold tracking-wider text-white" style={{ fontFamily: "'Noto Serif SC', serif" }}>
-              非遗数字生命互动引擎
-            </span>
-            <span className="seal-badge text-xs px-3 py-1 ml-2" style={{ background: 'rgba(196,30,58,0.9)', borderColor: '#c41e3a', color: '#fff' }}>
-              v2.0
-            </span>
-          </motion.div>
-
           {/* 2. 标题图 (替代原来的纯文字 <h1>) */}
           <motion.img
             variants={itemVariants}
