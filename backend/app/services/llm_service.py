@@ -78,8 +78,8 @@ class LLMService:
         self.fallback_enabled = True
         
         # 备用模型
-        self.primary_model = "qwen-max"
-        self.fallback_models = ["qwen-turbo", "qwen-plus"]
+        self.primary_model = "qvq-max-2025-03-25"
+        self.fallback_models = ["qvq-max-2025-03-25", "qwen-plus-2025-07-28"]
         self.current_model_index = 0
         
         # 错误统计
