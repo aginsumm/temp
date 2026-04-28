@@ -81,7 +81,7 @@ async def upload_avatar(
 
     # 4. 生成可访问的 URL
     # 注意：这里的地址要和 main.py 里挂载的路径对应
-    avatar_url = f"http://localhost:8000/static/avatars/{new_filename}"
+    avatar_url = f"http://182.92.76.74:8000/static/avatars/{new_filename}"
 
     # 5. 更新数据库里的用户信息 (假设你的 User 模型有 avatar 字段)
     stmt = select(User).where(User.id == user_id)

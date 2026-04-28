@@ -51,7 +51,7 @@ const HEALTH_PATH = '/api/v1/health';
 
 function resolveHealthCheckUrl(rawBase: string): string {
   // 如果是相对路径，添加默认主机
-  const baseUrl = rawBase.startsWith('http') ? rawBase : `http://localhost:8000${rawBase}`;
+ const baseUrl = rawBase.startsWith('http') ? rawBase : import.meta.env.VITE_API_URL + rawBase;
 
   const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
 

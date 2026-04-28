@@ -16,7 +16,7 @@ export default function UserCenter() {
   const identity = user?.is_active ? '非遗数字创作者' : '离线测试账号';
   
   // 3. 处理头像 URL (适配相对路径和绝对路径)
-  const API_BASE_URL = "http://localhost:8000";
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const avatarUrl = user?.avatar?.startsWith('http') 
     ? user.avatar 
     : user?.avatar ? `${API_BASE_URL}/${user.avatar.replace(/^\//, '')}` : null;
