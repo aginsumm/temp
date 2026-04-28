@@ -293,11 +293,11 @@ export const graphStyles = {
  */
 export function getColor(path: string): string {
   const keys = path.split('.');
-  let value: any = colors;
+  let value: unknown = colors;
 
   for (const key of keys) {
     if (value && typeof value === 'object' && key in value) {
-      value = value[key];
+      value = (value as Record<string, unknown>)[key];
     } else {
       console.warn(`Color not found: ${path}`);
       return colors.neutral[500];

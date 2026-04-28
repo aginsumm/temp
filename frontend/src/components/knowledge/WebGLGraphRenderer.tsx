@@ -123,7 +123,6 @@ export default function WebGLGraphRenderer({
   onNodeClick,
   selectedNodeId,
   highlightedNodes,
-  layoutType = 'force',
   showLabels = true,
   showPerformance = true,
 }: WebGLGraphRendererProps) {
@@ -156,7 +155,7 @@ export default function WebGLGraphRenderer({
     // 使用 graphOptimizer 进行优化
     const result = graphOptimizer.optimize(data);
     return result.optimizedData;
-  }, [data, layoutType]);
+  }, [data]);
 
   const categoryColors = useMemo(() => {
     const colors: Record<string, string> = {};
@@ -428,7 +427,6 @@ export default function WebGLGraphRenderer({
     width,
     height,
     zoom,
-    offset,
     enableVirtualization,
     enableLOD,
     selectedNodeId,

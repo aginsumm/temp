@@ -60,19 +60,20 @@ function resolveHealthCheckUrl(rawBase: string): string {
     return normalized;
   }
 
-  // 如果以 /health 结尾但不是 /api/v1/health，说明配置错误，需要修正
-  if (normalized.endsWith('/health')) {
-    console.warn(
-      '⚠️ 检测到 VITE_HEALTH_CHECK_URL 配置错误，应该是 http://localhost:8000/api/v1 或 http://localhost:8000/api/v1/health'
-    );
-    // 尝试修正：去掉 /health，添加 /api/v1/health
-    const baseWithoutHealth = normalized.slice(0, -'/health'.length);
-    return `${baseWithoutHealth}${HEALTH_PATH}`;
-  }
-
   // 如果以 /api/v1 结尾，添加 /health
   if (normalized.endsWith('/api/v1')) {
     return `${normalized}/health`;
+  }
+
+  // 如果以 /health 结尾但不是 /api/v1/health，说明配置可能有问题
+  if (normalized.endsWith('/health')) {
+    const baseWithoutHealth = normalized.slice(0, -'/health'.length);
+    if (!baseWithoutHealth.endsWith('/api/v1')) {
+      console.warn(
+        '⚠️ 检测到 VITE_HEALTH_CHECK_URL 配置可能不正确，建议使用 http://localhost:8000/api/v1'
+      );
+    }
+    return normalized;
   }
 
   // 如果包含 /api/v1/，替换为 /api/v1/health

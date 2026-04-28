@@ -1,0 +1,409 @@
+/* 智能问答模块响应式样式 */
+
+/* ==================== 断点定义 ==================== */
+/* 
+  - Mobile: < 640px
+  - Tablet: 640px - 1024px
+  - Desktop: > 1024px
+*/
+
+/* ==================== 移动端优化 (< 640px) ==================== */
+@media (max-width: 640px) {
+  /* 隐藏侧边栏，使用抽屉式菜单 */
+  .panel-sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 1000;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  .panel-sidebar.open {
+    transform: translateX(0);
+    box-shadow: 2px 0 20px rgba(0, 0, 0, 0.15);
+  }
+
+  /* 右侧面板默认隐藏 */
+  .panel-right {
+    display: none;
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 400px;
+    z-index: 1000;
+  }
+
+  .panel-right.open {
+    display: block;
+    animation: slideInRight 0.3s ease;
+  }
+
+  /* 主面板占满全屏 */
+  .panel-main {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  /* 工具栏优化 */
+  .chat-toolbar {
+    flex-wrap: wrap;
+    padding: 0.5rem !important;
+  }
+
+  .chat-toolbar .session-title {
+    max-width: 150px;
+    font-size: 0.875rem;
+  }
+
+  .chat-toolbar .message-count {
+    display: none;
+  }
+
+  .chat-toolbar .toolbar-actions {
+    gap: 0.25rem;
+  }
+
+  .chat-toolbar .toolbar-actions button {
+    padding: 0.375rem !important;
+  }
+
+  .chat-toolbar .toolbar-actions button svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  /* 输入区域优化 */
+  .unified-input-area {
+    padding: 0.75rem !important;
+  }
+
+  .unified-input-area textarea {
+    font-size: 16px; /* 防止 iOS 自动缩放 */
+    min-height: 60px;
+  }
+
+  .unified-input-area .file-preview {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .unified-input-area .file-preview .file-item {
+    max-width: 100%;
+  }
+
+  .unified-input-area .input-actions {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .unified-input-area .send-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* 消息气泡优化 */
+  .message-bubble {
+    max-width: 95% !important;
+    margin-left: 0.5rem;
+    margin-right: 0.5rem;
+  }
+
+  .message-bubble .message-actions {
+    position: static;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--color-border-light);
+  }
+
+  .message-bubble .action-button {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .message-bubble .action-button svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* 代码块优化 */
+  .code-block {
+    font-size: 0.75rem;
+  }
+
+  .code-block .code-header {
+    padding: 0.5rem;
+  }
+
+  .code-block .code-header button {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.625rem;
+  }
+
+  /* 欢迎屏幕优化 */
+  .welcome-screen {
+    padding: 1rem !important;
+  }
+
+  .welcome-screen .greeting {
+    font-size: 1.25rem;
+  }
+
+  .welcome-screen .feature-cards {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .welcome-screen .question-categories {
+    grid-template-columns: 1fr;
+  }
+
+  .welcome-screen .stats {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+  }
+
+  .welcome-screen .stat-item {
+    padding: 0.5rem;
+  }
+
+  .welcome-screen .stat-item .value {
+    font-size: 1.25rem;
+  }
+
+  .welcome-screen .stat-item .label {
+    font-size: 0.625rem;
+  }
+
+  /* 加载状态优化 */
+  .loading-state {
+    padding: 1rem !important;
+  }
+
+  .loading-state .loading-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* 错误状态优化 */
+  .error-state {
+    padding: 1rem !important;
+    max-width: 90% !important;
+  }
+
+  .error-state .error-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .error-state .error-title {
+    font-size: 1rem;
+  }
+
+  .error-state .error-message {
+    font-size: 0.875rem;
+  }
+
+  /* 右侧面板内容优化 */
+  .right-panel .tab-content {
+    font-size: 0.875rem;
+  }
+
+  .right-panel .keyword-tag {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .right-panel .entity-item {
+    padding: 0.5rem;
+  }
+
+  /* 命令面板优化 */
+  .command-palette {
+    width: 95% !important;
+    max-width: none !important;
+  }
+
+  /* 消息搜索优化 */
+  .message-search {
+    width: 95% !important;
+  }
+}
+
+/* ==================== 平板端优化 (640px - 1024px) ==================== */
+@media (min-width: 640px) and (max-width: 1024px) {
+  /* 侧边栏缩小 */
+  .panel-sidebar {
+    width: 240px;
+  }
+
+  /* 右侧面板缩小 */
+  .panel-right {
+    min-width: 280px;
+    max-width: 320px;
+  }
+
+  /* 工具栏优化 */
+  .chat-toolbar .session-title {
+    max-width: 180px;
+  }
+
+  .chat-toolbar .message-count {
+    display: inline-block;
+  }
+
+  /* 输入区域优化 */
+  .unified-input-area .file-preview {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* 消息气泡优化 */
+  .message-bubble {
+    max-width: 90% !important;
+  }
+
+  /* 欢迎屏幕优化 */
+  .welcome-screen .feature-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .welcome-screen .question-categories {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .welcome-screen .stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ==================== 桌面端优化 (> 1024px) ==================== */
+@media (min-width: 1024px) {
+  /* 大屏幕上可以显示更多内容 */
+  .welcome-screen .feature-cards {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .welcome-screen .question-categories {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ==================== 动画关键帧 ==================== */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ==================== 触摸设备优化 ==================== */
+@media (hover: none) and (pointer: coarse) {
+  /* 移除悬停效果，改用点击反馈 */
+  .hover-effect {
+    transition: background-color 0.2s;
+  }
+
+  .hover-effect:hover {
+    background-color: var(--color-background-secondary);
+  }
+
+  /* 增大点击区域 */
+  button,
+  .clickable {
+    min-height: 44px; /* iOS 推荐最小点击区域 */
+    min-width: 44px;
+  }
+
+  /* 禁用复杂的悬停动画 */
+  .magnetic-effect,
+  .tilt-effect {
+    display: none;
+  }
+}
+
+/* ==================== 高对比度模式 ==================== */
+@media (prefers-contrast: high) {
+  :root {
+    --color-border: #000;
+    --color-border-light: #333;
+  }
+
+  .message-bubble {
+    border: 2px solid var(--color-border);
+  }
+
+  button {
+    border: 2px solid currentColor;
+  }
+}
+
+/* ==================== 减少动画模式 ==================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* 保留必要的加载动画 */
+  .loading-state {
+    animation: none;
+  }
+}
+
+/* ==================== 打印样式 ==================== */
+@media print {
+  /* 隐藏非打印元素 */
+  .panel-sidebar,
+  .panel-right,
+  .unified-input-area,
+  .chat-toolbar,
+  .message-actions,
+  button {
+    display: none !important;
+  }
+
+  /* 优化打印布局 */
+  .panel-main {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .message-bubble {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    max-width: 100% !important;
+    border: 1px solid #000;
+    padding: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  /* 使用黑白配色 */
+  * {
+    background: transparent !important;
+    color: #000 !important;
+    box-shadow: none !important;
+  }
+}

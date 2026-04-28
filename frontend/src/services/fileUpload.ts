@@ -1,5 +1,3 @@
-import { apiAdapterManager } from '../data/apiAdapter';
-
 export interface UploadedFileResponse {
   id: string;
   filename: string;

@@ -478,6 +478,23 @@ export const chatApi = {
     }
   },
 
+  toggleFavorite: async (
+    messageId: string
+  ): Promise<{
+    is_favorite: boolean;
+  }> => {
+    // local: 只返回一个占位结果，实际由上层用 repository 落地
+    if (apiAdapterManager.shouldUseLocal()) {
+      return { is_favorite: true };
+    }
+
+    const response = await apiAdapterManager.request<{ is_favorite: boolean }>({
+      method: 'POST',
+      url: `/chat/message/${messageId}/favorite`,
+    });
+    return response.data;
+  },
+
   getSession: async (sessionId: string): Promise<Session> => {
     if (apiAdapterManager.shouldUseLocal()) {
       const session = await chatRepository.getSession(sessionId);

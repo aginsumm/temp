@@ -4,13 +4,11 @@ import { Network, List, Download, Bookmark, FolderOpen, X, SlidersHorizontal } f
 import useKnowledgeGraphStore from '../../stores/knowledgeGraphStore';
 import { knowledgeApi, Entity } from '../../api/knowledge';
 import { snapshotService } from '../../api/snapshot';
-import type { GraphSnapshot, Relation } from '../../types/chat';
+import type { GraphSnapshot } from '../../types/chat';
 import { graphSyncService } from '../../services/graphSyncService';
 import { GraphSkeleton, ListSkeleton } from '../../components/common/Skeleton';
 import ErrorBoundary from '../../components/common/ErrorBoundary';
 import { useToast } from '../../components/common/Toast';
-import { loadSnapshot } from '../../utils/snapshotHandler';
-import { useGraphStore } from '../../stores/graphStore';
 
 const KnowledgeGraph = lazy(() => import('../../components/knowledge/KnowledgeGraph'));
 const ListView = lazy(() => import('../../components/knowledge/ListView'));
@@ -20,8 +18,6 @@ const FilterPanel = lazy(() => import('../../components/knowledge/FilterPanel'))
 export default function KnowledgePage() {
   const { viewMode, setViewMode, setSelectedNode, toggleFilterPanel, filterPanelCollapsed } =
     useKnowledgeGraphStore();
-  const lastUpdated = useGraphStore((state) => state.lastUpdated);
-  const [relations, setRelations] = useState<Relation[]>([]); 
   const [isPending, startTransitionFn] = useTransition();
   const [entities, setEntities] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(false);
@@ -30,9 +26,8 @@ export default function KnowledgePage() {
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [isLoadingSnapshots, setIsLoadingSnapshots] = useState(false);
   const toast = useToast();
-  const updateGraphData = useGraphStore((state) => state.updateGraphData);
 
-  const handleFilterChange = useCallback((filters: any) => {
+  const handleFilterChange = useCallback((filters: Record<string, unknown>) => {
     console.log('Filter changed:', filters);
   }, []);
 
@@ -96,34 +91,37 @@ export default function KnowledgePage() {
     }
   }, []);
 
-  const handleLoadSnapshot = useCallback(async (snapshot: GraphSnapshot) => {
-    try {
-      const fullSnapshot = await snapshotService.getSnapshot(snapshot.id);
-      if (!fullSnapshot) {
-        return;
+  const handleLoadSnapshot = useCallback(
+    async (snapshot: GraphSnapshot) => {
+      try {
+        const fullSnapshot = await snapshotService.getSnapshot(snapshot.id);
+        if (!fullSnapshot) {
+          return;
+        }
+
+        graphSyncService.updateFromSnapshot(
+          fullSnapshot.entities,
+          fullSnapshot.relations,
+          fullSnapshot.keywords,
+          fullSnapshot.session_id,
+          fullSnapshot.message_id
+        );
+
+        const mappedEntities = fullSnapshot.entities.map((e) => ({
+          ...e,
+          importance: e.importance ?? 0.5,
+        })) as unknown as Entity[];
+        setEntities(mappedEntities);
+
+        setShowSnapshots(false);
+        toast.success('导入成功', '图谱已更新');
+      } catch (error) {
+        console.error('Failed to load snapshot:', error);
+        toast.error('导入失败');
       }
-
-      graphSyncService.updateFromSnapshot(
-        fullSnapshot.entities,
-        fullSnapshot.relations,
-        fullSnapshot.keywords,
-        fullSnapshot.session_id,
-        fullSnapshot.message_id
-      );
-
-      const mappedEntities = fullSnapshot.entities.map((e) => ({
-        ...e,
-        importance: e.importance ?? 0.5,
-      })) as unknown as Entity[];
-      setEntities(mappedEntities);
-
-      setShowSnapshots(false);
-      toast.success('导入成功', '图谱已更新'); 
-    } catch (error) {
-      console.error('Failed to load snapshot:', error);
-      toast.error('导入失败');
-    }
-  }, [toast]);
+    },
+    [toast]
+  );
 
   useEffect(() => {
     if (showSnapshots) {
@@ -180,10 +178,22 @@ export default function KnowledgePage() {
     >
       {/* 背景动画 (移到底层) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-0 left-1/4 w-96 h-96 rounded-full blur-3xl animate-pulse" style={{ background: 'var(--color-primary)', opacity: 0.08 }} />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 rounded-full blur-3xl animate-pulse" style={{ background: 'var(--color-secondary)', opacity: 0.08, animationDelay: '1s' }} />
-        <div className="absolute top-1/2 left-1/2 w-96 h-96 rounded-full blur-3xl animate-pulse" style={{ background: 'var(--color-accent)', opacity: 0.05, animationDelay: '2s' }} />
-        <div className="absolute inset-0 bg-[linear-gradient(var(--color-border-light)_1px,transparent_1px),linear-gradient(90deg,var(--color-border-light)_1px,transparent_1px)] bg-[size:50px_50px]" style={{ opacity: 0.3 }} />
+        <div
+          className="absolute top-0 left-1/4 w-96 h-96 rounded-full blur-3xl animate-pulse"
+          style={{ background: 'var(--color-primary)', opacity: 0.08 }}
+        />
+        <div
+          className="absolute bottom-0 right-1/4 w-96 h-96 rounded-full blur-3xl animate-pulse"
+          style={{ background: 'var(--color-secondary)', opacity: 0.08, animationDelay: '1s' }}
+        />
+        <div
+          className="absolute top-1/2 left-1/2 w-96 h-96 rounded-full blur-3xl animate-pulse"
+          style={{ background: 'var(--color-accent)', opacity: 0.05, animationDelay: '2s' }}
+        />
+        <div
+          className="absolute inset-0 bg-[linear-gradient(var(--color-border-light)_1px,transparent_1px),linear-gradient(90deg,var(--color-border-light)_1px,transparent_1px)] bg-[size:50px_50px]"
+          style={{ opacity: 0.3 }}
+        />
       </div>
 
       {/* 1. 左侧：侧边栏筛选面板 */}
@@ -194,8 +204,13 @@ export default function KnowledgePage() {
         style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
       >
         {/* 顶部标题栏 */}
-        <div className="p-4 border-b flex-shrink-0 flex items-center justify-between" style={{ borderColor: 'var(--color-border)' }}>
-          <h2 className="text-lg font-bold" style={{ color: 'var(--color-text-primary)' }}>数据筛选</h2>
+        <div
+          className="p-4 border-b flex-shrink-0 flex items-center justify-between"
+          style={{ borderColor: 'var(--color-border)' }}
+        >
+          <h2 className="text-lg font-bold" style={{ color: 'var(--color-text-primary)' }}>
+            数据筛选
+          </h2>
         </div>
         {/* 筛选器滚动区 */}
         <div className="flex-1 overflow-y-auto p-4">
@@ -207,29 +222,27 @@ export default function KnowledgePage() {
 
       {/* 2. 右侧：主体内容区 */}
       <main className="flex-1 flex flex-col min-w-0 relative z-10 h-full">
-        
         {/* 悬浮在内容区左上角的工具栏 */}
         <div className="absolute top-4 left-6 z-20 flex items-center gap-3">
-          
           {/* 收起/展开侧边栏按钮 */}
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={toggleFilterPanel}
             className="p-2.5 rounded-xl shadow-lg backdrop-blur-md border transition-all"
-            style={{ 
-              background: 'var(--color-surface)', 
-              color: 'var(--color-text-secondary)', 
-              borderColor: 'var(--color-border)' 
+            style={{
+              background: 'var(--color-surface)',
+              color: 'var(--color-text-secondary)',
+              borderColor: 'var(--color-border)',
             }}
-            title={filterPanelCollapsed ? "展开筛选" : "收起筛选"}
+            title={filterPanelCollapsed ? '展开筛选' : '收起筛选'}
           >
             <SlidersHorizontal size={18} />
           </motion.button>
 
           {/* 视图切换按钮 */}
-          <div 
-            className="flex backdrop-blur-md rounded-xl p-1 shadow-lg border" 
+          <div
+            className="flex backdrop-blur-md rounded-xl p-1 shadow-lg border"
             style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}
           >
             {viewButtons.map(({ mode, icon: Icon, label }) => (
@@ -239,7 +252,8 @@ export default function KnowledgePage() {
                 className="p-2.5 rounded-lg transition-colors flex items-center gap-2"
                 style={{
                   background: viewMode === mode ? 'var(--gradient-primary)' : 'transparent',
-                  color: viewMode === mode ? 'var(--color-text-inverse)' : 'var(--color-text-secondary)'
+                  color:
+                    viewMode === mode ? 'var(--color-text-inverse)' : 'var(--color-text-secondary)',
                 }}
                 title={label}
               >
@@ -256,7 +270,11 @@ export default function KnowledgePage() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all shadow-lg"
-              style={{ background: 'var(--gradient-primary)', color: 'var(--color-text-inverse)', border: 'none' }}
+              style={{
+                background: 'var(--gradient-primary)',
+                color: 'var(--color-text-inverse)',
+                border: 'none',
+              }}
             >
               <Bookmark size={16} />
               <span className="text-sm font-medium">快照库</span>
@@ -268,7 +286,11 @@ export default function KnowledgePage() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all shadow-lg disabled:opacity-50 border"
-              style={{ background: 'var(--color-surface)', color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }}
+              style={{
+                background: 'var(--color-surface)',
+                color: 'var(--color-text-secondary)',
+                borderColor: 'var(--color-border)',
+              }}
             >
               <Download size={16} />
               <span className="text-sm font-medium">{exporting ? '处理中...' : '导出'}</span>

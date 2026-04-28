@@ -12,7 +12,6 @@ import {
   Copy,
   RefreshCw,
   ChevronDown,
-  BookOpen,
   User,
   Bot,
   Check,
@@ -30,6 +29,7 @@ import { useThemeStore } from '../../../stores/themeStore';
 import { useToast } from '../../common/Toast';
 import { speechSynthesisService } from '../../../services/speechSynthesisService';
 import VersionSwitcher from '../VersionSwitcher';
+import StreamProgress from '../StreamProgress';
 import type { Message } from '../../../types/chat';
 
 interface UnifiedMessageBubbleProps {
@@ -159,7 +159,6 @@ export default function UnifiedMessageBubble({
   const { resolvedMode } = useThemeStore();
   const toast = useToast();
   const [copied, setCopied] = useState(false);
-  const [showSources, setShowSources] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [showActions, setShowActions] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -189,9 +188,10 @@ export default function UnifiedMessageBubble({
   }, [versions]);
 
   // 简化的可见性控制 - 立即显示，不使用 IntersectionObserver 避免闪烁
+  // 只在消息创建时触发可见性动画，流式更新时不重复触发
   useEffect(() => {
     setIsVisible(true);
-  }, []);
+  }, [message.id]);
 
   // 操作按钮显示逻辑
   useEffect(() => {
@@ -348,12 +348,12 @@ export default function UnifiedMessageBubble({
           <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>
             {isUser ? '我' : 'AI 助手'}
           </span>
-          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <span className="text-[10px] opacity-50" style={{ color: 'var(--color-text-muted)' }}>
             {formatTime(message.created_at)}
           </span>
           {isCurrentlyStreaming && (
             <span
-              className="text-xs px-2 py-0.5 rounded-full animate-pulse"
+              className="text-[10px] px-1.5 py-0.5 rounded-full animate-pulse"
               style={{
                 background: 'var(--color-primary-light)',
                 color: 'var(--color-primary)',
@@ -366,25 +366,27 @@ export default function UnifiedMessageBubble({
 
         <div
           ref={bubbleRef}
-          className={`relative rounded-xl px-3 py-2.5 ${isUser ? 'rounded-tr-sm' : 'rounded-tl-sm'}`}
+          className={`relative rounded-2xl px-3.5 py-2.5 animate-message-enter ${isUser ? 'animate-message-enter-user rounded-tr-md' : 'animate-message-enter-ai rounded-tl-md'}`}
           style={{
-            background: isUser
-              ? 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%)'
-              : 'var(--color-surface)',
-            border: isUser ? 'none' : '1px solid var(--color-border)',
+            background: isUser ? 'var(--gradient-primary)' : 'var(--color-surface)',
+            border: isUser ? 'none' : '1px solid var(--color-border-light)',
             color: isUser ? 'var(--color-text-inverse)' : 'var(--color-text-primary)',
             boxShadow: isUser
-              ? '0 2px 12px -2px var(--color-primary)'
-              : '0 1px 4px -1px rgba(0, 0, 0, 0.05)',
+              ? 'var(--shadow-md), 0 0 0 1px rgba(255,255,255,0.1) inset'
+              : 'var(--shadow-sm)',
             display: 'inline-block',
-            maxWidth: isUser ? '80%' : '100%',
+            maxWidth: isUser ? '75%' : '85%',
             textAlign: 'left',
             wordBreak: 'break-word',
+            lineHeight: '1.7',
           }}
         >
           {/* 思考中指示器 - 显示在AI消息内容上方 */}
           {isThinking && !isUser && (
-            <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg" style={{ background: 'var(--color-background-secondary)' }}>
+            <div
+              className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-lg"
+              style={{ background: 'var(--color-background-secondary)' }}
+            >
               <div className="flex gap-1">
                 <span
                   className="w-1.5 h-1.5 rounded-full animate-bounce"
@@ -399,7 +401,7 @@ export default function UnifiedMessageBubble({
                   style={{ background: 'var(--color-primary)', animationDelay: '300ms' }}
                 />
               </div>
-              <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                 思考中...
               </span>
             </div>
@@ -476,11 +478,43 @@ export default function UnifiedMessageBubble({
               </div>
             </div>
           ) : (
-            <div className="prose prose-sm max-w-none dark:prose-invert">
+            <div
+              className="prose prose-sm max-w-none dark:prose-invert"
+              style={{ fontSize: '0.95rem' }}
+            >
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeSanitize]}
                 components={{
+                  p: ({ children }) => (
+                    <p style={{ margin: '0.5em 0', lineHeight: '1.7' }}>{children}</p>
+                  ),
+                  ul: ({ children }) => (
+                    <ul style={{ margin: '0.5em 0', paddingLeft: '1.5em', lineHeight: '1.7' }}>
+                      {children}
+                    </ul>
+                  ),
+                  ol: ({ children }) => (
+                    <ol style={{ margin: '0.5em 0', paddingLeft: '1.5em', lineHeight: '1.7' }}>
+                      {children}
+                    </ol>
+                  ),
+                  li: ({ children }) => <li style={{ marginBottom: '0.25em' }}>{children}</li>,
+                  h1: ({ children }) => (
+                    <h1 style={{ margin: '1em 0 0.5em', fontSize: '1.3em', fontWeight: '600' }}>
+                      {children}
+                    </h1>
+                  ),
+                  h2: ({ children }) => (
+                    <h2 style={{ margin: '1em 0 0.5em', fontSize: '1.2em', fontWeight: '600' }}>
+                      {children}
+                    </h2>
+                  ),
+                  h3: ({ children }) => (
+                    <h3 style={{ margin: '0.8em 0 0.4em', fontSize: '1.1em', fontWeight: '600' }}>
+                      {children}
+                    </h3>
+                  ),
                   code({ className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || '');
                     if (match) {
@@ -532,6 +566,15 @@ export default function UnifiedMessageBubble({
               style={{ background: 'var(--color-primary)' }}
             />
           )}
+
+          {/* 流式输出进度指示器 */}
+          {isCurrentlyStreaming && (
+            <StreamProgress
+              content={displayedContent}
+              isStreaming={isCurrentlyStreaming}
+              isThinking={isThinking}
+            />
+          )}
         </div>
 
         {(hasVersions || message.is_edited) && (
@@ -548,104 +591,6 @@ export default function UnifiedMessageBubble({
             }}
             isUser={isUser}
           />
-        )}
-
-        {message.sources && message.sources.length > 0 && (
-          <div className="mt-2">
-            <button
-              onClick={() => setShowSources(!showSources)}
-              className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg transition-all hover:shadow-md"
-              style={{
-                color: 'var(--color-text-secondary)',
-                background: showSources
-                  ? 'var(--color-primary-alpha)'
-                  : 'var(--color-background-secondary)',
-                border: `1px solid ${showSources ? 'var(--color-primary)' : 'var(--color-border)'}`,
-              }}
-            >
-              <BookOpen size={14} />
-              <span className="font-medium">查看 {message.sources.length} 个参考来源</span>
-              <ChevronDown
-                size={14}
-                className={`transition-transform duration-200 ${showSources ? 'rotate-180' : ''}`}
-              />
-            </button>
-
-            {showSources && (
-              <div className="mt-3 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
-                {message.sources.map((source, index) => (
-                  <div
-                    key={source.id}
-                    className="p-4 rounded-xl border transition-all hover:shadow-lg animate-in fade-in slide-in-from-left-2 duration-200"
-                    style={{
-                      background: 'var(--color-surface)',
-                      border: '1px solid var(--color-border-light)',
-                      animationDelay: `${index * 50}ms`,
-                    }}
-                  >
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-                          style={{
-                            background: 'var(--color-primary-alpha)',
-                            color: 'var(--color-primary)',
-                          }}
-                        >
-                          {index + 1}
-                        </div>
-                        <span
-                          className="text-sm font-semibold"
-                          style={{ color: 'var(--color-text-primary)' }}
-                        >
-                          {source.title}
-                        </span>
-                      </div>
-                      {source.relevance && (
-                        <div
-                          className="px-2 py-1 rounded-full text-xs font-medium"
-                          style={{
-                            background:
-                              source.relevance >= 0.9
-                                ? 'var(--color-success-alpha)'
-                                : source.relevance >= 0.7
-                                  ? 'var(--color-warning-alpha)'
-                                  : 'var(--color-background-secondary)',
-                            color:
-                              source.relevance >= 0.9
-                                ? 'var(--color-success)'
-                                : source.relevance >= 0.7
-                                  ? 'var(--color-warning)'
-                                  : 'var(--color-text-muted)',
-                          }}
-                        >
-                          相关度 {Math.round(source.relevance * 100)}%
-                        </div>
-                      )}
-                    </div>
-                    <p
-                      className="text-sm leading-relaxed"
-                      style={{ color: 'var(--color-text-secondary)' }}
-                    >
-                      {source.content}
-                    </p>
-                    {source.url && (
-                      <a
-                        href={source.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center gap-1 text-xs font-medium hover:underline"
-                        style={{ color: 'var(--color-primary)' }}
-                      >
-                        <ExternalLink size={12} />
-                        查看原文
-                      </a>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         )}
 
         {showActions && !isEditing && (

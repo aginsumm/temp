@@ -1,5 +1,7 @@
 @import './styles/themes.css';
+@import './styles/design-system.css';
 @import './styles/panel-heritage-bg.css';
+@import './styles/chat-responsive.css';
 
 @tailwind base;
 @tailwind components;
@@ -494,4 +496,80 @@ img {
   html {
     font-size: 18px;
   }
+}
+
+/* ==================== 可访问性辅助类 ==================== */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.sr-only-focusable:focus {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: inherit;
+  margin: inherit;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
+/* 高对比度模式 */
+.high-contrast {
+  --color-border: #000;
+  --color-border-light: #333;
+  --color-text-muted: #000;
+}
+
+.high-contrast button,
+.high-contrast .clickable {
+  border: 2px solid currentColor;
+}
+
+.high-contrast .message-bubble {
+  border: 2px solid var(--color-border);
+}
+
+/* 焦点可见性增强 */
+*:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* 触摸设备优化 */
+@media (hover: none) and (pointer: coarse) {
+  button,
+  .clickable {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .hover-effect:hover {
+    background-color: var(--color-background-secondary);
+  }
+}
+
+/* 字体大小变量 */
+:root {
+  --font-size-base: 16px;
+}
+
+.font-size-small {
+  font-size: 14px;
+}
+
+.font-size-medium {
+  font-size: 16px;
+}
+
+.font-size-large {
+  font-size: 18px;
 }

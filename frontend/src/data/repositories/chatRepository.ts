@@ -543,13 +543,17 @@ class ChatRepository {
     onChunk: (chunk: string) => void,
     onComplete: (message: Message) => void,
     onError?: (error: Error) => void,
-    onStatusChange?: (status: 'connecting' | 'streaming' | 'complete' | 'error') => void
+    onStatusChange?: (status: 'connecting' | 'streaming' | 'complete' | 'error') => void,
+    options?: { fileUrls?: string[] }
   ): Promise<() => void> {
     let isAborted = false;
     const controller = new AbortController();
-    const STREAM_TIMEOUT = 60000; // 60秒超时
-    const MAX_RETRIES = 1; // 网络错误时重试1次
+    const STREAM_TIMEOUT = 120000; // 120 秒超时（给实体提取留足时间）
+    const MAX_RETRIES = 1; // 网络错误时重试 1 次
     let retryCount = 0;
+
+    // 保存回调函数引用，避免在闭包中访问 undefined
+    const statusCallback = onStatusChange;
 
     const executeStream = async (): Promise<void> => {
       try {
@@ -559,7 +563,7 @@ class ChatRepository {
 
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
-        onStatusChange?.('connecting');
+        statusCallback?.('connecting');
 
         // 创建超时控制器
         const timeoutController = new AbortController();
@@ -574,6 +578,7 @@ class ChatRepository {
             session_id: sessionId,
             content: content,
             message_type: 'text',
+            file_urls: options?.fileUrls || [],
           }),
           signal: AbortSignal.any([controller.signal, timeoutController.signal]),
         });
@@ -595,7 +600,7 @@ class ChatRepository {
           throw new Error(`[${errorType}] HTTP ${response.status}: ${errText}`);
         }
 
-        onStatusChange?.('streaming');
+        statusCallback?.('streaming');
 
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
@@ -606,20 +611,23 @@ class ChatRepository {
         let fullContent = '';
         let sseBuffer = '';
         let lastActivityTime = Date.now();
-        const ACTIVITY_TIMEOUT = 30000; // 30秒无活动超时
+        let receivedComplete = false;
+        let incompleteJson = ''; // ✅ 优化 5：累积不完整的 JSON
+        const ACTIVITY_TIMEOUT = 10000;
+        const READ_TIMEOUT = 5000;
 
         if (reader) {
-          while (!isAborted) {
+          while (!isAborted && !receivedComplete) {
             // 检查活动超时
             if (Date.now() - lastActivityTime > ACTIVITY_TIMEOUT) {
-              throw new Error('[STREAM_TIMEOUT] 流式响应超时，30秒无数据');
+              throw new Error('[STREAM_TIMEOUT] 流式响应超时，10 秒无数据');
             }
 
             try {
               const { done, value } = await Promise.race([
                 reader.read(),
                 new Promise<never>((_, reject) =>
-                  setTimeout(() => reject(new Error('[READ_TIMEOUT] 读取超时')), 10000)
+                  setTimeout(() => reject(new Error('[READ_TIMEOUT] 读取超时')), READ_TIMEOUT)
                 ),
               ]);
 
@@ -639,14 +647,21 @@ class ChatRepository {
 
                 if (dataLines.length === 0) continue;
                 const payload = dataLines.join('\n');
-                if (payload === '[DONE]') continue;
+                if (payload === '[DONE]') {
+                  receivedComplete = true;
+                  break;
+                }
 
                 try {
                   const data = JSON.parse(payload);
+                  incompleteJson = ''; // ✅ 解析成功，清空缓存
+
                   if (data.type === 'content_chunk' || data.type === 'content') {
                     const chunkText = String(data.content || '');
-                    fullContent += chunkText;
-                    onChunk(chunkText);
+                    if (chunkText) {
+                      fullContent += chunkText;
+                      onChunk(chunkText);
+                    }
                   } else if (data.type === 'entities') {
                     latestEntities = Array.isArray(data.entities) ? data.entities : [];
                   } else if (data.type === 'keywords') {
@@ -654,16 +669,120 @@ class ChatRepository {
                   } else if (data.type === 'relations') {
                     latestRelations = Array.isArray(data.relations) ? data.relations : [];
                   } else if (data.type === 'complete') {
-                    lastResponse = data.response || data;
+                    // 合并所有字段，确保数据完整性
+                    // 优先使用 complete 事件中的数据，如果为空则使用累积的数据
+                    lastResponse = {
+                      message_id: data.message_id || '',
+                      content: data.content || fullContent,
+                      sources:
+                        Array.isArray(data.sources) && data.sources.length > 0 ? data.sources : [],
+                      entities:
+                        Array.isArray(data.entities) && data.entities.length > 0
+                          ? data.entities
+                          : latestEntities,
+                      keywords:
+                        Array.isArray(data.keywords) && data.keywords.length > 0
+                          ? data.keywords
+                          : latestKeywords,
+                      relations:
+                        Array.isArray(data.relations) && data.relations.length > 0
+                          ? data.relations
+                          : latestRelations,
+                      created_at: data.created_at || new Date().toISOString(),
+                      role: data.role || 'assistant',
+                    };
+                    // 收到 complete 事件，标记完成并退出循环
+                    receivedComplete = true;
+                    break;
                   } else if (data.type === 'error') {
-                    throw new Error(`[STREAM_ERROR] ${data.message || '流式响应错误'}`);
+                    const errorMessage = data.message || '流式响应错误';
+                    const recoverable = data.recoverable !== false;
+                    const errorCode = data.code || 'STREAM_ERROR';
+
+                    console.error('[STREAM_ERROR]', {
+                      message: errorMessage,
+                      recoverable,
+                      code: errorCode,
+                    });
+
+                    const error = new Error(errorMessage);
+                    (error as any).code = errorCode;
+                    (error as any).recoverable = recoverable;
+                    throw error;
                   }
                 } catch (parseError) {
                   if (parseError instanceof SyntaxError) {
-                    // JSON 解析失败，可能是不完整的事件，等待后续分片
-                    continue;
+                    // ✅ 优化 5：累积不完整的 JSON 片段
+                    incompleteJson += payload;
+
+                    // 尝试解析累积的内容
+                    try {
+                      const data = JSON.parse(incompleteJson);
+                      incompleteJson = ''; // 解析成功，清空缓存
+
+                      // 处理解析成功的数据
+                      if (data.type === 'content_chunk' || data.type === 'content') {
+                        const chunkText = String(data.content || '');
+                        if (chunkText) {
+                          fullContent += chunkText;
+                          onChunk(chunkText);
+                        }
+                      } else if (data.type === 'entities') {
+                        latestEntities = Array.isArray(data.entities) ? data.entities : [];
+                      } else if (data.type === 'keywords') {
+                        latestKeywords = Array.isArray(data.keywords) ? data.keywords : [];
+                      } else if (data.type === 'relations') {
+                        latestRelations = Array.isArray(data.relations) ? data.relations : [];
+                      } else if (data.type === 'complete') {
+                        lastResponse = {
+                          message_id: data.message_id || '',
+                          content: data.content || fullContent,
+                          sources:
+                            Array.isArray(data.sources) && data.sources.length > 0 ? data.sources : [],
+                          entities:
+                            Array.isArray(data.entities) && data.entities.length > 0
+                              ? data.entities
+                              : latestEntities,
+                          keywords:
+                            Array.isArray(data.keywords) && data.keywords.length > 0
+                              ? data.keywords
+                              : latestKeywords,
+                          relations:
+                            Array.isArray(data.relations) && data.relations.length > 0
+                              ? data.relations
+                              : latestRelations,
+                          created_at: data.created_at || new Date().toISOString(),
+                          role: data.role || 'assistant',
+                        };
+                        receivedComplete = true;
+                        break;
+                      } else if (data.type === 'error') {
+                        const errorMessage = data.message || '流式响应错误';
+                        const recoverable = data.recoverable !== false;
+                        const errorCode = data.code || 'STREAM_ERROR';
+
+                        console.error('[STREAM_ERROR]', {
+                          message: errorMessage,
+                          recoverable,
+                          code: errorCode,
+                        });
+
+                        const error = new Error(errorMessage);
+                        (error as any).code = errorCode;
+                        (error as any).recoverable = recoverable;
+                        throw error;
+                      }
+                    } catch (retryParseError) {
+                      // 仍然无法解析，继续等待更多数据
+                      console.warn('SSE parse error, waiting for more data:', {
+                        incomplete_length: incompleteJson.length,
+                        payload_preview: payload.slice(0, 100),
+                      });
+                      continue;
+                    }
+                  } else {
+                    throw parseError;
                   }
-                  throw parseError;
                 }
               }
             } catch (readError: unknown) {
@@ -702,8 +821,9 @@ class ChatRepository {
             keywords: lastResponse.keywords || latestKeywords || [],
             relations: lastResponse.relations || latestRelations || [],
           };
-          await this.addMessage(aiMessage);
-          onStatusChange?.('complete');
+          // 注意：不在此处添加消息，由调用者（EnhancedChatPage）决定如何更新现有消息
+          // 这样可以避免重复添加消息，因为调用者已经创建了流式消息
+          statusCallback?.('complete');
           onComplete(aiMessage);
         }
       } catch (error: unknown) {
@@ -755,7 +875,7 @@ class ChatRepository {
         // 不再重试，报告错误
         console.error('❌ 流式请求最终失败:', errorMessage);
         if (onError) onError(new Error(errorMessage));
-        onStatusChange?.('error');
+        statusCallback?.('error');
       }
     };
 
@@ -780,6 +900,9 @@ class ChatRepository {
     const MAX_RETRIES = 1;
     let retryCount = 0;
 
+    // 保存回调函数引用，避免在闭包中访问 undefined
+    const statusCallback = onStatusChange;
+
     const executeStream = async (): Promise<void> => {
       try {
         const token = localStorage.getItem('token') || '';
@@ -788,7 +911,7 @@ class ChatRepository {
 
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
-        onStatusChange?.('connecting');
+        statusCallback?.('connecting');
 
         const timeoutController = new AbortController();
         const timeoutId = setTimeout(() => {
@@ -818,7 +941,7 @@ class ChatRepository {
           throw new Error(`[${errorType}] HTTP ${response.status}: ${errText}`);
         }
 
-        onStatusChange?.('streaming');
+        statusCallback?.('streaming');
 
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
@@ -828,12 +951,13 @@ class ChatRepository {
         let fullContent = '';
         let sseBuffer = '';
         let lastActivityTime = Date.now();
+        let receivedComplete = false; // 标记是否收到 complete 事件
         const ACTIVITY_TIMEOUT = 30000;
 
         if (reader) {
-          while (!isAborted) {
+          while (!isAborted && !receivedComplete) {
             if (Date.now() - lastActivityTime > ACTIVITY_TIMEOUT) {
-              throw new Error('[STREAM_TIMEOUT] 流式响应超时，30秒无数据');
+              throw new Error('[STREAM_TIMEOUT] 流式响应超时，30 秒无数据');
             }
 
             try {
@@ -884,8 +1008,9 @@ class ChatRepository {
                         sources: [],
                       };
                       onComplete(regeneratedMessage);
-                      onStatusChange?.('complete');
-                      return;
+                      statusCallback?.('complete');
+                      receivedComplete = true;
+                      break;
                     } else if (data.type === 'error') {
                       throw new Error(data.message || '重新生成失败');
                     }
@@ -917,7 +1042,7 @@ class ChatRepository {
             sources: [],
           };
           onComplete(regeneratedMessage);
-          onStatusChange?.('complete');
+          statusCallback?.('complete');
         }
       } catch (error) {
         const err = error as Error & { message?: string };
@@ -936,7 +1061,7 @@ class ChatRepository {
 
         console.error('❌ 重新生成最终失败:', errorMessage);
         if (onError) onError(new Error(errorMessage));
-        onStatusChange?.('error');
+        statusCallback?.('error');
       }
     };
 

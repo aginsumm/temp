@@ -172,7 +172,7 @@ class Session(SessionBase):
 
 class ChatMessageRequest(BaseModel):
     session_id: str
-    content: str
+    content: str = Field(..., min_length=1, max_length=5000, description="消息内容，最大 5000 字")
     message_type: str = "text"
     resume_from: Optional[int] = None  # 断点续传：从第几个字符继续
     file_urls: Optional[list[str]] = None  # 上传文件的 URL 列表
@@ -246,6 +246,7 @@ class RecommendedQuestion(BaseModel):
     id: str
     question: str
     category: Optional[str] = None
+    reason: Optional[str] = None  # 推荐理由，如"基于您刚才问的木雕技艺"
 
 
 class FeedbackRequest(BaseModel):

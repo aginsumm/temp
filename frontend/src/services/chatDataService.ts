@@ -38,13 +38,16 @@ interface UnifiedChatService {
     content: string,
     onChunk: (chunk: string) => void,
     onComplete: (message: Message) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    onStatusChange?: (status: 'connecting' | 'streaming' | 'complete' | 'error') => void,
+    options?: { fileUrls?: string[] }
   ) => Promise<() => void>;
   regenerateMessageStream: (
     messageId: string,
     onChunk: (chunk: string) => void,
     onComplete: (message: Message) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    onStatusChange?: (status: 'connecting' | 'streaming' | 'complete' | 'error') => void
   ) => Promise<() => void>;
   submitFeedback: (messageId: string, feedback: 'helpful' | 'unclear') => Promise<void>;
   toggleFavorite: (messageId: string, currentStatus?: boolean) => Promise<boolean>;
@@ -166,7 +169,9 @@ class ChatDataService implements UnifiedChatService {
     content: string,
     onChunk: (chunk: string) => void,
     onComplete: (message: Message) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    onStatusChange?: (status: 'connecting' | 'streaming' | 'complete' | 'error') => void,
+    options?: { fileUrls?: string[] }
   ): Promise<() => void> {
     await this.ensureInitialized();
 
@@ -206,9 +211,8 @@ class ChatDataService implements UnifiedChatService {
             clearTimeout(streamState.timeoutId);
           }
           cleanup();
-          chatRepository.addMessage(message).catch((err) => {
-            console.error('Failed to save AI message:', err);
-          });
+          // 注意：chatRepository.sendMessageStream 已经调用了 addMessage
+          // 这里不需要再次调用，避免重复添加
           Promise.resolve(onComplete(message)).catch((err) => {
             console.error('Error in onComplete callback:', err);
           });
@@ -221,7 +225,9 @@ class ChatDataService implements UnifiedChatService {
             onError(error);
           }
         }
-      }
+      },
+      onStatusChange,
+      options
     );
 
     return () => {
@@ -237,7 +243,8 @@ class ChatDataService implements UnifiedChatService {
     messageId: string,
     onChunk: (chunk: string) => void,
     onComplete: (message: Message) => void,
-    onError?: (error: Error) => void
+    onError?: (error: Error) => void,
+    onStatusChange?: (status: 'connecting' | 'streaming' | 'complete' | 'error') => void
   ): Promise<() => void> {
     await this.ensureInitialized();
 
@@ -288,7 +295,8 @@ class ChatDataService implements UnifiedChatService {
             onError(error);
           }
         }
-      }
+      },
+      onStatusChange
     );
 
     return () => {

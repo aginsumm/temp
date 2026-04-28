@@ -8,7 +8,11 @@ import type { GraphData } from '../api/knowledge';
 import { LayeredGraphRenderer, layeredGraphRenderer } from './LayeredGraphRenderer';
 import { ViewportCulling, viewportCulling } from './ViewportCulling';
 import { ProgressiveLoader, progressiveLoader } from './ProgressiveLoader';
-import { PerformanceMonitor, performanceMonitor, PerformanceMetrics } from './PerformanceMonitor';
+import {
+  PerformanceMonitor,
+  performanceMonitor,
+  type PerformanceMetrics,
+} from './PerformanceMonitor';
 /* eslint-enable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
@@ -202,7 +206,7 @@ export class GraphOptimizer {
   /**
    * 获取性能指标
    */
-  getPerformanceMetrics(): PerformanceMetrics | null {
+  getPerformanceMetrics(): Record<string, unknown> | null {
     if (!this.config.enablePerformanceMonitoring) {
       return null;
     }
@@ -260,7 +264,7 @@ export class GraphOptimizer {
    */
   startMonitoring(nodeCountGetter?: () => number, edgeCountGetter?: () => number): void {
     if (this.config.enablePerformanceMonitoring) {
-      this.monitor.startMonitoring(nodeCountGetter, edgeCountGetter);
+      this.monitor.startMonitoring(nodeCountGetter || (() => 0), edgeCountGetter || (() => 0));
     }
   }
 

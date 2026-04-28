@@ -2,6 +2,16 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_BASE_URL: string
+  readonly VITE_WS_URL: string
+  readonly VITE_HEALTH_CHECK_URL: string
+  readonly VITE_LLM_PROVIDER: string
+  readonly VITE_OFFLINE_MODE: string
+  readonly VITE_ENABLE_SYNC: string
+  readonly VITE_DEBUG_MODE: string
+  readonly VITE_DB_NAME: string
+  readonly VITE_CACHE_TTL: string
+  readonly VITE_MAX_SESSIONS: string
+  readonly VITE_MAX_MESSAGES_PER_SESSION: string
 }
 
 interface ImportMeta {

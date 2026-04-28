@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ShortcutManager, shortcutManager, registerDefaultShortcuts } from '../shortcutManager';
+import { ShortcutManager, registerDefaultShortcuts } from '../shortcutManager';
 
 describe('ShortcutManager', () => {
   let manager: ShortcutManager;
@@ -243,7 +243,7 @@ describe('ShortcutManager', () => {
       // 修改快捷配置的 preventDefault 选项
       const shortcuts = manager.getShortcuts();
       if (shortcuts.length > 0) {
-        (shortcuts[0] as any).preventDefault = false;
+        (shortcuts[0] as unknown as Record<string, unknown>).preventDefault = false;
       }
 
       const event = new KeyboardEvent('keydown', { key: 'a' });

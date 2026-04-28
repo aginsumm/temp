@@ -67,9 +67,8 @@ class LocalDatabase {
         const transaction = (event.target as IDBOpenDBRequest).transaction!;
         const oldVersion = event.oldVersion;
 
-        if (oldVersion < 1) {
-          this.createV1Stores(db);
-        }
+        // 无论旧版本如何，都确保所有存储存在（修复缺失存储问题）
+        this.createV1Stores(db);
         if (oldVersion < 2) {
           this.createV2Stores(db);
         }

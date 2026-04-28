@@ -1,0 +1,2 @@
+{"message_id": "msg_001", "question": "什么是苏绣？", "answer": "苏绣是...", "is_helpful": true, "feedback_text": null, "question_type": "definition", "emotion": "curious", "confidence_score": 0.85, "timestamp": "2026-04-27T18:54:38.526569+00:00"}
+{"message_id": "msg_002", "question": "武汉木雕的历史？", "answer": "武汉木雕...", "is_helpful": false, "feedback_text": "回答不够详细", "question_type": "history", "emotion": null, "confidence_score": 0.55, "timestamp": "2026-04-27T18:54:38.527282+00:00"}

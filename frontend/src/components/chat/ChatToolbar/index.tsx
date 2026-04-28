@@ -57,29 +57,23 @@ export default function ChatToolbar({
         {isPinned && <Pin size={14} style={{ color: 'var(--color-accent)' }} />}
       </div>
 
-      <div className="flex items-center gap-1">
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+      <div className="flex items-center gap-0.5">
+        <button
           onClick={onPin}
-          className={`p-2 rounded-lg transition-colors ${isPinned ? 'bg-amber-100 text-amber-600' : ''}`}
-          style={!isPinned ? { color: 'var(--color-text-muted)' } : {}}
+          className={`p-2 rounded-lg transition-all duration-200 hover:bg-gray-100 dark:hover:bg-gray-800 ${isPinned ? 'text-amber-500' : 'text-gray-400 hover:text-gray-600'}`}
           title={isPinned ? '取消置顶' : '置顶对话'}
         >
-          <Pin size={16} />
-        </motion.button>
+          <Pin size={16} className={isPinned ? 'fill-current' : ''} />
+        </button>
 
         <div className="relative">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+          <button
             onClick={() => setShowExportMenu(!showExportMenu)}
-            className="p-2 rounded-lg transition-colors"
-            style={{ color: 'var(--color-text-muted)' }}
+            className="p-2 rounded-lg transition-all duration-200 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600"
             title="导出对话"
           >
             <Download size={16} />
-          </motion.button>
+          </button>
 
           <AnimatePresence>
             {showExportMenu && (
@@ -132,27 +126,21 @@ export default function ChatToolbar({
           </AnimatePresence>
         </div>
 
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+        <button
           onClick={onShare}
-          className="p-2 rounded-lg transition-colors"
-          style={{ color: 'var(--color-text-muted)' }}
+          className="p-2 rounded-lg transition-all duration-200 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600"
           title="分享对话"
         >
           <Share2 size={16} />
-        </motion.button>
+        </button>
 
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+        <button
           onClick={onSettings}
-          className="p-2 rounded-lg transition-colors"
-          style={{ color: 'var(--color-text-muted)' }}
+          className="p-2 rounded-lg transition-all duration-200 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600"
           title="对话设置"
         >
           <Settings size={16} />
-        </motion.button>
+        </button>
       </div>
     </div>
   );

@@ -8,11 +8,9 @@ import { useRef, useCallback, useEffect } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { Message } from '../../types/chat';
 import UnifiedMessageBubble from '../chat/UnifiedMessageBubble';
-import { TypingIndicator } from '../chat/TypingIndicator';
 
 interface VirtualMessageListProps {
   messages: Message[];
-  isLoading: boolean;
   isThinking?: boolean;
   streamingContent?: string;
   newMessageIds: Set<string>;
@@ -32,7 +30,6 @@ interface VirtualMessageListProps {
 
 export function VirtualMessageList({
   messages,
-  isLoading,
   isThinking = false,
   streamingContent,
   newMessageIds,
@@ -55,18 +52,8 @@ export function VirtualMessageList({
 
   const estimateSize = useCallback(() => 120, []);
 
-  // 判断是否显示正在输入指示器：
-  // 1. 当正在加载且最后一条消息是用户消息时（AI还未开始回复）
-  // 2. 或者最后一条消息正在流式传输中且有内容时（AI正在回复且内容已开始显示）
-  // 注意：思考中指示器现在显示在AI消息气泡内部，不在底部显示
-  // 当消息内容为空时（思考阶段），不显示底部指示器，避免与消息内部的思考中指示器重复
-  const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
-  const shouldShowTypingIndicator =
-    (isLoading && lastMessage?.role === 'user') ||
-    (lastMessage?.role === 'assistant' && lastMessage?.isStreaming && lastMessage?.content);
-
   const virtualizer = useVirtualizer({
-    count: messages.length + (shouldShowTypingIndicator ? 1 : 0),
+    count: messages.length,
     getScrollElement: () => containerRef.current,
     estimateSize,
     overscan: 5,
@@ -112,16 +99,12 @@ export function VirtualMessageList({
   useEffect(() => {
     const shouldScroll = !isUserScrollingRef.current;
     if (shouldScroll) {
-      const targetIndex = shouldShowTypingIndicator
-        ? messages.length // 如果有 typing indicator，滚动到它
-        : messages.length - 1;
-
-      virtualizer.scrollToIndex(targetIndex, {
+      virtualizer.scrollToIndex(messages.length - 1, {
         align: 'end',
         behavior: streamingContent ? 'auto' : 'smooth',
       });
     }
-  }, [messages.length, streamingContent, virtualizer, shouldShowTypingIndicator]);
+  }, [messages.length, streamingContent, virtualizer]);
 
   return (
     <div ref={containerRef} className="overflow-auto" style={{ height: '100%' }}>
@@ -133,26 +116,6 @@ export function VirtualMessageList({
         }}
       >
         {virtualizer.getVirtualItems().map((virtualRow) => {
-          const isTypingIndicatorItem =
-            shouldShowTypingIndicator && virtualRow.index === messages.length;
-
-          if (isTypingIndicatorItem) {
-            return (
-              <div
-                key={`typing-indicator-${virtualRow.index}`}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
-              >
-                <TypingIndicator message="正在思考..." />
-              </div>
-            );
-          }
-
           const message = messages[virtualRow.index];
           if (!message) return null;
 
@@ -173,7 +136,7 @@ export function VirtualMessageList({
                 transform: `translateY(${virtualRow.start}px)`,
               }}
             >
-              <div className="px-3 py-2">
+              <div className="px-4 py-3">
                 <UnifiedMessageBubble
                   message={message}
                   onFeedback={onFeedback}

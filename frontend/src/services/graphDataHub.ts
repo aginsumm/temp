@@ -138,8 +138,16 @@ class GraphDataHub extends EventEmitter<GraphDataHubEvents> {
     });
 
     window.addEventListener('loadSnapshot', (event) => {
-      const customEvent = event as CustomEvent<any>;
-      const { entities, relations, keywords, snapshot } = customEvent.detail;
+      const customEvent = event as CustomEvent<{
+        entities?: Entity[];
+        relations?: Relation[];
+        keywords?: string[];
+        snapshot?: {
+          session_id?: string;
+          message_id?: string;
+        };
+      }>;
+      const { entities = [], relations = [], keywords = [], snapshot } = customEvent.detail;
 
       this.enqueueUpdate({
         entities,

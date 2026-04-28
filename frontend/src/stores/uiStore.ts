@@ -26,11 +26,11 @@ interface UIState {
 }
 
 const MIN_SIDEBAR_WIDTH = 180;
-const MAX_SIDEBAR_WIDTH = 360;
+const MAX_SIDEBAR_WIDTH = 600;
 const MIN_RIGHT_PANEL_WIDTH = 220;
-const MAX_RIGHT_PANEL_WIDTH = 600; // 原来的 1.5 倍：400 * 1.5 = 600
-const DEFAULT_SIDEBAR_WIDTH = 240;
-const DEFAULT_RIGHT_PANEL_WIDTH = 280;
+const MAX_RIGHT_PANEL_WIDTH = 800;
+const DEFAULT_SIDEBAR_WIDTH = 260;
+const DEFAULT_RIGHT_PANEL_WIDTH = 320;
 
 export const useUIStore = create<UIState>()(
   persist(
@@ -107,5 +107,3 @@ export const useUIStore = create<UIState>()(
 );
 
 export { MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, MIN_RIGHT_PANEL_WIDTH, MAX_RIGHT_PANEL_WIDTH };
-
-export { useThemeStore } from './themeStore';

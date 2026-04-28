@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronRight,
   Tag,
-  GripVertical,
   PanelRightClose,
   PanelRightOpen,
   Search,
@@ -252,20 +251,13 @@ export default function RightPanel({
     switch (activeTab) {
       case 'keywords':
         return (
-          <motion.div
-            key="keywords"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="p-3"
-          >
+          <div key="keywords" className="p-3 animate-fade-in">
             {processedKeywords.length > 0 && (
               <div className="mb-3">
                 <div
                   className="flex items-center gap-2 px-3 py-2 rounded-lg"
                   style={{
                     background: 'var(--color-background-secondary)',
-                    border: '1px solid var(--color-border-light)',
                   }}
                 >
                   <Search size={14} style={{ color: 'var(--color-text-muted)' }} />
@@ -280,7 +272,7 @@ export default function RightPanel({
                   {keywordSearch && (
                     <button
                       onClick={() => setKeywordSearch('')}
-                      className="p-0.5 rounded"
+                      className="p-0.5 rounded hover:bg-gray-200 transition-colors"
                       style={{ color: 'var(--color-text-muted)' }}
                     >
                       <X size={12} />
@@ -293,32 +285,19 @@ export default function RightPanel({
             {filteredKeywords.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 {filteredKeywords.map((keyword, index) => (
-                  <motion.button
+                  <button
                     key={`${keyword.text}-${index}`}
-                    initial={{ opacity: 0, scale: 0.85 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: index * 0.04 }}
-                    whileHover={{ scale: 1.05, y: -1 }}
-                    whileTap={{ scale: 0.95 }}
                     onClick={() => onKeywordClick?.(keyword.text)}
-                    className="px-3 py-1.5 rounded-full text-xs transition-all duration-200 whitespace-nowrap flex items-center gap-1"
+                    className="px-2.5 py-1 rounded-md text-xs transition-all duration-200 whitespace-nowrap hover:translate-y-[-1px]"
                     style={{
-                      background: 'var(--color-surface)',
-                      border: '1px solid var(--color-border)',
+                      background: 'var(--color-background-secondary)',
                       color: 'var(--color-text-secondary)',
+                      fontSize: keyword.relevance && keyword.relevance > 0.8 ? '13px' : '12px',
+                      fontWeight: keyword.relevance && keyword.relevance > 0.8 ? 500 : 400,
                     }}
                   >
-                    <Tag size={10} />
                     {keyword.text}
-                    {keyword.relevance !== undefined && keyword.relevance < 1 && (
-                      <span
-                        className="ml-1 text-[10px]"
-                        style={{ color: 'var(--color-text-muted)' }}
-                      >
-                        {Math.round(keyword.relevance * 100)}%
-                      </span>
-                    )}
-                  </motion.button>
+                  </button>
                 ))}
               </div>
             ) : processedKeywords.length > 0 ? (
@@ -330,10 +309,10 @@ export default function RightPanel({
             ) : (
               <div className="text-center py-10">
                 <div
-                  className="w-14 h-14 mx-auto rounded-xl flex items-center justify-center mb-3"
-                  style={{ background: 'var(--color-background-tertiary)' }}
+                  className="w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-3"
+                  style={{ background: 'var(--color-background-secondary)' }}
                 >
-                  <Tag size={24} style={{ color: 'var(--color-text-muted)' }} />
+                  <Tag size={20} style={{ color: 'var(--color-text-muted)' }} />
                 </div>
                 <p className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
                   暂无关键词
@@ -346,7 +325,7 @@ export default function RightPanel({
                 </p>
               </div>
             )}
-          </motion.div>
+          </div>
         );
 
       case 'graph':
@@ -588,26 +567,22 @@ export default function RightPanel({
               </motion.button>
             </div>
 
-            <div className="flex gap-1 mt-2">
+            <div
+              className="flex gap-1 mt-2 p-1 rounded-lg"
+              style={{ background: 'var(--color-background-secondary)' }}
+            >
               {tabs.map((tab) => (
-                <motion.button
+                <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex-1 px-2 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1 transition-all ${
-                    activeTab === tab.id ? '' : ''
-                  }`}
+                  className="flex-1 px-2 py-1.5 rounded-md text-xs flex items-center justify-center gap-1 transition-all duration-200"
                   style={{
-                    background:
-                      activeTab === tab.id
-                        ? 'var(--color-primary)'
-                        : 'var(--color-background-secondary)',
+                    background: activeTab === tab.id ? 'var(--color-surface)' : 'transparent',
                     color:
-                      activeTab === tab.id
-                        ? 'var(--color-text-inverse)'
-                        : 'var(--color-text-secondary)',
+                      activeTab === tab.id ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                    boxShadow: activeTab === tab.id ? 'var(--shadow-sm)' : 'none',
+                    fontWeight: activeTab === tab.id ? 500 : 400,
                   }}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
                 >
                   <tab.icon size={12} />
                   <span className="hidden sm:inline">{tab.label}</span>
@@ -616,14 +591,17 @@ export default function RightPanel({
                       className="ml-0.5 px-1 rounded text-[10px]"
                       style={{
                         background:
-                          activeTab === tab.id ? 'rgba(255,255,255,0.2)' : 'var(--color-primary)',
-                        color: activeTab === tab.id ? 'inherit' : 'var(--color-text-inverse)',
+                          activeTab === tab.id ? 'var(--color-primary)' : 'var(--color-border)',
+                        color:
+                          activeTab === tab.id
+                            ? 'var(--color-text-inverse)'
+                            : 'var(--color-text-muted)',
                       }}
                     >
                       {tab.count}
                     </span>
                   )}
-                </motion.button>
+                </button>
               ))}
             </div>
           </div>
@@ -648,14 +626,9 @@ export default function RightPanel({
         {!rightPanelCollapsed && (
           <div
             onMouseDown={handleMouseDown}
-            className="absolute top-0 left-0 w-1.5 h-full cursor-col-resize group transition-colors"
-            style={{
-              background: isResizing ? 'var(--color-primary)' : 'transparent',
-            }}
+            className={`panel-resize-handle ${isResizing ? 'resizing' : ''}`}
           >
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-12 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <GripVertical size={14} style={{ color: 'var(--color-text-muted)' }} />
-            </div>
+            <div className="panel-resize-indicator" />
           </div>
         )}
       </motion.aside>

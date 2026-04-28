@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { graphSyncService } from '../graphSyncService';
 import { graphDataHub } from '../graphDataHub';
+import type { Entity, Relation } from '../../types/graph';
 
 describe('GraphSyncService Integration Tests', () => {
   beforeEach(() => {
     graphDataHub.clear();
-    // 重置监听器
-    (graphSyncService as any).listeners.clear();
+    // 重置监听器 - 使用 unknown 转换避免类型错误
+    (graphSyncService as unknown as Record<string, unknown>).listeners = new Map();
   });
 
   afterEach(() => {
@@ -17,8 +18,10 @@ describe('GraphSyncService Integration Tests', () => {
 
   describe('Cross-Module Synchronization', () => {
     it('should sync data from Chat to Knowledge module', async () => {
-      const chatEntities = [{ id: '1', name: 'EntityFromChat', type: 'inheritor' as const }];
-      const chatRelations: any[] = [];
+      const chatEntities: Entity[] = [
+        { id: '1', name: 'EntityFromChat', type: 'inheritor' as const },
+      ];
+      const chatRelations: Relation[] = [];
       const chatKeywords = ['chat-keyword'];
 
       const knowledgeCallback = vi.fn();
@@ -34,10 +37,10 @@ describe('GraphSyncService Integration Tests', () => {
     });
 
     it('should sync data from Knowledge to Chat module', async () => {
-      const knowledgeEntities = [
+      const knowledgeEntities: Entity[] = [
         { id: '1', name: 'EntityFromKnowledge', type: 'technique' as const },
       ];
-      const knowledgeRelations: any[] = [];
+      const knowledgeRelations: Relation[] = [];
       const knowledgeKeywords = ['knowledge-keyword'];
 
       const chatCallback = vi.fn();
@@ -74,8 +77,10 @@ describe('GraphSyncService Integration Tests', () => {
 
   describe('Snapshot Loading', () => {
     it('should sync snapshot data to all modules', async () => {
-      const snapshotEntities = [{ id: '1', name: 'SnapshotEntity', type: 'work' as const }];
-      const snapshotRelations: any[] = [];
+      const snapshotEntities: Entity[] = [
+        { id: '1', name: 'SnapshotEntity', type: 'work' as const },
+      ];
+      const snapshotRelations: Relation[] = [];
       const snapshotKeywords = ['snapshot-keyword'];
 
       const chatCallback = vi.fn();
@@ -160,11 +165,21 @@ describe('GraphSyncService Integration Tests', () => {
   describe('State Consistency', () => {
     it('should maintain consistent state across modules', async () => {
       const testEntities = [{ id: '1', name: 'TestEntity', type: 'pattern' as const }];
-      const testRelations: any[] = [{ source: '1', target: '2', type: 'related_to' }];
+      const testRelations: Relation[] = [{ source: '1', target: '2', type: 'related_to' }];
       const testKeywords = ['test'];
 
-      const module1State: any[] = [];
-      const module2State: any[] = [];
+      const module1State: Array<{
+        entities: Entity[];
+        relations: Relation[];
+        keywords: string[];
+        source: string;
+      }> = [];
+      const module2State: Array<{
+        entities: Entity[];
+        relations: Relation[];
+        keywords: string[];
+        source: string;
+      }> = [];
 
       graphSyncService.subscribe('module-1', (data) => {
         module1State.push(data);

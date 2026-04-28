@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
 import json
 import logging
+import sys
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -30,6 +32,8 @@ from app.services.chat_service import SessionService, MessageService
 from app.services.llm_service import llm_service
 from app.services.source_retrieval import retrieve_sources_from_knowledge
 from app.services.question_generator import question_generator
+from app.services.response_quality import response_quality_evaluator
+from app.services.dynamic_prompt import classify_question
 from app.models.chat import MessageRole
 
 router = APIRouter(prefix="/api/v1", tags=["chat"])
@@ -39,6 +43,15 @@ logger = logging.getLogger(__name__)
 MAX_ENTITIES = 5
 MAX_KEYWORDS = 5
 STREAM_CHUNK_DELAY = 0.03
+MAX_CONTENT_LENGTH = 5000  # 最大输入长度
+
+
+def generate_entity_id(name: str, entity_type: str) -> str:
+    """生成一致的实体 ID（基于名称和类型的哈希）"""
+    import hashlib
+    key = f"{name.lower().strip()}_{entity_type}"
+    hash_value = hashlib.md5(key.encode()).hexdigest()[:12]
+    return f"ent_{hash_value}"
 
 MOCK_SOURCES = [
     {
@@ -175,6 +188,16 @@ async def send_message(
     message_service = MessageService(db)
 
     try:
+        # 输入验证
+        if not request.content or not request.content.strip():
+            raise HTTPException(status_code=400, detail="消息内容不能为空")
+        
+        if len(request.content) > MAX_CONTENT_LENGTH:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"消息内容过长，最大支持{MAX_CONTENT_LENGTH}字"
+            )
+        
         session = await session_service.get_session(request.session_id)
         if not session:
             raise HTTPException(status_code=404, detail="会话不存在")
@@ -239,7 +262,19 @@ async def send_message_stream(
     message_service = MessageService(db)
 
     try:
+        # 输入验证
+        if not request.content or not request.content.strip():
+            raise HTTPException(status_code=400, detail="消息内容不能为空")
+        
+        if len(request.content) > MAX_CONTENT_LENGTH:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"消息内容过长，最大支持{MAX_CONTENT_LENGTH}字"
+            )
+        
         session = await session_service.get_session(request.session_id)
+        session_created = False
+        
         if not session:
             print(f"⚠️ 流式接口发现未知的会话 ID: {request.session_id}，正在自动创建...")
             from app.models.chat import Session
@@ -253,6 +288,7 @@ async def send_message_stream(
             db.add(new_session)
             await db.flush()
             session = new_session
+            session_created = True
 
         # 处理文件 URL，将其附加到消息内容中
         user_content = request.content
@@ -276,7 +312,7 @@ async def send_message_stream(
         raise HTTPException(status_code=500, detail=f"创建消息失败: {str(e)}")
 
     def deduplicate_entities(entities: list) -> list:
-        """实体去重：基于名称和类型合并相同实体"""
+        """实体去重：基于名称和类型合并相同实体，保留更详细的信息"""
         if not entities:
             return []
         
@@ -284,26 +320,37 @@ async def send_message_stream(
         for entity in entities:
             key = f"{entity.name.lower().strip()}_{entity.type}"
             if key not in seen:
+                # 使用一致的 ID 生成逻辑
+                entity.id = generate_entity_id(entity.name, entity.type.value if hasattr(entity.type, 'value') else entity.type)
                 seen[key] = entity
             else:
                 existing = seen[key]
-                if entity.description and not existing.description:
+                # 保留更详细的描述
+                if entity.description and (not existing.description or len(entity.description) > len(existing.description)):
                     existing.description = entity.description
+                # 保留更高的相关性分数
                 if entity.relevance and (not existing.relevance or entity.relevance > existing.relevance):
                     existing.relevance = entity.relevance
+                # 保留更高的重要性分数
                 if entity.importance and (not existing.importance or entity.importance > existing.importance):
                     existing.importance = entity.importance
         
         return list(seen.values())
 
     def deduplicate_relations(relations: list) -> list:
-        """关系去重：基于 source-target-type 合并相同关系"""
+        """关系去重：基于 source-target-type 合并相同关系，处理双向关系"""
         if not relations:
             return []
         
         seen = {}
         for relation in relations:
-            key = f"{relation.source}_{relation.target}_{relation.type}"
+            # 对于双向关系，规范化 key 的顺序
+            if getattr(relation, 'bidirectional', False):
+                source_target = tuple(sorted([relation.source, relation.target]))
+                key = f"{source_target[0]}_{source_target[1]}_{relation.type}"
+            else:
+                key = f"{relation.source}_{relation.target}_{relation.type}"
+            
             if key not in seen:
                 seen[key] = relation
             else:
@@ -316,94 +363,183 @@ async def send_message_stream(
     async def generate():
         full_content = ""
         accumulated_length = 0
+        estimated_length = len(request.content) * 3  # 初始估算响应长度（基于输入长度的 3 倍）
+        last_progress_sent = 0
+        dynamic_adjustment_enabled = True  # 启用动态调整
         
         try:
+            # 发送开始事件，包含预估长度
+            start_data = json.dumps({
+                "type": "start",
+                "estimated_length": estimated_length,
+                "dynamic_adjustment": dynamic_adjustment_enabled  # 告知前端是否启用动态调整
+            }, ensure_ascii=False)
+            yield f"data: {start_data}\n\n"
+            sys.stdout.flush()
+            
+            # 如果会话是刚创建的，通知前端
+            if session_created:
+                session_info = json.dumps({
+                    "type": "session_created",
+                    "session_id": session.id,
+                    "title": session.title
+                }, ensure_ascii=False)
+                yield f"data: {session_info}\n\n"
+                sys.stdout.flush()
+            
             if request.resume_from is not None:
                 yield f"data: {json.dumps({'type': 'resume', 'offset': request.resume_from}, ensure_ascii=False)}\n\n"
+                sys.stdout.flush()
             
-            async for chunk in llm_service.chat_stream(request.content):
+            # 使用处理后的 user_content（包含 file_urls 引用等），确保模型输入与持久化一致
+            async for chunk in llm_service.chat_stream(user_content):
                 full_content += chunk
                 accumulated_length += len(chunk)
                 
+                # 动态调整估算长度（如果实际长度超过估算）
+                if dynamic_adjustment_enabled and accumulated_length > estimated_length:
+                    # 使用实际长度的 1.2 倍作为新估算，留出余量
+                    estimated_length = int(accumulated_length * 1.2)
+                
+                # 发送内容块
                 data = json.dumps({
                     "type": "content_chunk",
                     "content": chunk,
                     "accumulated_length": accumulated_length
                 }, ensure_ascii=False)
                 yield f"data: {data}\n\n"
+                sys.stdout.flush()
+                
+                # 每 300 字符发送一次进度更新
+                if accumulated_length - last_progress_sent >= 300:
+                    progress_data = json.dumps({
+                        "type": "progress",
+                        "current_length": accumulated_length,
+                        "estimated_total": estimated_length,
+                        "percent_complete": min(100, round(accumulated_length / max(estimated_length, 1) * 100)),
+                        "is_dynamic": dynamic_adjustment_enabled  # 告知前端是否使用了动态调整
+                    }, ensure_ascii=False)
+                    yield f"data: {progress_data}\n\n"
+                    sys.stdout.flush()
+                    last_progress_sent = accumulated_length
 
-            entities = await llm_service.extract_entities(full_content)
-            keywords = await llm_service.extract_keywords(full_content)
-            relations = await llm_service.extract_relations(full_content, entities)
-
-            # 实体和关系去重
-            entities = deduplicate_entities(entities)
-            relations = deduplicate_relations(relations)
-
-            if entities:
-                entities_data = json.dumps({
-                    "type": "entities",
-                    "entities": [e.model_dump() for e in entities],
-                    "is_incremental": False
-                }, ensure_ascii=False)
-                yield f"data: {entities_data}\n\n"
-
-            if keywords:
-                keywords_data = json.dumps({
-                    "type": "keywords",
-                    "keywords": list(dict.fromkeys(keywords))  # 关键词去重
-                }, ensure_ascii=False)
-                yield f"data: {keywords_data}\n\n"
-
-            if relations:
-                relations_data = json.dumps({
-                    "type": "relations",
-                    "relations": [r.model_dump() for r in relations]
-                }, ensure_ascii=False)
-                yield f"data: {relations_data}\n\n"
-
-            # 动态检索相关来源，替换硬编码的 MOCK_SOURCES
-            sources = await retrieve_sources_from_knowledge(db, request.content, entities)
-
-            try:
-                ai_message = await message_service.create_message(
-                    session_id=request.session_id,
-                    content=full_content,
-                    role=MessageRole.assistant,
-                    sources=sources,
-                    entities=entities,
-                    keywords=keywords,
-                    relations=relations,
-                )
-                message_id = ai_message.id
-            except Exception as db_error:
-                logger.error(f"Error saving AI message: {db_error}")
-                message_id = f"msg_{datetime.now(timezone.utc).timestamp()}"
-                sources = []
-
+            # ✅ 关键修复：立即发送 complete 和 [DONE]，让前端知道文字输出完成
+            # 实体提取、数据库保存等操作在后台异步执行，不阻塞用户看到完整的回答
+            
+            # 生成临时 message_id
+            temp_message_id = f"msg_{datetime.now(timezone.utc).timestamp()}"
+            
+            # 立即发送 complete 事件（仅包含文字内容）
             complete_data = json.dumps(
                 {
                     "type": "complete",
-                    "message_id": message_id,
+                    "message_id": temp_message_id,
                     "content": full_content,
-                    "sources": [s.model_dump() for s in sources],
-                    "entities": [e.model_dump() for e in entities],
-                    "keywords": keywords,
-                    "relations": [r.model_dump() for r in relations],
+                    "sources": [],
+                    "entities": [],
+                    "keywords": [],
+                    "relations": [],
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "role": "assistant",
+                    "saved_to_db": False,
+                    "is_fallback_id": True,
                 },
                 ensure_ascii=False,
             )
             yield f"data: {complete_data}\n\n"
+            sys.stdout.flush()
+            
+            # ✅ 关键修复：立即发送 [DONE] 标记，让前端关闭连接
+            yield "data: [DONE]\n\n"
+            sys.stdout.flush()
+            
+            # 现在在后台异步执行实体提取、来源检索和数据库保存
+            # 这些操作不再阻塞用户看到完整的回答
+            try:
+                # 提取实体、关键词、关系
+                entities = await llm_service.extract_entities(full_content)
+                keywords = await llm_service.extract_keywords(full_content)
+                relations = await llm_service.extract_relations(full_content, entities)
+
+                # 实体和关系去重
+                entities = deduplicate_entities(entities)
+                relations = deduplicate_relations(relations)
+
+                # 动态检索相关来源，替换硬编码的 MOCK_SOURCES
+                sources = await retrieve_sources_from_knowledge(db, request.content, entities)
+
+                # ✅ 优化 6：评估回答质量
+                question_type = classify_question(request.content)
+                quality_score = response_quality_evaluator.evaluate(
+                    response=full_content,
+                    question=request.content,
+                    question_type=question_type,
+                    entities=entities
+                )
+                logger.info(f"📊 回答质量评分: {quality_score['total_score']} ({quality_score['level']})")
+
+                # 如果质量评分过低，记录警告
+                if quality_score['total_score'] < 0.6:
+                    logger.warning(f"⚠️ 回答质量较低，建议改进: {quality_score['suggestions']}")
+
+                # 消息保存重试机制（最多重试 3 次）
+                message_id = None
+                save_success = False
+                max_save_retries = 3
+                
+                for attempt in range(max_save_retries):
+                    try:
+                        ai_message = await message_service.create_message(
+                            session_id=request.session_id,
+                            content=full_content,
+                            role=MessageRole.assistant,
+                            sources=sources,
+                            entities=entities,
+                            keywords=keywords,
+                            relations=relations,
+                        )
+                        message_id = ai_message.id
+                        save_success = True
+                        break
+                    except Exception as db_error:
+                        logger.error(f"Error saving AI message (attempt {attempt + 1}/{max_save_retries}): {db_error}", exc_info=True)
+                        if attempt < max_save_retries - 1:
+                            await asyncio.sleep(0.5 * (attempt + 1))  # 指数退避
+                        else:
+                            logger.error(f"Failed to save message after {max_save_retries} attempts")
+                
+                if not save_success:
+                    # 所有重试都失败，使用降级方案
+                    logger.critical(f"Message persistence failed, using fallback")
+                    logger.warning(f"Message saved with fallback ID")
+                else:
+                    logger.info(f"Message saved successfully with ID: {message_id}")
+                
+            except Exception as enrichment_error:
+                logger.error(f"Background enrichment failed: {enrichment_error}", exc_info=True)
+                # 后台 enrichment 失败不影响已经发送的响应
 
         except Exception as e:
-            logger.error(f"Stream error: {e}")
+            logger.error(f"Stream error: {e}", exc_info=True)
+            # 生成重试 token（基于会话 ID、请求内容哈希和时间戳）
+            import hashlib
+            # 使用更多维度生成唯一 retry_token，确保恢复时能验证一致性
+            token_source = f"{request.session_id}:{request.content}:{accumulated_length}:{datetime.now(timezone.utc).timestamp()}"
+            retry_token = hashlib.sha256(token_source.encode()).hexdigest()[:16]
+            
             error_data = json.dumps({
                 "type": "error",
                 "code": "STREAM_ERROR",
                 "message": str(e),
-                "recoverable": True
+                "recoverable": True,
+                "retry_token": retry_token,
+                "partial_content": full_content,
+                "accumulated_length": accumulated_length,
+                "session_id": request.session_id,  # 新增：会话 ID，用于恢复时验证
+                "can_resume_from": accumulated_length if full_content else None  # 新增：可续传位置
             }, ensure_ascii=False)
             yield f"data: {error_data}\n\n"
+            sys.stdout.flush()
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -452,12 +588,16 @@ async def get_recommendations(
                 if last_user_msg:
                     context_content = context_content or last_user_msg["content"]
 
-        hour = datetime.now().hour
-        if 6 <= hour < 12:
+        # 使用 UTC 时间，确保时区一致性
+        hour = datetime.now(timezone.utc).hour
+        # 转换为北京时间（UTC+8）
+        beijing_hour = (hour + 8) % 24
+        
+        if 6 <= beijing_hour < 12:
             time_of_day = 'morning'
-        elif 12 <= hour < 18:
+        elif 12 <= beijing_hour < 18:
             time_of_day = 'afternoon'
-        elif 18 <= hour < 23:
+        elif 18 <= beijing_hour < 23:
             time_of_day = 'evening'
         else:
             time_of_day = 'night'
@@ -742,6 +882,13 @@ async def regenerate_message(
         if original_message.role != MessageRole.assistant:
             raise HTTPException(status_code=400, detail="只能重新生成 AI 回复")
 
+        # 权限检查：验证用户是否有权访问该会话
+        session = await session_service.get_session(original_message.session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        if session.user_id != user_id:
+            raise HTTPException(status_code=403, detail="无权操作该消息")
+
         # 获取用户消息（上一条消息）
         messages = await message_service.get_messages_by_session(
             original_message.session_id, page=1, page_size=100
@@ -809,6 +956,13 @@ async def regenerate_message_stream(
         if original_message.role != MessageRole.assistant:
             raise HTTPException(status_code=400, detail="只能重新生成 AI 回复")
 
+        # 权限检查：验证用户是否有权访问该会话
+        session = await session_service.get_session(original_message.session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        if session.user_id != user_id:
+            raise HTTPException(status_code=403, detail="无权操作该消息")
+
         # 获取用户消息
         messages = await message_service.get_messages_by_session(
             original_message.session_id, page=1, page_size=100
@@ -844,34 +998,74 @@ async def regenerate_message_stream(
                     "accumulated_length": accumulated_length
                 }, ensure_ascii=False)
                 yield f"data: {data}\n\n"
+                sys.stdout.flush()
 
-            entities = await llm_service.extract_entities(full_content)
-            keywords = await llm_service.extract_keywords(full_content)
-            relations = await llm_service.extract_relations(full_content, entities)
-            sources = await retrieve_sources_from_knowledge(db, user_message.content, entities)
+            # ✅ 关键修复：立即发送 complete 和 [DONE]，让前端知道文字输出完成
+            # 实体提取、数据库更新等操作在后台异步执行
+            
+            # 立即发送 complete 事件（仅包含文字内容）
+            yield f"data: {json.dumps({
+                'type': 'complete',
+                'message_id': message_id,
+                'content': full_content,
+                'sources': [],
+                'entities': [],
+                'keywords': [],
+                'relations': [],
+                'created_at': datetime.now(timezone.utc).isoformat(),
+                'role': 'assistant',
+            }, ensure_ascii=False)}\n\n"
+            
+            # ✅ 关键修复：立即发送 [DONE] 标记，让前端关闭连接
+            yield "data: [DONE]\n\n"
+            
+            # ✅ 关键修复：刷新缓冲区
+            sys.stdout.flush()
+            
+            # 现在在后台异步执行实体提取、来源检索和数据库更新
+            try:
+                entities = await llm_service.extract_entities(full_content)
+                keywords = await llm_service.extract_keywords(full_content)
+                relations = await llm_service.extract_relations(full_content, entities)
+                sources = await retrieve_sources_from_knowledge(db, user_message.content, entities)
 
-            if entities:
-                yield f"data: {json.dumps({'type': 'entities', 'entities': [e.model_dump() for e in entities]}, ensure_ascii=False)}\n\n"
+                if entities:
+                    yield f"data: {json.dumps({'type': 'entities', 'entities': [e.model_dump() for e in entities]}, ensure_ascii=False)}\n\n"
+                    sys.stdout.flush()
 
-            if keywords:
-                yield f"data: {json.dumps({'type': 'keywords', 'keywords': keywords}, ensure_ascii=False)}\n\n"
+                if keywords:
+                    yield f"data: {json.dumps({'type': 'keywords', 'keywords': keywords}, ensure_ascii=False)}\n\n"
+                    sys.stdout.flush()
 
-            if relations:
-                yield f"data: {json.dumps({'type': 'relations', 'relations': [r.model_dump() for r in relations]}, ensure_ascii=False)}\n\n"
+                if relations:
+                    yield f"data: {json.dumps({'type': 'relations', 'relations': [r.model_dump() for r in relations]}, ensure_ascii=False)}\n\n"
+                    sys.stdout.flush()
 
-            await message_service.update_message(
-                message_id=message_id,
-                content=full_content,
-                sources=sources,
-                entities=entities,
-                keywords=keywords,
-                relations=relations,
-            )
-
-            yield f"data: {json.dumps({'type': 'complete', 'message_id': message_id, 'content': full_content}, ensure_ascii=False)}\n\n"
+                await message_service.update_message(
+                    message_id=message_id,
+                    content=full_content,
+                    sources=sources,
+                    entities=entities,
+                    keywords=keywords,
+                    relations=relations,
+                )
+                
+                logger.info(f"Message {message_id} updated successfully")
+                
+            except Exception as enrichment_error:
+                logger.error(f"Background enrichment failed: {enrichment_error}", exc_info=True)
+            
+            # ✅ 修复：显式返回，结束生成器
+            return
 
         except Exception as e:
             logger.error(f"Stream regeneration error: {e}")
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({
+                'type': 'error',
+                'code': 'STREAM_ERROR',
+                'message': str(e),
+                'recoverable': True
+            }, ensure_ascii=False)}\n\n"
+            sys.stdout.flush()
 
     return StreamingResponse(generate(), media_type="text/event-stream")

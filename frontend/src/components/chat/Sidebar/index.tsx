@@ -12,7 +12,6 @@ import {
   Trash2,
   Edit2,
   FolderOpen,
-  GripVertical,
   Clock,
   Archive,
 } from 'lucide-react';
@@ -334,27 +333,16 @@ export default function Sidebar({
     const isSelected = selectedSessions.has(session.id);
 
     return (
-      <motion.div
-        layout
-        initial={{ opacity: 0, x: -12 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: -12 }}
-        whileHover={{ x: 3 }}
-        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-150 group relative"
+      <div
+        className="flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-all duration-150 group relative hover:translate-x-[2px]"
         style={{
-          background:
-            currentSessionId === session.id
-              ? 'var(--color-primary-light)'
-              : isSelected
-                ? 'var(--color-background-secondary)'
-                : 'transparent',
-          borderLeft:
-            currentSessionId === session.id
-              ? '2.5px solid var(--color-primary)'
-              : isSelected
-                ? '2.5px solid var(--color-secondary)'
-                : 'none',
-          boxShadow: currentSessionId === session.id ? 'var(--color-shadow)' : 'none',
+          background: isSelected
+            ? 'var(--color-primary-light)'
+            : currentSessionId === session.id
+              ? 'var(--color-background-secondary)'
+              : 'transparent',
+          color:
+            currentSessionId === session.id ? 'var(--color-primary)' : 'var(--color-text-primary)',
         }}
         onClick={() => {
           if (isSelectionMode) handleSelectSession(session.id);
@@ -364,14 +352,14 @@ export default function Sidebar({
       >
         {isSelectionMode && (
           <div
-            className="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0"
+            className="w-3.5 h-3.5 rounded border-2 flex items-center justify-center flex-shrink-0"
             style={{
               borderColor: isSelected ? 'var(--color-primary)' : 'var(--color-border)',
               background: isSelected ? 'var(--color-primary)' : 'transparent',
             }}
           >
             {isSelected && (
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
                 <path
                   d="M2 5L4 7L8 3"
                   stroke="white"
@@ -384,7 +372,7 @@ export default function Sidebar({
           </div>
         )}
         <div
-          className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+          className="flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center transition-colors"
           style={{
             background:
               currentSessionId === session.id
@@ -394,7 +382,7 @@ export default function Sidebar({
               currentSessionId === session.id ? 'var(--color-primary)' : 'var(--color-text-muted)',
           }}
         >
-          <MessageSquare size={15} />
+          <MessageSquare size={14} />
         </div>
         <div className="flex-1 min-w-0">
           {isEditing ? (
@@ -408,7 +396,7 @@ export default function Sidebar({
               }}
               onBlur={handleSaveEdit}
               autoFocus
-              className="w-full px-2 py-1 text-sm rounded-lg outline-none"
+              className="w-full px-2 py-0.5 text-sm rounded outline-none"
               style={{
                 background: 'var(--color-background-secondary)',
                 color: 'var(--color-text-primary)',
@@ -419,33 +407,31 @@ export default function Sidebar({
           ) : (
             <>
               <p
-                className="text-sm font-medium truncate"
+                className="text-sm truncate leading-tight"
                 style={{
                   color:
                     currentSessionId === session.id
                       ? 'var(--color-primary)'
                       : 'var(--color-text-primary)',
+                  fontWeight: currentSessionId === session.id ? 500 : 400,
                 }}
               >
                 {session.title}
               </p>
               <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-                {formatTime(session.updated_at || session.created_at)} ·{' '}
-                {session.message_count || 0}条
+                {formatTime(session.updated_at || session.created_at)}
               </p>
             </>
           )}
         </div>
         {session.is_pinned && !isEditing && (
-          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex-shrink-0">
-            <Pin size={11} style={{ color: 'var(--color-secondary)' }} />
-          </motion.div>
+          <div className="flex-shrink-0">
+            <Pin size={10} style={{ color: 'var(--color-secondary)' }} />
+          </div>
         )}
         {!isEditing && (
-          <motion.button
-            initial={{ opacity: 0 }}
-            whileHover={{ opacity: 1 }}
-            className="opacity-0 group-hover:opacity-100 p-1 rounded-md transition-all"
+          <button
+            className="opacity-0 group-hover:opacity-100 p-1 rounded transition-all hover:bg-gray-100 dark:hover:bg-gray-700"
             style={{ background: 'transparent' }}
             onClick={(e) => {
               e.stopPropagation();
@@ -453,9 +439,9 @@ export default function Sidebar({
             }}
           >
             <MoreVertical size={12} style={{ color: 'var(--color-text-muted)' }} />
-          </motion.button>
+          </button>
         )}
-      </motion.div>
+      </div>
     );
   };
 
@@ -621,302 +607,265 @@ export default function Sidebar({
             </div>
 
             <div className="flex-1 overflow-y-auto">
-              <AnimatePresence mode="wait">
-                {activeTab === 'sessions' && (
-                  <motion.div
-                    key="sessions"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="p-2"
-                  >
-                    {isSelectionMode && (
-                      <div
-                        className="flex items-center justify-between px-2 py-2 mb-2 rounded-lg"
-                        style={{ background: 'var(--color-background-secondary)' }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={handleSelectAll}
-                            className="text-xs px-2 py-1 rounded"
-                            style={{ color: 'var(--color-primary)' }}
-                          >
-                            {selectedSessions.size === filteredSessions.length
-                              ? '取消全选'
-                              : '全选'}
-                          </button>
-                          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                            已选 {selectedSessions.size} 项
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={handleBatchArchive}
-                            disabled={selectedSessions.size === 0}
-                            className="flex items-center gap-1 text-xs px-2 py-1 rounded disabled:opacity-50"
-                            style={{ color: 'var(--color-text-secondary)' }}
-                          >
-                            <Archive size={12} />
-                            归档
-                          </button>
-                          <button
-                            onClick={handleBatchDelete}
-                            disabled={selectedSessions.size === 0}
-                            className="flex items-center gap-1 text-xs px-2 py-1 rounded disabled:opacity-50"
-                            style={{ color: 'var(--color-error)' }}
-                          >
-                            <Trash2 size={12} />
-                            删除
-                          </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {filterType !== 'all' && (
-                      <div className="flex items-center justify-between px-2 py-1 mb-2">
-                        <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                          筛选: {filterType === 'pinned' ? '已置顶' : '已归档'}
-                        </span>
+              {activeTab === 'sessions' && (
+                <div className="p-2">
+                  {isSelectionMode && (
+                    <div
+                      className="flex items-center justify-between px-2 py-2 mb-2 rounded-lg"
+                      style={{ background: 'var(--color-background-secondary)' }}
+                    >
+                      <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setFilterType('all')}
-                          className="text-xs"
+                          onClick={handleSelectAll}
+                          className="text-xs px-2 py-1 rounded"
                           style={{ color: 'var(--color-primary)' }}
                         >
-                          清除筛选
+                          {selectedSessions.size === filteredSessions.length ? '取消全选' : '全选'}
+                        </button>
+                        <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                          已选 {selectedSessions.size} 项
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={handleBatchArchive}
+                          disabled={selectedSessions.size === 0}
+                          className="flex items-center gap-1 text-xs px-2 py-1 rounded disabled:opacity-50"
+                          style={{ color: 'var(--color-text-secondary)' }}
+                        >
+                          <Archive size={12} />
+                          归档
+                        </button>
+                        <button
+                          onClick={handleBatchDelete}
+                          disabled={selectedSessions.size === 0}
+                          className="flex items-center gap-1 text-xs px-2 py-1 rounded disabled:opacity-50"
+                          style={{ color: 'var(--color-error)' }}
+                        >
+                          <Trash2 size={12} />
+                          删除
                         </button>
                       </div>
-                    )}
+                    </div>
+                  )}
 
-                    {(() => {
-                      const groupedSessions = groupSessionsByDate(regularSessions);
+                  {filterType !== 'all' && (
+                    <div className="flex items-center justify-between px-2 py-1 mb-2">
+                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                        筛选: {filterType === 'pinned' ? '已置顶' : '已归档'}
+                      </span>
+                      <button
+                        onClick={() => setFilterType('all')}
+                        className="text-xs"
+                        style={{ color: 'var(--color-primary)' }}
+                      >
+                        清除筛选
+                      </button>
+                    </div>
+                  )}
 
-                      if (pinnedSessions.length > 0) {
-                        return (
-                          <>
-                            <div className="mb-1.5">
-                              <p
-                                className="text-[10px] px-2 py-1 font-medium"
-                                style={{ color: 'var(--color-text-muted)' }}
-                              >
-                                置顶会话
-                              </p>
-                              {pinnedSessions.map((session) => (
-                                <SessionItem key={session.id} session={session} />
-                              ))}
-                            </div>
+                  {(() => {
+                    const groupedSessions = groupSessionsByDate(regularSessions);
 
-                            {groupedSessions.map((group) => (
-                              <div key={group.label} className="mb-1.5">
-                                <p
-                                  className="text-[10px] px-2 py-1 font-medium"
-                                  style={{ color: 'var(--color-text-muted)' }}
-                                >
-                                  {group.label}
-                                </p>
-                                {group.sessions.map((session) => (
-                                  <SessionItem key={session.id} session={session} />
-                                ))}
-                              </div>
-                            ))}
-                          </>
-                        );
-                      }
-
-                      if (groupedSessions.length > 0) {
-                        return groupedSessions.map((group) => (
-                          <div key={group.label} className="mb-1.5">
+                    if (pinnedSessions.length > 0) {
+                      return (
+                        <>
+                          <div className="mb-1.5">
                             <p
                               className="text-[10px] px-2 py-1 font-medium"
                               style={{ color: 'var(--color-text-muted)' }}
                             >
-                              {group.label}
+                              置顶会话
                             </p>
-                            {group.sessions.map((session) => (
+                            {pinnedSessions.map((session) => (
                               <SessionItem key={session.id} session={session} />
                             ))}
                           </div>
-                        ));
-                      }
 
-                      return (
-                        <div className="text-center py-8">
-                          <FolderOpen
-                            size={36}
-                            className="mx-auto mb-2"
-                            style={{ color: 'var(--color-text-muted)', opacity: 0.5 }}
-                          />
-                          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                            暂无会话记录
-                          </p>
-                          <p
-                            className="text-[10px] mt-1"
-                            style={{ color: 'var(--color-text-muted)', opacity: 0.7 }}
-                          >
-                            点击上方按钮开始新对话
-                          </p>
-                        </div>
-                      );
-                    })()}
-                  </motion.div>
-                )}
-
-                {activeTab === 'favorites' && (
-                  <motion.div
-                    key="favorites"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="p-2 space-y-0.5"
-                  >
-                    {favoriteQuestions.length > 0 ? (
-                      favoriteQuestions.map((item, index) => (
-                        <motion.button
-                          key={item.id}
-                          initial={{ opacity: 0, x: -16 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.04 }}
-                          whileHover={{ x: 2, background: 'var(--color-background-secondary)' }}
-                          onClick={() => handleFavoriteClick(item.question)}
-                          className="w-full flex items-start gap-2 p-2.5 rounded-lg transition-colors text-left group"
-                          style={{ background: 'transparent' }}
-                        >
-                          <Star
-                            size={12}
-                            className="mt-0.5 flex-shrink-0"
-                            style={{ color: 'var(--color-secondary)' }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p
-                              className="text-xs line-clamp-2"
-                              style={{ color: 'var(--color-text-primary)' }}
-                            >
-                              {item.question}
-                            </p>
-                            <div className="flex items-center gap-2 mt-0.5">
+                          {groupedSessions.map((group) => (
+                            <div key={group.label} className="mb-1.5">
                               <p
-                                className="text-[10px]"
+                                className="text-[10px] px-2 py-1 font-medium"
                                 style={{ color: 'var(--color-text-muted)' }}
                               >
-                                {item.category}
+                                {group.label}
                               </p>
-                              {item.timestamp && (
-                                <>
-                                  <span style={{ color: 'var(--color-text-muted)' }}>·</span>
-                                  <p
-                                    className="text-[10px] flex items-center gap-0.5"
-                                    style={{ color: 'var(--color-text-muted)' }}
-                                  >
-                                    <Clock size={8} />
-                                    {formatTime(item.timestamp)}
-                                  </p>
-                                </>
-                              )}
+                              {group.sessions.map((session) => (
+                                <SessionItem key={session.id} session={session} />
+                              ))}
                             </div>
-                          </div>
-                        </motion.button>
-                      ))
-                    ) : (
+                          ))}
+                        </>
+                      );
+                    }
+
+                    if (groupedSessions.length > 0) {
+                      return groupedSessions.map((group) => (
+                        <div key={group.label} className="mb-1.5">
+                          <p
+                            className="text-[10px] px-2 py-1 font-medium"
+                            style={{ color: 'var(--color-text-muted)' }}
+                          >
+                            {group.label}
+                          </p>
+                          {group.sessions.map((session) => (
+                            <SessionItem key={session.id} session={session} />
+                          ))}
+                        </div>
+                      ));
+                    }
+
+                    return (
                       <div className="text-center py-8">
-                        <Star
+                        <FolderOpen
                           size={36}
                           className="mx-auto mb-2"
                           style={{ color: 'var(--color-text-muted)', opacity: 0.5 }}
                         />
                         <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                          暂无收藏问题
+                          暂无会话记录
                         </p>
                         <p
                           className="text-[10px] mt-1"
                           style={{ color: 'var(--color-text-muted)', opacity: 0.7 }}
                         >
-                          在对话中点击收藏按钮添加
+                          点击上方按钮开始新对话
                         </p>
                       </div>
-                    )}
+                    );
+                  })()}
+                </div>
+              )}
 
-                    {recentSearches.length > 0 && (
-                      <div
-                        className="mt-4 pt-4"
-                        style={{ borderTop: '1px solid var(--color-border-light)' }}
-                      >
-                        <p
-                          className="text-[10px] px-2 py-1 font-medium"
-                          style={{ color: 'var(--color-text-muted)' }}
-                        >
-                          最近搜索
-                        </p>
-                        {recentSearches.slice(0, 5).map((search, index) => (
-                          <motion.button
-                            key={index}
-                            initial={{ opacity: 0, x: -16 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: index * 0.04 }}
-                            whileHover={{ x: 2 }}
-                            onClick={() => handleRecentSearchClick(search)}
-                            className="w-full flex items-center gap-2 p-2 rounded-lg transition-colors text-left"
-                            style={{ background: 'transparent' }}
-                          >
-                            <Clock size={12} style={{ color: 'var(--color-text-muted)' }} />
-                            <span
-                              className="text-xs"
-                              style={{ color: 'var(--color-text-secondary)' }}
-                            >
-                              {search}
-                            </span>
-                          </motion.button>
-                        ))}
-                      </div>
-                    )}
-                  </motion.div>
-                )}
-
-                {activeTab === 'actions' && (
-                  <motion.div
-                    key="actions"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="p-2 space-y-0.5"
-                  >
-                    {quickActions.map((action, index) => (
-                      <motion.button
-                        key={action.id}
-                        initial={{ opacity: 0, x: -16 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.04 }}
-                        whileHover={{ x: 2, background: 'var(--color-background-secondary)' }}
-                        onClick={action.action}
-                        className="w-full flex items-center gap-2.5 p-2.5 rounded-lg transition-colors text-left group"
+              {activeTab === 'favorites' && (
+                <div className="p-2 space-y-0.5">
+                  {favoriteQuestions.length > 0 ? (
+                    favoriteQuestions.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => handleFavoriteClick(item.question)}
+                        className="w-full flex items-start gap-2 p-2.5 rounded-lg transition-colors text-left group hover:bg-[var(--color-background-secondary)] hover:translate-x-[2px]"
                         style={{ background: 'transparent' }}
                       >
-                        <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center"
-                          style={{
-                            background: 'var(--color-background-tertiary)',
-                            color: 'var(--color-text-muted)',
-                          }}
-                        >
-                          <action.icon size={15} />
-                        </div>
+                        <Star
+                          size={12}
+                          className="mt-0.5 flex-shrink-0"
+                          style={{ color: 'var(--color-secondary)' }}
+                        />
                         <div className="flex-1 min-w-0">
-                          <span
-                            className="text-xs font-medium block"
+                          <p
+                            className="text-xs line-clamp-2"
                             style={{ color: 'var(--color-text-primary)' }}
                           >
-                            {action.label}
-                          </span>
-                          <span
-                            className="text-[10px] block mt-0.5"
-                            style={{ color: 'var(--color-text-muted)' }}
-                          >
-                            {action.description}
-                          </span>
+                            {item.question}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                              {item.category}
+                            </p>
+                            {item.timestamp && (
+                              <>
+                                <span style={{ color: 'var(--color-text-muted)' }}>·</span>
+                                <p
+                                  className="text-[10px] flex items-center gap-0.5"
+                                  style={{ color: 'var(--color-text-muted)' }}
+                                >
+                                  <Clock size={8} />
+                                  {formatTime(item.timestamp)}
+                                </p>
+                              </>
+                            )}
+                          </div>
                         </div>
-                      </motion.button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="text-center py-8">
+                      <Star
+                        size={36}
+                        className="mx-auto mb-2"
+                        style={{ color: 'var(--color-text-muted)', opacity: 0.5 }}
+                      />
+                      <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                        暂无收藏问题
+                      </p>
+                      <p
+                        className="text-[10px] mt-1"
+                        style={{ color: 'var(--color-text-muted)', opacity: 0.7 }}
+                      >
+                        在对话中点击收藏按钮添加
+                      </p>
+                    </div>
+                  )}
+
+                  {recentSearches.length > 0 && (
+                    <div
+                      className="mt-4 pt-4"
+                      style={{ borderTop: '1px solid var(--color-border-light)' }}
+                    >
+                      <p
+                        className="text-[10px] px-2 py-1 font-medium"
+                        style={{ color: 'var(--color-text-muted)' }}
+                      >
+                        最近搜索
+                      </p>
+                      {recentSearches.slice(0, 5).map((search, index) => (
+                        <button
+                          key={index}
+                          onClick={() => handleRecentSearchClick(search)}
+                          className="w-full flex items-center gap-2 p-2 rounded-lg transition-colors text-left hover:translate-x-[2px]"
+                          style={{ background: 'transparent' }}
+                        >
+                          <Clock size={12} style={{ color: 'var(--color-text-muted)' }} />
+                          <span
+                            className="text-xs"
+                            style={{ color: 'var(--color-text-secondary)' }}
+                          >
+                            {search}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'actions' && (
+                <div className="p-2 space-y-0.5">
+                  {quickActions.map((action) => (
+                    <button
+                      key={action.id}
+                      onClick={action.action}
+                      className="w-full flex items-center gap-2.5 p-2.5 rounded-lg transition-colors text-left group hover:bg-[var(--color-background-secondary)] hover:translate-x-[2px]"
+                      style={{ background: 'transparent' }}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{
+                          background: 'var(--color-background-tertiary)',
+                          color: 'var(--color-text-muted)',
+                        }}
+                      >
+                        <action.icon size={15} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span
+                          className="text-xs font-medium block"
+                          style={{ color: 'var(--color-text-primary)' }}
+                        >
+                          {action.label}
+                        </span>
+                        <span
+                          className="text-[10px] block mt-0.5"
+                          style={{ color: 'var(--color-text-muted)' }}
+                        >
+                          {action.description}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -924,14 +873,9 @@ export default function Sidebar({
         {!sidebarCollapsed && (
           <div
             onMouseDown={handleMouseDown}
-            className="absolute top-0 right-0 w-1 h-full cursor-col-resize group transition-colors"
-            style={{
-              background: isResizing ? 'var(--color-primary)' : 'transparent',
-            }}
+            className={`panel-resize-handle ${isResizing ? 'resizing' : ''}`}
           >
-            <div className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <GripVertical size={12} style={{ color: 'var(--color-text-muted)' }} />
-            </div>
+            <div className="panel-resize-indicator" />
           </div>
         )}
       </motion.aside>

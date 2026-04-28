@@ -310,15 +310,17 @@ export default function UnifiedInputArea({
   }, [charCount]);
 
   return (
-    <div className="relative w-full max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="relative w-full max-w-3xl mx-auto animate-fade-in-up">
       <div
         ref={inputRef}
-        className="relative rounded-2xl overflow-hidden transition-shadow duration-300"
+        className="relative rounded-2xl overflow-hidden transition-all duration-300"
         style={{
+          background: 'var(--color-surface)',
           boxShadow:
             isFocused || isDragOver
-              ? '0 8px 32px rgba(59, 130, 246, 0.2), 0 0 0 2px var(--color-primary)'
-              : '0 2px 8px rgba(0, 0, 0, 0.05)',
+              ? 'var(--shadow-lg), 0 0 0 2px var(--color-primary)'
+              : 'var(--shadow-md)',
+          border: '1px solid var(--color-border-light)',
         }}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -326,9 +328,9 @@ export default function UnifiedInputArea({
       >
         {isDragOver && (
           <div
-            className="absolute inset-0 z-10 flex items-center justify-center animate-in fade-in duration-200"
+            className="absolute inset-0 z-10 flex items-center justify-center animate-fade-in"
             style={{
-              background: 'var(--color-primary-alpha)',
+              background: 'rgba(59, 130, 246, 0.1)',
               border: '2px dashed var(--color-primary)',
             }}
           >
@@ -340,10 +342,11 @@ export default function UnifiedInputArea({
         )}
 
         <div
-          className={`relative p-3 transition-all duration-300 ${isFocused ? 'ring-2 ring-blue-500/20' : ''}`}
+          className="relative p-4"
           style={{
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
+            background: isFocused
+              ? 'linear-gradient(180deg, var(--color-surface) 0%, var(--color-background-secondary) 100%)'
+              : 'var(--color-surface)',
           }}
         >
           {uploadedFiles.length > 0 && (
@@ -492,8 +495,12 @@ export default function UnifiedInputArea({
               {isLoading || isStreaming ? (
                 <button
                   onClick={onStop}
-                  className="p-2 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95"
-                  style={{ background: 'var(--color-error)', color: 'white' }}
+                  className="p-2.5 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 shadow-md"
+                  style={{
+                    background: 'var(--color-error)',
+                    color: 'white',
+                    boxShadow: '0 2px 8px rgba(239, 68, 68, 0.4)',
+                  }}
                   title="停止生成"
                 >
                   <Square size={18} fill="white" />
@@ -502,16 +509,20 @@ export default function UnifiedInputArea({
                 <button
                   onClick={handleSend}
                   disabled={disabled || !inputValue.trim() || charCount > MAX_CHARS}
-                  className="p-2 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                  className="p-2.5 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-md"
                   style={{
                     background:
                       disabled || !inputValue.trim() || charCount > MAX_CHARS
                         ? 'var(--color-background-secondary)'
-                        : 'var(--color-primary)',
+                        : 'var(--gradient-primary)',
                     color:
                       disabled || !inputValue.trim() || charCount > MAX_CHARS
                         ? 'var(--color-text-muted)'
                         : 'white',
+                    boxShadow:
+                      disabled || !inputValue.trim() || charCount > MAX_CHARS
+                        ? 'none'
+                        : '0 2px 8px rgba(44, 44, 44, 0.3)',
                   }}
                   title="发送"
                 >

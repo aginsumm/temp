@@ -11,6 +11,11 @@ interface ListViewProps {
   loading?: boolean;
 }
 
+interface ExtendedFilters {
+  regions?: string[];
+  periods?: string[];
+}
+
 export default function ListView({ entities, onEntityClick, loading }: ListViewProps) {
   // 【新增】：获取全局筛选状态
   const { filters } = useKnowledgeGraphStore();
@@ -22,28 +27,36 @@ export default function ListView({ entities, onEntityClick, loading }: ListViewP
     return entities.filter((entity) => {
       // 1. 关键词筛选 (匹配名称或描述)
       const query = filters.searchQuery?.toLowerCase() || '';
-      const matchesSearch = query === '' || 
-        entity.name?.toLowerCase().includes(query) || 
+      const matchesSearch =
+        query === '' ||
+        entity.name?.toLowerCase().includes(query) ||
         entity.description?.toLowerCase().includes(query);
 
       // 2. 分类筛选
-      const matchesCategory = !filters.categories || filters.categories.length === 0 || 
-        filters.categories.includes(entity.type || (entity as any).category);
+      const matchesCategory =
+        !filters.categories ||
+        filters.categories.length === 0 ||
+        filters.categories.includes(entity.type);
 
-      // 3. 地区筛选 (使用 as any 兼容未在 Store 接口中声明的扩展字段)
-      const filterRegions = (filters as any).regions || [];
-      const matchesRegion = filterRegions.length === 0 || filterRegions.includes(entity.region);
+      // 3. 地区筛选
+      const extendedFilters = filters as ExtendedFilters;
+      const filterRegions = extendedFilters.regions || [];
+      const matchesRegion =
+        filterRegions.length === 0 || (entity.region && filterRegions.includes(entity.region));
 
       // 4. 时期筛选
-      const filterPeriods = (filters as any).periods || [];
-      const matchesPeriod = filterPeriods.length === 0 || filterPeriods.includes(entity.period);
+      const filterPeriods = extendedFilters.periods || [];
+      const matchesPeriod =
+        filterPeriods.length === 0 || (entity.period && filterPeriods.includes(entity.period));
 
-      // 5. 重要性筛选 (兼容后端传过来的不同字段名如 importance/relevance/value)
-      const entityImportance = entity.importance ?? (entity as any).relevance ?? (entity as any).value ?? 0;
+      // 5. 重要性筛选
+      const entityImportance = entity.importance ?? 0;
       const matchesImportance = entityImportance >= (filters.minImportance || 0);
 
       // 只有同时满足所有条件的实体才会被展示
-      return matchesSearch && matchesCategory && matchesRegion && matchesPeriod && matchesImportance;
+      return (
+        matchesSearch && matchesCategory && matchesRegion && matchesPeriod && matchesImportance
+      );
     });
   }, [entities, filters]);
 
@@ -142,7 +155,7 @@ export default function ListView({ entities, onEntityClick, loading }: ListViewP
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* 【修改】：渲染时遍历过滤后的 visibleEntities 数组 */}
         {visibleEntities.map((entity, index) => {
-          const categoryColor = getCategoryColor(entity.type || (entity as any).category);
+          const categoryColor = getCategoryColor(entity.type);
 
           return (
             <motion.div
@@ -178,7 +191,7 @@ export default function ListView({ entities, onEntityClick, loading }: ListViewP
                       color: 'var(--color-text-inverse)',
                     }}
                   >
-                    {getCategoryLabel(entity.type || (entity as any).category)}
+                    {getCategoryLabel(entity.type)}
                   </motion.span>
                   <motion.div
                     initial={{ scale: 0 }}
@@ -196,7 +209,7 @@ export default function ListView({ entities, onEntityClick, loading }: ListViewP
                       style={{ color: 'var(--color-warning)' }}
                     />
                     <span className="text-xs font-bold" style={{ color: 'var(--color-warning)' }}>
-                      {((entity.importance ?? (entity as any).relevance ?? 0.5) * 100).toFixed(0)}%
+                      {(entity.importance * 100).toFixed(0)}%
                     </span>
                   </motion.div>
                 </div>

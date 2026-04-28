@@ -11,6 +11,7 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
+  updated_at?: string; // 用于触发消息更新
   sources?: Source[];
   entities?: Entity[];
   keywords?: string[];
@@ -23,6 +24,7 @@ export interface Message {
   version_group_id?: string;
   isStreaming?: boolean;
   is_regenerating?: boolean;
+  isThinking?: boolean;
 }
 
 export interface Session {
@@ -248,3 +250,25 @@ export const ENTITY_COLORS: Record<EntityType, string> = {
   period: '#DDA0DD',
   material: '#98D8C8',
 };
+
+export interface ChatHandlers {
+  onSend: (content: string, options?: { files?: UploadedFile[] }) => void;
+  onStop: () => void;
+  onFeedback: (messageId: string, feedback: 'helpful' | 'unclear') => void;
+  onFavorite: (messageId: string, isFavorite: boolean) => void;
+  onCopy: (content: string) => void;
+  onRegenerate: (messageId: string) => void;
+  onEdit: (messageId: string, newContent: string) => void;
+  onDelete: (messageId: string) => void;
+  onSwitchVersion: (messageId: string, versionId: string) => void;
+  onQuote: (message: Message) => void;
+}
+
+export interface UploadedFile {
+  id: string;
+  file: File;
+  preview?: string;
+  type: 'image' | 'document' | 'other';
+  uploadProgress?: number;
+  uploadStatus?: 'pending' | 'uploading' | 'completed' | 'error';
+}

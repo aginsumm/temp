@@ -143,12 +143,18 @@ class SmartQuestionGenerator:
             if popular not in questions:
                 questions.append(popular)
         
-        # 5. 去重并限制数量
+        # 5. 去重并限制数量，添加推荐理由
         unique_questions = self._deduplicate(questions)
-        return [
-            {"id": f"rec_{i}_{hash(q) % 10000}", "question": q}
-            for i, q in enumerate(unique_questions[:limit])
-        ]
+        result = []
+        for i, q in enumerate(unique_questions[:limit]):
+            # 根据问题内容推断推荐理由
+            reason = self._generate_reason(q, entities, keywords, context)
+            result.append({
+                "id": f"rec_{i}_{hash(q) % 10000}",
+                "question": q,
+                "reason": reason
+            })
+        return result
     
     def _generate_from_entities(
         self,
@@ -221,6 +227,56 @@ class SmartQuestionGenerator:
         """获取基于时间的推荐问题"""
         questions = self.TIME_BASED_QUESTIONS.get(time_of_day, [])
         return random.sample(questions, min(2, len(questions)))
+    
+    def _generate_reason(
+        self,
+        question: str,
+        entities: Optional[List[Dict]],
+        keywords: Optional[List[str]],
+        context: Optional[str]
+    ) -> str:
+        """生成推荐理由"""
+        # 基于实体类型生成理由
+        if entities:
+            for entity in entities:
+                entity_name = entity.get('name', '')
+                entity_type = entity.get('type', '')
+                if entity_name in question:
+                    type_map = {
+                        'inheritor': '传承人',
+                        'technique': '技艺',
+                        'work': '作品',
+                        'region': '地区',
+                        'period': '历史时期',
+                        'material': '材料',
+                        'pattern': '纹样',
+                    }
+                    type_cn = type_map.get(entity_type, '相关')
+                    return f"基于您提到的{type_cn}「{entity_name}」"
+        
+        # 基于关键词生成理由
+        if keywords:
+            for keyword in keywords:
+                if keyword in question:
+                    return f"围绕关键词「{keyword}」展开"
+        
+        # 基于上下文生成理由
+        if context:
+            if '历史' in context and '历史' in question:
+                return "延续您对历史渊源的探讨"
+            if '技艺' in context and '技艺' in question:
+                return "深入了解技艺细节"
+            if '传承' in context:
+                return "关注传承与发展"
+        
+        # 默认理由
+        default_reasons = [
+            "延伸阅读，拓展知识",
+            "热门问题，值得一看",
+            "深度探索非遗文化",
+            "精选推荐问题",
+        ]
+        return random.choice(default_reasons)
     
     def _deduplicate(self, questions: List[str]) -> List[str]:
         """去重，优先保留多样性"""

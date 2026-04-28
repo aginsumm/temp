@@ -25,10 +25,10 @@ interface CacheStats {
 }
 
 class APICacheService {
-  private static instance: APICacheService;
-  private cache = new Map<string, CacheEntry<any>>();
+  private static instance: APICacheService | null = null;
+  private cache = new Map<string, CacheEntry<unknown>>();
   private config: CacheConfig;
-  private pendingRequests = new Map<string, Promise<any>>();
+  private pendingRequests = new Map<string, Promise<unknown>>();
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   private constructor(config?: Partial<CacheConfig>) {
@@ -103,7 +103,7 @@ class APICacheService {
     }
 
     if (deduplicate && this.pendingRequests.has(key)) {
-      return this.pendingRequests.get(key)!;
+      return this.pendingRequests.get(key) as Promise<T>;
     }
 
     const requestPromise = (async () => {
@@ -202,7 +202,7 @@ class APICacheService {
   static resetInstance(): void {
     if (APICacheService.instance) {
       APICacheService.instance.destroy();
-      APICacheService.instance = null as any;
+      APICacheService.instance = null;
     }
   }
 }

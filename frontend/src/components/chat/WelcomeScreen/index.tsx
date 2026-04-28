@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Sparkles,
   BookOpen,
@@ -102,21 +102,10 @@ const tips = [
   '了解非遗保护与传承的现状',
 ];
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08, delayChildren: 0.15 },
-  },
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 16 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { type: 'spring', stiffness: 120, damping: 18 },
-  },
+// 动画配置 - 使用 CSS 动画替代 Framer Motion variants
+const animationConfig = {
+  staggerDelay: 80,
+  initialDelay: 150,
 };
 
 export default function WelcomeScreen({
@@ -238,96 +227,107 @@ export default function WelcomeScreen({
         </div>
       )}
 
-      <motion.div
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-        className="relative z-10 w-full max-w-3xl"
+      <div
+        className="relative z-10 w-full max-w-3xl animate-fade-in"
+        style={{ animationDelay: `${animationConfig.initialDelay}ms` }}
       >
-        <motion.div variants={itemVariants} className="text-center mb-6">
-          <motion.div
-            initial={{ scale: 0, rotate: -180 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ type: 'spring', delay: 0.15, stiffness: 220, damping: 18 }}
-            className="relative inline-block mb-4"
-          >
+        <div className="text-center mb-8 animate-fade-in-up">
+          {/* Logo 区域 - 更精致的设计 */}
+          <div className="relative inline-block mb-5">
+            {/* 外发光光环 */}
             <div
-              className="absolute inset-0 rounded-xl blur-lg opacity-40 animate-pulse"
-              style={{ background: 'var(--gradient-primary)' }}
-            />
-            <div
-              className="relative w-16 h-16 rounded-xl flex items-center justify-center shadow-lg"
+              className="absolute inset-0 rounded-2xl blur-xl opacity-30 animate-pulse"
               style={{
                 background: 'var(--gradient-primary)',
-                boxShadow: 'var(--color-shadow-glow)',
+                transform: 'scale(1.2)',
+              }}
+            />
+            {/* 主图标容器 */}
+            <div
+              className="relative w-20 h-20 rounded-2xl flex items-center justify-center"
+              style={{
+                background: 'var(--gradient-primary)',
+                boxShadow: 'var(--shadow-lg), 0 0 0 1px rgba(255,255,255,0.1) inset',
               }}
             >
-              <motion.div
-                animate={{ rotate: [0, 10, -10, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <Sparkles size={28} style={{ color: 'var(--color-text-inverse)' }} />
-              </motion.div>
+              {/* 内部装饰圆环 */}
+              <div className="absolute inset-2 rounded-xl border border-white/20" />
+              <Sparkles
+                size={32}
+                style={{ color: 'var(--color-text-inverse)' }}
+                className="animate-pulse"
+              />
             </div>
-          </motion.div>
+            {/* 浮动装饰点 */}
+            <div
+              className="absolute -top-1 -right-1 w-4 h-4 rounded-full animate-bounce"
+              style={{
+                background: 'var(--gradient-accent)',
+                animationDuration: '2s',
+              }}
+            />
+          </div>
 
-          <motion.h1
-            className="text-2xl md:text-3xl font-bold mb-2"
+          {/* 主标题 - 更优雅的排版 */}
+          <h1
+            className="text-3xl md:text-4xl font-bold mb-3 tracking-tight"
             style={{
               background: 'var(--gradient-primary)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',
+              fontFamily: 'var(--font-heading)',
             }}
           >
             {greeting}，{userName || '探索者'}
-          </motion.h1>
+          </h1>
 
-          <motion.p
-            className="text-sm md:text-base mb-2"
-            style={{ color: 'var(--color-text-secondary)' }}
-          >
+          {/* 副标题 */}
+          <p className="text-base md:text-lg mb-4" style={{ color: 'var(--color-text-secondary)' }}>
             我是您的
-            <span className="font-semibold" style={{ color: 'var(--color-primary)' }}>
+            <span
+              className="font-semibold px-1.5 py-0.5 rounded mx-1"
+              style={{
+                color: 'var(--color-primary)',
+                background: 'var(--color-primary-light)',
+              }}
+            >
               非遗文化智能助手
             </span>
-            ，有什么可以帮您的？
-          </motion.p>
+          </p>
 
-          <AnimatePresence mode="wait">
-            <motion.p
-              key={currentTip}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.25 }}
-              className="text-xs inline-flex items-center gap-2 px-3 py-1.5 rounded-full shadow-sm transition-colors duration-300"
+          {/* 动态提示 - 更 subtle 的设计 */}
+          <div className="animate-fade-in" style={{ animationDelay: '300ms' }}>
+            <p
+              className="text-xs inline-flex items-center gap-2 px-4 py-2 rounded-full transition-all duration-500"
               style={{
                 background: 'var(--color-surface)',
                 border: '1px solid var(--color-border-light)',
                 color: 'var(--color-text-muted)',
+                boxShadow: 'var(--shadow-sm)',
               }}
             >
+              <span
+                className="w-1.5 h-1.5 rounded-full animate-pulse"
+                style={{ background: 'var(--color-success)' }}
+              />
               {tips[currentTip]}
-            </motion.p>
-          </AnimatePresence>
-        </motion.div>
+            </p>
+          </div>
+        </div>
 
-        <motion.div
-          variants={itemVariants}
-          className="flex items-center justify-center gap-3 md:gap-6 mb-8"
+        <div
+          className="flex items-center justify-center gap-3 md:gap-6 mb-8 animate-fade-in"
+          style={{ animationDelay: '350ms' }}
         >
           {features.map((feature, index) => (
-            <motion.div
+            <div
               key={feature.label}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35 + index * 0.08 }}
-              whileHover={{ scale: 1.06, y: -4 }}
-              className="flex flex-col items-center gap-1.5 cursor-pointer group"
+              className="flex flex-col items-center gap-1.5 cursor-pointer group animate-fade-in"
+              style={{ animationDelay: `${400 + index * 80}ms` }}
             >
               <div
-                className="w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center shadow-lg transition-all duration-300 group-hover:shadow-xl"
+                className="w-12 h-12 md:w-14 md:h-14 rounded-xl flex items-center justify-center shadow-lg transition-all duration-300 group-hover:shadow-xl group-hover:scale-105 group-hover:-translate-y-1"
                 style={{
                   background: feature.gradient,
                   boxShadow: `0 8px 24px -8px ${feature.bgGlow}`,
@@ -344,25 +344,22 @@ export default function WelcomeScreen({
               <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
                 {feature.description}
               </span>
-            </motion.div>
+            </div>
           ))}
-        </motion.div>
+        </div>
 
-        <motion.div
-          variants={itemVariants}
-          className="flex items-center justify-center gap-4 md:gap-6 mb-8"
+        <div
+          className="flex items-center justify-center gap-4 md:gap-6 mb-8 animate-fade-in"
+          style={{ animationDelay: '450ms' }}
         >
           {stats.map((stat, index) => (
-            <motion.div
+            <div
               key={stat.label}
-              initial={{ opacity: 0, scale: 0.85 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.45 + index * 0.08 }}
-              whileHover={{ scale: 1.05 }}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl shadow-sm transition-colors duration-300"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl shadow-sm transition-all duration-300 hover:scale-105 animate-fade-in"
               style={{
                 background: 'var(--color-surface)',
                 border: '1px solid var(--color-border-light)',
+                animationDelay: `${500 + index * 80}ms`,
               }}
             >
               <stat.icon size={14} style={{ color: 'var(--color-primary)' }} />
@@ -372,11 +369,11 @@ export default function WelcomeScreen({
               <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
                 {stat.label}
               </span>
-            </motion.div>
+            </div>
           ))}
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants} className="mb-6">
+        <div className="mb-6 animate-fade-in" style={{ animationDelay: '400ms' }}>
           <div className="flex items-center justify-center gap-2 mb-5">
             <div
               className="h-px flex-1 max-w-16"
@@ -405,17 +402,14 @@ export default function WelcomeScreen({
           ) : questions.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {questions.map((question, index) => (
-                <motion.button
+                <button
                   key={question.id}
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.55 + index * 0.08 }}
-                  whileHover={{ y: -4, scale: 1.02 }}
                   onClick={() => onQuestionClick(question.question)}
-                  className="p-4 rounded-xl text-left transition-all duration-300 shadow-sm hover:shadow-md"
+                  className="p-4 rounded-xl text-left transition-all duration-300 shadow-sm hover:shadow-md hover:-translate-y-1 animate-fade-in"
                   style={{
                     background: 'var(--color-surface)',
                     border: '1px solid var(--color-border-light)',
+                    animationDelay: `${500 + index * 50}ms`,
                   }}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -430,23 +424,20 @@ export default function WelcomeScreen({
                       style={{ color: 'var(--color-primary)', flexShrink: 0 }}
                     />
                   </div>
-                </motion.button>
+                </button>
               ))}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {quickQuestions.map((category, categoryIndex) => (
-                <motion.div
+                <div
                   key={category.category}
-                  initial={{ opacity: 0, y: 24 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.55 + categoryIndex * 0.12 }}
-                  whileHover={{ y: -4, scale: 1.01 }}
-                  className="rounded-xl overflow-hidden group cursor-pointer shadow-sm hover:shadow-md transition-all duration-300"
+                  className="rounded-xl overflow-hidden group cursor-pointer shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 animate-fade-in"
                   style={{
                     background: 'var(--color-surface)',
                     border: '1px solid var(--color-border-light)',
                     boxShadow: `0 2px 16px -4px ${category.bgGlow}`,
+                    animationDelay: `${500 + categoryIndex * 100}ms`,
                   }}
                 >
                   <div
@@ -466,31 +457,28 @@ export default function WelcomeScreen({
                   </div>
                   <div className="p-2">
                     {category.questions.map((question, questionIndex) => (
-                      <motion.button
+                      <button
                         key={questionIndex}
-                        whileHover={{ x: 4 }}
                         onClick={() => onQuestionClick(question)}
-                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-sm transition-all group/item"
+                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-sm transition-all hover:translate-x-1 group/item"
                         style={{ color: 'var(--color-text-primary)' }}
                       >
                         <span className="line-clamp-1 flex-1">{question}</span>
-                        <motion.div
-                          initial={{ opacity: 0, x: -8 }}
-                          whileHover={{ opacity: 1, x: 0 }}
-                          className="ml-1.5"
-                        >
-                          <ArrowRight size={14} style={{ color: 'var(--color-primary)' }} />
-                        </motion.div>
-                      </motion.button>
+                        <ArrowRight
+                          size={14}
+                          style={{ color: 'var(--color-primary)' }}
+                          className="opacity-0 group-hover/item:opacity-100 transition-opacity"
+                        />
+                      </button>
                     ))}
                   </div>
-                </motion.div>
+                </div>
               ))}
             </div>
           )}
-        </motion.div>
+        </div>
 
-        <motion.div variants={itemVariants} className="text-center">
+        <div className="text-center animate-fade-in" style={{ animationDelay: '500ms' }}>
           <p
             className="text-[11px] flex items-center justify-center gap-1.5"
             style={{ color: 'var(--color-text-muted)' }}
@@ -523,8 +511,8 @@ export default function WelcomeScreen({
             </kbd>
             查看快捷键
           </p>
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
     </div>
   );
 }

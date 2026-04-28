@@ -250,8 +250,7 @@ export const useChatStore = create<ChatState>()(
           is_archived: false,
         };
 
-        await chatRepository.createSession(newSession);
-
+        // 先同步更新 store，避免界面闪烁
         set((state) => {
           const newSessions = pruneSessions([newSession, ...state.sessions]);
           return {
@@ -262,6 +261,11 @@ export const useChatStore = create<ChatState>()(
               [newSession.id]: [],
             },
           };
+        });
+
+        // 数据库操作在后台进行
+        chatRepository.createSession(newSession).catch((err) => {
+          console.error('Failed to create session in repository:', err);
         });
 
         if (apiAdapterManager.shouldUseRemote()) {
