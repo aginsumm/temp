@@ -48,6 +48,7 @@ const DEFAULT_CONFIG: ConnectionConfig = {
   offlineQueueSize: 50,
 };
 const HEALTH_PATH = '/api/v1/health';
+const API_PATH = '/api/v1';
 
 function resolveHealthCheckUrl(rawBase: string): string {
   // 如果是相对路径，添加默认主机
@@ -90,12 +91,24 @@ function resolveHealthCheckUrl(rawBase: string): string {
   return `${normalized}${HEALTH_PATH}`;
 }
 
-// const HEALTH_CHECK_BASE_URL = resolveHealthCheckUrl(
-//   import.meta.env.VITE_HEALTH_CHECK_URL || 'http://localhost:8000/api/v1'
-// );
-// 彻底抛弃环境变量和解析函数，直接写死局域网 IP！
-const API_BASE_URL = 'http://26.14.142.136:8000/api/v1';
-const HEALTH_CHECK_BASE_URL = 'http://26.14.142.136:8000/api/v1/health';
+function resolveApiBaseUrl(): string {
+  const rawApiBase =
+    import.meta.env.VITE_API_BASE_URL ||
+    import.meta.env.VITE_API_URL ||
+    API_PATH;
+
+  if (rawApiBase.startsWith('http')) {
+    return rawApiBase.endsWith('/') ? rawApiBase.slice(0, -1) : rawApiBase;
+  }
+
+  const normalized = rawApiBase.startsWith('/') ? rawApiBase : `/${rawApiBase}`;
+  return normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
+const HEALTH_CHECK_BASE_URL = resolveHealthCheckUrl(
+  import.meta.env.VITE_HEALTH_CHECK_URL || API_BASE_URL
+);
 
 class OfflineQueue {
   private queue: QueuedRequest[] = [];

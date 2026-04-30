@@ -5,6 +5,135 @@ import type { KnowledgeEntityFull } from '../data/models';
 import { withRetry } from '../utils/retry';
 
 const API_BASE = 'knowledge';
+const FORCE_LOCAL_KNOWLEDGE = import.meta.env.VITE_FORCE_LOCAL_KNOWLEDGE === 'true';
+
+function clamp01(value: number): number {
+  if (Number.isNaN(value)) return 0.5;
+  return Math.max(0, Math.min(1, value));
+}
+
+/**
+ * 统一把各种“权重/重要性”归一化到 0~1。
+ * - 本地 mock 里常见是 1~5
+ * - 后端/抽取里常见是 0~1
+ */
+function normalizeScore(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return 0.5;
+  if (n > 1) {
+    // 经验规则：1~5 视为五分制
+    return clamp01(n / 5);
+  }
+  return clamp01(n);
+}
+
+type EnrichmentKey = `${string}::${string}`;
+
+let presetEntityMapPromise: Promise<Map<EnrichmentKey, Partial<Entity>>> | null = null;
+
+function makeEnrichmentKey(type: string, name: string): EnrichmentKey {
+  return `${String(type)}::${String(name).trim().toLowerCase()}` as EnrichmentKey;
+}
+
+async function getPresetEntityMap(): Promise<Map<EnrichmentKey, Partial<Entity>>> {
+  if (!presetEntityMapPromise) {
+    presetEntityMapPromise = (async () => {
+      try {
+        const presets = (await mockKnowledgeService.getAllEntities()) as unknown as Entity[];
+        const map = new Map<EnrichmentKey, Partial<Entity>>();
+        for (const e of presets) {
+          map.set(makeEnrichmentKey(String(e.type), String(e.name)), e);
+        }
+        return map;
+      } catch {
+        return new Map();
+      }
+    })();
+  }
+  return presetEntityMapPromise;
+}
+
+async function enrichEntities(entities: Entity[]): Promise<Entity[]> {
+  const presetMap = await getPresetEntityMap();
+  if (presetMap.size === 0) return entities;
+
+  return entities.map((e) => {
+    const preset = presetMap.get(makeEnrichmentKey(String(e.type), String(e.name)));
+    if (!preset) return e;
+
+    const description =
+      (e.description && String(e.description).trim()) ||
+      (preset.description && String(preset.description).trim()) ||
+      e.description;
+    const region = e.region || preset.region;
+    const period = e.period || preset.period;
+    const tags = e.tags && e.tags.length > 0 ? e.tags : preset.tags;
+    const images = e.images && e.images.length > 0 ? e.images : preset.images;
+
+    return {
+      ...preset,
+      ...e,
+      description,
+      region,
+      period,
+      tags,
+      images,
+      importance: normalizeScore(e.importance ?? preset.importance ?? e.relevance ?? 0.5),
+      relevance: normalizeScore(e.relevance ?? preset.relevance ?? e.importance ?? 0.5),
+    };
+  });
+}
+
+function dedupeEntities<T extends { id: string; name: string; type: string }>(entities: T[]): T[] {
+  const map = new Map<string, T>();
+
+  for (const entity of entities) {
+    const key = `${entity.type}::${entity.name.trim().toLowerCase()}`;
+    if (!map.has(key)) {
+      map.set(key, entity);
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+function dedupeGraphNodes(nodes: GraphNode[]): GraphNode[] {
+  const map = new Map<string, GraphNode>();
+
+  for (const node of nodes) {
+    const key = `${node.category}::${node.name.trim().toLowerCase()}`;
+    if (!map.has(key)) {
+      map.set(key, node);
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+function dedupeGraphData(graph: GraphData): GraphData {
+  const nodes = dedupeGraphNodes(graph.nodes || []).map((n) => {
+    const value = normalizeScore(n.value ?? 0.5);
+    return {
+      ...n,
+      value,
+      symbolSize: n.symbolSize ?? 25 + value * 30,
+    };
+  });
+  const validNodeIds = new Set(nodes.map((n) => n.id));
+
+  const edgeSeen = new Set<string>();
+  const edges = (graph.edges || []).filter((edge) => {
+    if (!validNodeIds.has(String(edge.source)) || !validNodeIds.has(String(edge.target))) {
+      return false;
+    }
+    const key = `${String(edge.source)}::${String(edge.target)}::${String(edge.relationType || '')}`;
+    if (edgeSeen.has(key)) return false;
+    edgeSeen.add(key);
+    return true;
+  });
+
+  return { ...graph, nodes, edges };
+}
 
 export interface Entity extends ChatEntity {
   region?: string;
@@ -55,7 +184,7 @@ export interface RelationshipUpdate {
 
 export const knowledgeApi = {
   createEntity: async (data: EntityCreate): Promise<Entity> => {
-    if (apiAdapterManager.shouldUseLocal()) {
+    if (FORCE_LOCAL_KNOWLEDGE || apiAdapterManager.shouldUseLocal()) {
       return mockKnowledgeService.createEntity(
         data as Partial<KnowledgeEntityFull>
       ) as Promise<Entity>;
@@ -81,7 +210,7 @@ export const knowledgeApi = {
   },
 
   updateEntity: async (entity_id: string, data: EntityUpdate): Promise<Entity> => {
-    if (apiAdapterManager.shouldUseLocal()) {
+    if (FORCE_LOCAL_KNOWLEDGE || apiAdapterManager.shouldUseLocal()) {
       return mockKnowledgeService.updateEntity(
         entity_id,
         data as Partial<KnowledgeEntityFull>
@@ -102,7 +231,7 @@ export const knowledgeApi = {
   },
 
   deleteEntity: async (entity_id: string): Promise<{ success: boolean }> => {
-    if (apiAdapterManager.shouldUseLocal()) {
+    if (FORCE_LOCAL_KNOWLEDGE || apiAdapterManager.shouldUseLocal()) {
       return mockKnowledgeService.deleteEntity(entity_id);
     }
 
@@ -119,7 +248,7 @@ export const knowledgeApi = {
   },
 
   createRelationship: async (data: RelationshipCreate): Promise<Relationship> => {
-    if (apiAdapterManager.shouldUseLocal()) {
+    if (FORCE_LOCAL_KNOWLEDGE || apiAdapterManager.shouldUseLocal()) {
       return mockKnowledgeService.createRelationship(data) as Promise<Relationship>;
     }
 
@@ -140,7 +269,7 @@ export const knowledgeApi = {
     relationship_id: string,
     data: RelationshipUpdate
   ): Promise<Relationship> => {
-    if (apiAdapterManager.shouldUseLocal()) {
+    if (FORCE_LOCAL_KNOWLEDGE || apiAdapterManager.shouldUseLocal()) {
       return mockKnowledgeService.updateRelationship(
         relationship_id,
         data
@@ -164,7 +293,7 @@ export const knowledgeApi = {
   },
 
   deleteRelationship: async (relationship_id: string): Promise<{ success: boolean }> => {
-    if (apiAdapterManager.shouldUseLocal()) {
+    if (FORCE_LOCAL_KNOWLEDGE || apiAdapterManager.shouldUseLocal()) {
       return mockKnowledgeService.deleteRelationship(relationship_id);
     }
 
@@ -181,8 +310,8 @@ export const knowledgeApi = {
   },
 
   search: async (params: SearchRequest): Promise<SearchResponse> => {
-    if (apiAdapterManager.shouldUseLocal()) {
-      return mockKnowledgeService.search(
+    if (FORCE_LOCAL_KNOWLEDGE || apiAdapterManager.shouldUseLocal()) {
+      const local = (await mockKnowledgeService.search(
         params.keyword,
         {
           category: params.category,
@@ -191,7 +320,15 @@ export const knowledgeApi = {
         },
         params.page,
         params.page_size
-      ) as Promise<SearchResponse>;
+      )) as SearchResponse;
+      const normalized = (local.results || []).map((e) => ({
+        ...e,
+        importance: normalizeScore((e as Entity).importance ?? e.relevance ?? 0.5),
+        relevance: normalizeScore(e.relevance ?? (e as Entity).importance ?? 0.5),
+      }));
+      const enriched = await enrichEntities(normalized as Entity[]);
+      const dedupedResults = dedupeEntities(enriched);
+      return { ...local, results: dedupedResults, total: dedupedResults.length };
     }
 
     try {
@@ -200,10 +337,17 @@ export const knowledgeApi = {
         url: `${API_BASE}/search`,
         data: params,
       });
-      return response.data;
+      const normalized = (response.data.results || []).map((e) => ({
+        ...e,
+        importance: normalizeScore((e as Entity).importance ?? e.relevance ?? 0.5),
+        relevance: normalizeScore(e.relevance ?? (e as Entity).importance ?? 0.5),
+      }));
+      const enriched = await enrichEntities(normalized as Entity[]);
+      const dedupedResults = dedupeEntities(enriched);
+      return { ...response.data, results: dedupedResults, total: dedupedResults.length };
     } catch (error) {
       console.warn('API unavailable, using local data for search');
-      return mockKnowledgeService.search(
+      const local = (await mockKnowledgeService.search(
         params.keyword,
         {
           category: params.category,
@@ -212,14 +356,22 @@ export const knowledgeApi = {
         },
         params.page,
         params.page_size
-      ) as Promise<SearchResponse>;
+      )) as SearchResponse;
+      const normalized = (local.results || []).map((e) => ({
+        ...e,
+        importance: normalizeScore((e as Entity).importance ?? e.relevance ?? 0.5),
+        relevance: normalizeScore(e.relevance ?? (e as Entity).importance ?? 0.5),
+      }));
+      const enriched = await enrichEntities(normalized as Entity[]);
+      const dedupedResults = dedupeEntities(enriched);
+      return { ...local, results: dedupedResults, total: dedupedResults.length };
     }
   },
 
   getGraphData: async (center_entity_id?: string, max_depth: number = 2): Promise<GraphData> => {
-    if (apiAdapterManager.shouldUseLocal()) {
+    if (FORCE_LOCAL_KNOWLEDGE || apiAdapterManager.shouldUseLocal()) {
       const data = await mockKnowledgeService.getGraphData(center_entity_id, max_depth);
-      return data as GraphData;
+      return dedupeGraphData(data as GraphData);
     }
 
     try {
@@ -228,11 +380,30 @@ export const knowledgeApi = {
         url: `${API_BASE}/graph`,
         params: { center_entity_id, max_depth },
       });
-      return response.data;
+      const deduped = dedupeGraphData(response.data);
+      // 远程图谱节点如果缺信息，用本地预设补全（保证 network 行为和 local 一致）
+      const presetMap = await getPresetEntityMap();
+      const enrichedNodes = deduped.nodes.map((n) => {
+        const preset = presetMap.get(makeEnrichmentKey(String(n.category), String(n.name)));
+        if (!preset) return n;
+        const description =
+          (n.description && String(n.description).trim()) ||
+          (preset.description && String(preset.description).trim()) ||
+          n.description;
+        const region = (n as unknown as Record<string, unknown>).region || preset.region;
+        const period = (n as unknown as Record<string, unknown>).period || preset.period;
+        return {
+          ...n,
+          description,
+          region,
+          period,
+        } as unknown as GraphNode;
+      });
+      return { ...deduped, nodes: enrichedNodes };
     } catch (error) {
       console.warn('API unavailable, using local data for graph');
       const data = await mockKnowledgeService.getGraphData(center_entity_id, max_depth);
-      return data as GraphData;
+      return dedupeGraphData(data as GraphData);
     }
   },
 

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Network, List, Download, Bookmark, FolderOpen, X, SlidersHorizontal } from 'lucide-react';
 import useKnowledgeGraphStore from '../../stores/knowledgeGraphStore';
 import { knowledgeApi, Entity } from '../../api/knowledge';
+import { useGraphStore } from '../../stores/graphStore';
 import { snapshotService } from '../../api/snapshot';
 import type { GraphSnapshot } from '../../types/chat';
 import { graphSyncService } from '../../services/graphSyncService';
@@ -19,13 +20,21 @@ export default function KnowledgePage() {
   const { viewMode, setViewMode, setSelectedNode, toggleFilterPanel, filterPanelCollapsed } =
     useKnowledgeGraphStore();
   const [isPending, startTransitionFn] = useTransition();
-  const [entities, setEntities] = useState<Entity[]>([]);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [isLoadingSnapshots, setIsLoadingSnapshots] = useState(false);
+  const graphStoreEntities = useGraphStore((state) => state.entities);
+  const graphStoreRelations = useGraphStore((state) => state.relations);
   const toast = useToast();
+
+  const entities: Entity[] = graphStoreEntities.map((e) => ({
+    ...(e as unknown as Entity),
+    importance: (e as unknown as Entity).importance ?? (e.relevance ?? 0.5),
+    created_at: (e as unknown as Entity).created_at || new Date().toISOString(),
+    updated_at: (e as unknown as Entity).updated_at || new Date().toISOString(),
+  }));
 
   const handleFilterChange = useCallback((filters: Record<string, unknown>) => {
     console.log('Filter changed:', filters);
@@ -43,14 +52,21 @@ export default function KnowledgePage() {
   const loadEntities = useCallback(async () => {
     try {
       setLoading(true);
+      if (graphStoreEntities.length > 0) {
+        return;
+      }
       const response = await knowledgeApi.search({});
-      setEntities(response.results);
+      const mappedEntities = response.results.map((e) => ({
+        ...(e as unknown as Entity),
+        relevance: e.relevance ?? e.importance ?? 0.5,
+      }));
+      graphSyncService.updateFromKnowledge(mappedEntities, [], []);
     } catch (error) {
       console.error('加载实体数据失败:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [graphStoreEntities.length]);
 
   useEffect(() => {
     loadEntities();
@@ -107,12 +123,6 @@ export default function KnowledgePage() {
           fullSnapshot.message_id
         );
 
-        const mappedEntities = fullSnapshot.entities.map((e) => ({
-          ...e,
-          importance: e.importance ?? 0.5,
-        })) as unknown as Entity[];
-        setEntities(mappedEntities);
-
         setShowSnapshots(false);
         toast.success('导入成功', '图谱已更新');
       } catch (error) {
@@ -122,6 +132,25 @@ export default function KnowledgePage() {
     },
     [toast]
   );
+
+  useEffect(() => {
+    // 确保列表与图谱共享同一关系数据（首次从搜索加载时没有关系）
+    if (graphStoreEntities.length > 0 && graphStoreRelations.length === 0) {
+      knowledgeApi
+        .getGraphData()
+        .then((data) => {
+          const relationData = (data.edges || []).map((edge, index) => ({
+            id: `knowledge_edge_${index}`,
+            source: String(edge.source),
+            target: String(edge.target),
+            type: (edge.relationType || 'related_to') as 'related_to',
+            confidence: Number(edge.value ?? edge.weight ?? 0.5),
+          }));
+          graphSyncService.updateFromKnowledge(graphStoreEntities, relationData, []);
+        })
+        .catch(() => {});
+    }
+  }, [graphStoreEntities, graphStoreRelations.length]);
 
   useEffect(() => {
     if (showSnapshots) {

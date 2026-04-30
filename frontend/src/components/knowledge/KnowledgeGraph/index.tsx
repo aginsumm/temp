@@ -47,6 +47,9 @@ export default function KnowledgeGraph() {
       const knowledgeGraphData: KnowledgeGraphData = {
         nodes: graphStoreEntities.map((e) => {
           const entity = e as unknown as Entity & Record<string, unknown>;
+          const rawValue =
+            ((entity.relevance || entity.importance || entity.value) as number) || 0.5;
+          const normalizedValue = rawValue > 1 ? Math.min(1, rawValue / 5) : Math.max(0, rawValue);
           return {
             id: String(entity.id || Math.random()),
             name: entity.name || '未知',
@@ -54,7 +57,7 @@ export default function KnowledgeGraph() {
             description: ((entity.description || entity.metadata?.description) as string) || '',
             region: ((entity.region || entity.metadata?.region) as string) || '',
             period: ((entity.period || entity.metadata?.period) as string) || '',
-            value: ((entity.relevance || entity.importance || entity.value) as number) || 0.5,
+            value: normalizedValue,
             itemStyle: {
               color: getCategoryColor((entity.type || entity.category || 'unknown') as string),
             },

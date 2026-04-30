@@ -1004,7 +1004,7 @@ async def regenerate_message_stream(
             # 实体提取、数据库更新等操作在后台异步执行
             
             # 立即发送 complete 事件（仅包含文字内容）
-            yield f"data: {json.dumps({
+            complete_payload = {
                 'type': 'complete',
                 'message_id': message_id,
                 'content': full_content,
@@ -1014,7 +1014,9 @@ async def regenerate_message_stream(
                 'relations': [],
                 'created_at': datetime.now(timezone.utc).isoformat(),
                 'role': 'assistant',
-            }, ensure_ascii=False)}\n\n"
+            }
+            complete_data = json.dumps(complete_payload, ensure_ascii=False)
+            yield f"data: {complete_data}\n\n"
             
             # ✅ 关键修复：立即发送 [DONE] 标记，让前端关闭连接
             yield "data: [DONE]\n\n"
