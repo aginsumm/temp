@@ -70,7 +70,7 @@ export function getRetryDelay(attempt: number): number {
 
 export async function checkLLMHealth(): Promise<LLMServiceStatus | null> {
   try {
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+    const apiBaseUrl = 'http://26.14.142.136:8000/api/v1';
     const response = await fetch(`${apiBaseUrl}/health`);
     if (!response.ok) {
       return null;

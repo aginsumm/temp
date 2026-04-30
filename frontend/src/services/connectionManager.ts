@@ -90,9 +90,12 @@ function resolveHealthCheckUrl(rawBase: string): string {
   return `${normalized}${HEALTH_PATH}`;
 }
 
-const HEALTH_CHECK_BASE_URL = resolveHealthCheckUrl(
-  import.meta.env.VITE_HEALTH_CHECK_URL || 'http://localhost:8000/api/v1'
-);
+// const HEALTH_CHECK_BASE_URL = resolveHealthCheckUrl(
+//   import.meta.env.VITE_HEALTH_CHECK_URL || 'http://localhost:8000/api/v1'
+// );
+// 彻底抛弃环境变量和解析函数，直接写死局域网 IP！
+const API_BASE_URL = 'http://26.14.142.136:8000/api/v1';
+const HEALTH_CHECK_BASE_URL = 'http://26.14.142.136:8000/api/v1/health';
 
 class OfflineQueue {
   private queue: QueuedRequest[] = [];
@@ -192,10 +195,8 @@ class ConnectionManager {
   async checkHealth(): Promise<boolean> {
     const startTime = Date.now();
     try {
-      // HEALTH_CHECK_BASE_URL 已经包含了完整的路径，不需要再拼接
-      const response = await fetch(HEALTH_CHECK_BASE_URL, {
+     const response = await fetch(HEALTH_CHECK_BASE_URL, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(5000),
       });
 
@@ -402,7 +403,8 @@ class ConnectionManager {
   }
 }
 
-export const connectionManager = new ConnectionManager(HEALTH_CHECK_BASE_URL);
+// 传入正确的 API_BASE_URL，而不是 HEALTH_CHECK_BASE_URL
+export const connectionManager = new ConnectionManager(API_BASE_URL);
 
 export { ConnectionManager, OfflineQueue };
 

@@ -36,6 +36,7 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173"
         "http://182.92.76.74:3000",
         "http://182.92.76.74:8000"
+        "http://26.14.142.136:3000"
     ]
     
     class Config:

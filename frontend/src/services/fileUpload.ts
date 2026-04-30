@@ -62,7 +62,7 @@ class FileUploadService {
 
     try {
       const token = localStorage.getItem('token') || '';
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+      const baseUrl = 'http://26.14.142.136:8000/api/v1'
 
       const response = await fetch(`${baseUrl}/upload`, {
         method: 'POST',
