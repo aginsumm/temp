@@ -14,7 +14,7 @@ async def test_stream_chat():
     print("测试流式聊天接口")
     print("=" * 60)
     
-    api_base_url = "http://localhost:8000/api/v1"
+    api_base_url = '${import.meta.env.VITE_API_BASE_URL}/api/v1'
     session_id = f"test_session_{int(asyncio.get_event_loop().time())}"
     
     try:
@@ -167,7 +167,7 @@ async def main():
     # 检查后端服务是否运行
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get("http://localhost:8000/health")
+            response = await client.get('${import.meta.env.VITE_API_URL}/health')
             if response.status_code != 200:
                 print("⚠️  后端服务可能未正常运行，请检查")
     except Exception:

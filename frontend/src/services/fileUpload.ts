@@ -62,12 +62,13 @@ class FileUploadService {
 
     try {
       const token = localStorage.getItem('token') || '';
-      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+      const rawBaseUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '/api/v1';
+      const baseUrl = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
 
       const response = await fetch(`${baseUrl}/upload`, {
         method: 'POST',
         headers: {
-          Authorization: token ? `Bearer ${token}` : '',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: formData,
       });

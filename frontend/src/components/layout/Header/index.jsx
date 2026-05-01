@@ -24,14 +24,29 @@ export default function Header() {
 
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [avatarLoadError, setAvatarLoadError] = useState(false);
 
   const displayName = user?.username || '';
   const displayChar = displayName.charAt(0).toUpperCase() || '游';
+  const rawApiBaseUrl =
+    import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '/api/v1';
+  const apiBaseUrl = rawApiBaseUrl.endsWith('/') ? rawApiBaseUrl.slice(0, -1) : rawApiBaseUrl;
+  const apiOrigin = apiBaseUrl.replace(/\/api\/v1\/?$/, '');
+  const resolvedAvatarUrl = (() => {
+    if (!user?.avatar) return null;
+    if (user.avatar.startsWith('http')) return user.avatar;
+    if (user.avatar.startsWith('/static/')) return `${apiOrigin}${user.avatar}`;
+    return `${apiBaseUrl}/${user.avatar.replace(/^\//, '')}`;
+  })();
 
   useEffect(() => {
     setShowUserMenu(false);
     setMobileMenuOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    setAvatarLoadError(false);
+  }, [user?.avatar]);
 
   const isActive = (path) => {
     if (path === '/') return location.pathname === '/';
@@ -136,16 +151,21 @@ export default function Header() {
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center font-medium text-sm"
                 style={{
-                  background: user?.avatar ? 'transparent' : 'var(--gradient-primary)',
+                  background:
+                    resolvedAvatarUrl && !avatarLoadError ? 'transparent' : 'var(--gradient-primary)',
                   color: 'var(--color-text-inverse)',
-                  border: user?.avatar ? '1px solid var(--color-border-light)' : 'none',
+                  border:
+                    resolvedAvatarUrl && !avatarLoadError
+                      ? '1px solid var(--color-border-light)'
+                      : 'none',
                 }}
               >
-                {user?.avatar ? (
+                {resolvedAvatarUrl && !avatarLoadError ? (
                   <img
-                    src={user.avatar}
+                    src={resolvedAvatarUrl}
                     alt={displayName}
                     className="w-full h-full object-cover rounded-full"
+                    onError={() => setAvatarLoadError(true)}
                   />
                 ) : (
                   <span>{displayChar}</span>

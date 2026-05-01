@@ -16,10 +16,18 @@ export default function UserCenter() {
   const identity = user?.is_active ? '非遗数字创作者' : '离线测试账号';
   
   // 3. 处理头像 URL (适配相对路径和绝对路径)
-  const API_BASE_URL = "http://localhost:8000";
-  const avatarUrl = user?.avatar?.startsWith('http') 
-    ? user.avatar 
-    : user?.avatar ? `${API_BASE_URL}/${user.avatar.replace(/^\//, '')}` : null;
+  const RAW_API_BASE_URL =
+    import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '/api/v1';
+  const API_BASE_URL = RAW_API_BASE_URL.endsWith('/')
+    ? RAW_API_BASE_URL.slice(0, -1)
+    : RAW_API_BASE_URL;
+  const API_ORIGIN = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+  const avatarUrl = (() => {
+    if (!user?.avatar) return null;
+    if (user.avatar.startsWith('http')) return user.avatar;
+    if (user.avatar.startsWith('/static/')) return `${API_ORIGIN}${user.avatar}`;
+    return `${API_BASE_URL}/${user.avatar.replace(/^\//, '')}`;
+  })();
 
   // --- 处理文件上传核心逻辑 ---
   const handleFileChange = async (event) => {
@@ -38,10 +46,10 @@ export default function UserCenter() {
     try {
       const token = localStorage.getItem('token');
       // 注意：这里的 URL 要和你后端的接口地址一致
-      const resp = await fetch(`${API_BASE_URL}/api/v1/user/avatar`, {
+      const resp = await fetch(`${API_BASE_URL}/user/avatar`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}` 
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: formData
       });

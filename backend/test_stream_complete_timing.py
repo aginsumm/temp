@@ -15,7 +15,7 @@ async def test_stream_complete_timing():
     print("流式响应完成时间测试")
     print("=" * 60)
     
-    api_base_url = "http://localhost:8000/api/v1"
+    api_base_url = '${import.meta.env.VITE_API_BASE_URL}/api/v1'
     session_id = f"test_stream_{int(time.time())}"
     
     test_cases = [

@@ -13,7 +13,10 @@ import type {
   Relation,
 } from '../types/chat';
 
-const STREAM_TIMEOUT = 60000;
+// 正文结束后服务端仍要做实体/关键词/关系提取与入库（可达 1–2 分钟无 content_chunk），勿过短以免收不到 complete → 图谱空白
+const STREAM_TIMEOUT = 180000;
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '/api/v1';
 
 function transformSession(data: Record<string, unknown>): Session {
   return {
@@ -126,7 +129,7 @@ export const chatApi = {
           headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+        const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
 
         const response = await fetch(`${baseUrl}/chat/stream`, {
           method: 'POST',
@@ -311,7 +314,7 @@ export const chatApi = {
     try {
       const response = await apiAdapterManager.request<SessionListResponse>({
         method: 'GET',
-        url: '/api/v1/session',
+        url: '/session',
         params: { page, page_size: pageSize },
       });
       return {
@@ -341,7 +344,7 @@ export const chatApi = {
     try {
       const response = await apiAdapterManager.request<Record<string, unknown>>({
         method: 'POST',
-        url: '/api/v1/session',
+        url: '/session',
         data: { title },
       });
       return transformSession(response.data);
@@ -359,7 +362,7 @@ export const chatApi = {
     try {
       await apiAdapterManager.request({
         method: 'DELETE',
-        url: `/api/v1/session/${sessionId}`,
+        url: `/session/${sessionId}`,
       });
     } catch (error) {
       console.warn('API unavailable for deleting session, using local');
@@ -386,7 +389,7 @@ export const chatApi = {
     try {
       const response = await apiAdapterManager.request<Record<string, unknown>>({
         method: 'PUT',
-        url: `/api/v1/session/${sessionId}`,
+        url: `/session/${sessionId}`,
         data: updates,
       });
       return transformSession(response.data);
@@ -420,7 +423,7 @@ export const chatApi = {
     try {
       const response = await apiAdapterManager.request<MessageListResponse>({
         method: 'GET',
-        url: `/api/v1/session/${sessionId}/messages`,
+        url: `/session/${sessionId}/messages`,
         params: { page, page_size: pageSize },
       });
       return {
@@ -430,7 +433,10 @@ export const chatApi = {
         ),
       };
     } catch (error) {
-      console.warn('API unavailable for messages, using local');
+      console.warn('API unavailable for messages:', error);
+      if (apiAdapterManager.shouldUseRemote()) {
+        throw error;
+      }
       const messages = await mockChatService.getMessages(sessionId);
       return {
         messages,

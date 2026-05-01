@@ -167,3 +167,28 @@ export const useGraphStore = create<GraphState>()(
     }
   )
 );
+
+/** 等 persist 从 localStorage 写入 store 后再读/写图谱，避免空状态误触发加载并覆盖关系 */
+export function waitUntilGraphStoreRehydrated(): Promise<void> {
+  const store = useGraphStore as typeof useGraphStore & {
+    persist?: {
+      hasHydrated?: (() => boolean) | boolean;
+      onFinishHydration?: (fn: () => void) => () => void;
+    };
+  };
+  const p = store.persist;
+  if (!p || typeof p.onFinishHydration !== 'function') {
+    return Promise.resolve();
+  }
+  const hydrated =
+    typeof p.hasHydrated === 'function' ? p.hasHydrated() : p.hasHydrated === true;
+  if (hydrated) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    const unsub = p.onFinishHydration!(() => {
+      unsub?.();
+      resolve();
+    });
+  });
+}

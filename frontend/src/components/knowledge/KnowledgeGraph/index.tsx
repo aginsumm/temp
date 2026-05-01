@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import * as echarts from 'echarts';
 import { knowledgeApi, GraphData as KnowledgeGraphData } from '../../../api/knowledge';
 import useKnowledgeGraphStore from '../../../stores/knowledgeGraphStore';
-import { useGraphStore } from '../../../stores/graphStore';
+import { useGraphStore, waitUntilGraphStoreRehydrated } from '../../../stores/graphStore';
 import { useThemeStore } from '../../../stores/themeStore';
 import { Activity, Minimize2 } from 'lucide-react';
 import { GraphSkeleton } from '../../common/Skeleton';
@@ -47,6 +47,9 @@ export default function KnowledgeGraph() {
       const knowledgeGraphData: KnowledgeGraphData = {
         nodes: graphStoreEntities.map((e) => {
           const entity = e as unknown as Entity & Record<string, unknown>;
+          const rawValue =
+            ((entity.relevance || entity.importance || entity.value) as number) || 0.5;
+          const normalizedValue = rawValue > 1 ? Math.min(1, rawValue / 5) : Math.max(0, rawValue);
           return {
             id: String(entity.id || Math.random()),
             name: entity.name || '未知',
@@ -54,7 +57,7 @@ export default function KnowledgeGraph() {
             description: ((entity.description || entity.metadata?.description) as string) || '',
             region: ((entity.region || entity.metadata?.region) as string) || '',
             period: ((entity.period || entity.metadata?.period) as string) || '',
-            value: ((entity.relevance || entity.importance || entity.value) as number) || 0.5,
+            value: normalizedValue,
             itemStyle: {
               color: getCategoryColor((entity.type || entity.category || 'unknown') as string),
             },
@@ -110,19 +113,29 @@ export default function KnowledgeGraph() {
   }, [graphData]);
 
   useEffect(() => {
-    if (graphStoreEntities.length === 0) {
-      loadGraphData();
-    } else {
-      setLoading(false);
-    }
+    let cancelled = false;
+    const retryRef = retryTimeoutRef;
+    const chartRef = chartInstance;
+    void (async () => {
+      await waitUntilGraphStoreRehydrated();
+      if (cancelled) return;
+      if (useGraphStore.getState().entities.length === 0) {
+        loadGraphData();
+      } else {
+        setLoading(false);
+      }
+    })();
     return () => {
-      const timeout = retryTimeoutRef.current;
+      cancelled = true;
+      const timeout = retryRef.current;
       if (timeout) clearTimeout(timeout);
-      if (chartInstance.current) {
-        chartInstance.current.dispose();
-        chartInstance.current = null;
+      const inst = chartRef.current;
+      if (inst) {
+        inst.dispose();
+        chartRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 挂载一次：rehydrate 后再决定是否拉全量；不跟 loadGraphData 身份变化重跑
   }, []);
 
   const loadGraphData = async () => {

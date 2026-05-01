@@ -48,10 +48,11 @@ const DEFAULT_CONFIG: ConnectionConfig = {
   offlineQueueSize: 50,
 };
 const HEALTH_PATH = '/api/v1/health';
+const API_PATH = '/api/v1';
 
 function resolveHealthCheckUrl(rawBase: string): string {
   // 如果是相对路径，添加默认主机
-  const baseUrl = rawBase.startsWith('http') ? rawBase : `http://localhost:8000${rawBase}`;
+ const baseUrl = rawBase.startsWith('http') ? rawBase : import.meta.env.VITE_API_URL + rawBase;
 
   const normalized = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
 
@@ -90,8 +91,23 @@ function resolveHealthCheckUrl(rawBase: string): string {
   return `${normalized}${HEALTH_PATH}`;
 }
 
+function resolveApiBaseUrl(): string {
+  const rawApiBase =
+    import.meta.env.VITE_API_BASE_URL ||
+    import.meta.env.VITE_API_URL ||
+    API_PATH;
+
+  if (rawApiBase.startsWith('http')) {
+    return rawApiBase.endsWith('/') ? rawApiBase.slice(0, -1) : rawApiBase;
+  }
+
+  const normalized = rawApiBase.startsWith('/') ? rawApiBase : `/${rawApiBase}`;
+  return normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 const HEALTH_CHECK_BASE_URL = resolveHealthCheckUrl(
-  import.meta.env.VITE_HEALTH_CHECK_URL || 'http://localhost:8000/api/v1'
+  import.meta.env.VITE_HEALTH_CHECK_URL || API_BASE_URL
 );
 
 class OfflineQueue {
@@ -192,10 +208,8 @@ class ConnectionManager {
   async checkHealth(): Promise<boolean> {
     const startTime = Date.now();
     try {
-      // HEALTH_CHECK_BASE_URL 已经包含了完整的路径，不需要再拼接
-      const response = await fetch(HEALTH_CHECK_BASE_URL, {
+     const response = await fetch(HEALTH_CHECK_BASE_URL, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(5000),
       });
 
@@ -402,7 +416,8 @@ class ConnectionManager {
   }
 }
 
-export const connectionManager = new ConnectionManager(HEALTH_CHECK_BASE_URL);
+// 传入正确的 API_BASE_URL，而不是 HEALTH_CHECK_BASE_URL
+export const connectionManager = new ConnectionManager(API_BASE_URL);
 
 export { ConnectionManager, OfflineQueue };
 

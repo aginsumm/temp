@@ -225,10 +225,11 @@ class SnapshotService {
         params: { session_id: sessionId, page, page_size: pageSize },
       });
 
-      const serverSnapshotIds = new Set(response.snapshots.map((s) => s.id));
+      const serverSnapshots = Array.isArray(response?.snapshots) ? response.snapshots : [];
+      const serverSnapshotIds = new Set(serverSnapshots.map((s) => s.id));
       const localOnlyNew = localSnapshots.filter((s) => !serverSnapshotIds.has(s.id));
 
-      const mergedSnapshots = [...response.snapshots, ...localOnlyNew].sort((a, b) => {
+      const mergedSnapshots = [...serverSnapshots, ...localOnlyNew].sort((a, b) => {
         const dateA = new Date(a.created_at).getTime();
         const dateB = new Date(b.created_at).getTime();
         return dateB - dateA;
@@ -238,9 +239,9 @@ class SnapshotService {
 
       return {
         snapshots: paginatedSnapshots,
-        total: response.total + localOnlyNew.length,
-        page,
-        page_size: pageSize,
+        total: Number(response?.total || 0) + localOnlyNew.length,
+        page: Number(response?.page || page),
+        page_size: Number(response?.page_size || pageSize),
       };
     } catch (error) {
       console.warn('Failed to fetch snapshots from server:', error);

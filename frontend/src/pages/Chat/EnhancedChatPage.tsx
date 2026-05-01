@@ -74,6 +74,7 @@ export default function EnhancedChatPage() {
     switchSession,
     addMessage,
     updateMessage,
+    rekeyMessageInSession,
     // deleteMessage - 保留以备后用
     setLoading,
     setStreaming,
@@ -84,10 +85,10 @@ export default function EnhancedChatPage() {
     createSession,
     // addMessageVersion - 保留以备后用
     // switchMessageVersion - 保留以备后用
-    // editAndRegenerate - 保留以备后用
     archiveSession,
     addTagToSession,
     removeTagFromSession,
+    editAndRegenerate,
   } = useChatStore();
 
   const messages = useMemo(
@@ -150,16 +151,22 @@ export default function EnhancedChatPage() {
       if (!savedGraphState) {
         const messages = useChatStore.getState().messagesBySession[targetSessionId] || [];
         if (messages.length > 0) {
-          const lastAiMessage = [...messages]
+          const lastAiWithGraph = [...messages]
             .reverse()
-            .find((m) => m.role === 'assistant' && m.entities && m.entities.length > 0);
-          if (lastAiMessage) {
+            .find(
+              (m) =>
+                m.role === 'assistant' &&
+                ((m.entities && m.entities.length > 0) ||
+                  (m.relations && m.relations.length > 0) ||
+                  (m.keywords && m.keywords.length > 0))
+            );
+          if (lastAiWithGraph) {
             graphSyncService.updateFromSnapshot(
-              lastAiMessage.entities || [],
-              lastAiMessage.relations || [],
-              lastAiMessage.keywords || [],
+              lastAiWithGraph.entities || [],
+              lastAiWithGraph.relations || [],
+              lastAiWithGraph.keywords || [],
               targetSessionId,
-              lastAiMessage.id
+              lastAiWithGraph.id
             );
             if (import.meta.env.DEV) {
               console.log('Restored graph state from last AI message');
@@ -403,8 +410,9 @@ export default function EnhancedChatPage() {
   );
 
   // ========== 辅助函数：更新图谱数据 ==========
+  // 与 graphSyncService.updateFromChat(entities, relations, keywords) 对齐；sources 仅预留
   const updateGraphData = useCallback(
-    (entities?: Entity[], keywords?: string[], sources?: Source[], relations?: Relation[]) => {
+    (entities?: Entity[], relations?: Relation[], keywords?: string[], _sources?: Source[]) => {
       if (import.meta.env.DEV) {
         console.log('🔵 updateGraphData 被调用:', {
           entities: entities?.length || 0,
@@ -413,9 +421,14 @@ export default function EnhancedChatPage() {
         });
       }
 
-      if (entities && entities.length > 0) {
+      const hasGraphPayload =
+        (entities && entities.length > 0) ||
+        (relations && relations.length > 0) ||
+        (keywords && keywords.length > 0);
+
+      if (hasGraphPayload) {
         graphSyncService.updateFromChat(
-          entities,
+          entities || [],
           relations || [],
           keywords || [],
           currentSessionId || undefined,
@@ -567,13 +580,18 @@ export default function EnhancedChatPage() {
                 isStreaming: false,
               });
 
-              setNewMessageIds((prev) => new Set([...prev, streamingMsgId]));
+              const serverMsgId = aiMessage.id || streamingMsgId;
+              if (serverMsgId !== streamingMsgId) {
+                await rekeyMessageInSession(sessionId, streamingMsgId, serverMsgId);
+              }
+
+              setNewMessageIds((prev) => new Set([...prev, serverMsgId]));
 
               const entities = aiMessage.entities || [];
               const keywords = aiMessage.keywords || [];
               const sources = aiMessage.sources || [];
               const relations = aiMessage.relations || [];
-              updateGraphData(entities, keywords, sources, relations);
+              updateGraphData(entities, relations, keywords, sources);
 
               setLoading(false);
               setStreaming(false);
@@ -638,6 +656,7 @@ export default function EnhancedChatPage() {
       toast,
       setStreamingContent,
       updateMessage,
+      rekeyMessageInSession,
     ]
   );
 
@@ -808,6 +827,13 @@ export default function EnhancedChatPage() {
               is_regenerating: false,
             });
 
+            updateGraphData(
+              regenerated.entities || [],
+              regenerated.relations || [],
+              regenerated.keywords || [],
+              regenerated.sources || []
+            );
+
             setLoading(false);
             setStreaming(false);
             setIsThinking(false);
@@ -841,7 +867,31 @@ export default function EnhancedChatPage() {
         toast.error('重新生成失败', errorInfo.userMessage);
       }
     },
-    [currentSessionId, setLoading, setStreaming, toast, updateMessage]
+    [currentSessionId, setLoading, setStreaming, toast, updateMessage, updateGraphData]
+  );
+
+  // 编辑用户消息后自动对下一条 AI 回复走重新生成（与 complete 内嵌的图谱字段一致）
+  const handleEditAndRegenerate = useCallback(
+    async (userMessageId: string, newContent: string) => {
+      if (!newContent.trim()) {
+        toast.error('编辑失败', '内容不能为空');
+        return;
+      }
+      if (!currentSessionId) return;
+
+      editAndRegenerate(userMessageId, newContent);
+      toast.success('已更新', '正在重新生成回答…');
+
+      const msgs = useChatStore.getState().messagesBySession[currentSessionId] || [];
+      const idx = msgs.findIndex((m) => m.id === userMessageId);
+      const next = idx >= 0 ? msgs[idx + 1] : undefined;
+      if (next?.role === 'assistant') {
+        await handleRegenerate(next.id);
+      } else {
+        toast.info('提示', '未找到下一条 AI 回复，已仅保存您的修改');
+      }
+    },
+    [currentSessionId, editAndRegenerate, handleRegenerate, toast]
   );
 
   // 使用消息操作 Hook
@@ -852,7 +902,6 @@ export default function EnhancedChatPage() {
     handleEdit,
     handleDelete: originalHandleDelete,
     handleSwitchVersion,
-    handleEditAndRegenerate,
     // handleQuote - 保留以备后用
   } = useChatMessageActions({
     sessionId: currentSessionId,
@@ -941,23 +990,30 @@ export default function EnhancedChatPage() {
       // 确保消息已加载，然后恢复图谱数据
       const newMessages = useChatStore.getState().messagesBySession[sid] || [];
 
-      // 查找最后一条包含实体数据的 AI 消息
-      const lastAiMessageWithEntities = [...newMessages]
+      // 查找最后一条带图谱字段的 AI 消息（实体 / 关系 / 关键词任一即可）
+      const lastAiWithGraph = [...newMessages]
         .reverse()
-        .find((m) => m.role === 'assistant' && m.entities && m.entities.length > 0);
+        .find(
+          (m) =>
+            m.role === 'assistant' &&
+            ((m.entities && m.entities.length > 0) ||
+              (m.relations && m.relations.length > 0) ||
+              (m.keywords && m.keywords.length > 0))
+        );
 
-      if (lastAiMessageWithEntities && lastAiMessageWithEntities.entities) {
+      if (lastAiWithGraph) {
         graphSyncService.updateFromChat(
-          lastAiMessageWithEntities.entities,
-          lastAiMessageWithEntities.relations || [],
-          lastAiMessageWithEntities.keywords || [],
+          lastAiWithGraph.entities || [],
+          lastAiWithGraph.relations || [],
+          lastAiWithGraph.keywords || [],
           sid,
-          lastAiMessageWithEntities.id
+          lastAiWithGraph.id
         );
         if (import.meta.env.DEV) {
           console.log('✅ 切换会话后自动恢复图谱数据:', {
-            entities: lastAiMessageWithEntities.entities.length,
-            relations: lastAiMessageWithEntities.relations?.length || 0,
+            entities: lastAiWithGraph.entities?.length || 0,
+            relations: lastAiWithGraph.relations?.length || 0,
+            keywords: lastAiWithGraph.keywords?.length || 0,
           });
         }
       }

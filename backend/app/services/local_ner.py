@@ -6,6 +6,7 @@
 import re
 from typing import List, Dict, Tuple
 from app.schemas.chat import Entity, EntityType
+from app.services.entity_quality import is_spurious_period_entity_name
 
 
 # ========== 非遗领域实体词库 ==========
@@ -22,7 +23,6 @@ TECHNIQUE_KEYWORDS = [
     "漆器", "瓷器", "织锦", "蜡染", "扎染", "银饰", "铜器", "竹编", "草编",
     "苏绣", "湘绣", "粤绣", "蜀绣", "汉绣", "京绣", "鲁绣", "杭绣",
     "浮雕", "圆雕", "镂空雕", "透雕", "线雕", "影雕",
-    "针法", "技法", "工艺", "技艺", "手艺", "绝活", "绝技"
 ]
 
 # 地区关键词（中国主要省市）
@@ -66,7 +66,7 @@ PATTERN_KEYWORDS = [
     "龙纹", "凤纹", "龙凤纹", "云纹", "回纹", "卷草纹", "莲花纹",
     "牡丹纹", "菊花纹", "梅花纹", "竹纹", "兰花纹",
     "如意纹", "寿字纹", "福字纹", "喜字纹",
-    "几何纹", "图腾", "图案", "花纹", "纹饰", "纹样"
+    "几何纹", "图腾",
 ]
 
 # 作品关键词
@@ -146,17 +146,28 @@ class LocalNER:
                 ))
                 seen_names.add(name)
 
-        # 4.2 年份
+        # 4.2 年份（排除「超过2300年」等历时统计中的数字+年）
         for match in self.year_pattern.finditer(text):
             name = match.group()
-            if name not in seen_names:
-                entities.append(self._create_entity(
-                    name=name,
-                    entity_type=EntityType.period,
-                    description=f"具体年份",
-                    relevance=0.85
-                ))
-                seen_names.add(name)
+            if name in seen_names:
+                continue
+            start, end = match.start(), match.end()
+            window = text[max(0, start - 8) : min(len(text), end + 4)]
+            if is_spurious_period_entity_name(window) or is_spurious_period_entity_name(name):
+                continue
+            try:
+                y = int(name.replace("年", ""))
+            except ValueError:
+                continue
+            if y >= 2000:
+                continue
+            entities.append(self._create_entity(
+                name=name,
+                entity_type=EntityType.period,
+                description=f"具体年份",
+                relevance=0.85
+            ))
+            seen_names.add(name)
 
         # 4.3 时期关键词
         for keyword in PERIOD_KEYWORDS:
@@ -207,9 +218,9 @@ class LocalNER:
                         ))
                         seen_names.add(work_name)
 
-        # 按相关性排序，返回前20个
+        # 按相关性排序（不设条数上限，后续由 entity_quality 过滤/合并）
         entities.sort(key=lambda e: e.relevance, reverse=True)
-        return entities[:20]
+        return entities
 
     def _create_entity(
         self,

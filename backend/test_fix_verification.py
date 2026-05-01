@@ -14,7 +14,7 @@ async def test_complete_event_structure():
     print("测试 1: Complete 事件数据结构")
     print("=" * 60)
     
-    api_base_url = "http://localhost:8000/api/v1"
+    api_base_url = '${import.meta.env.VITE_API_BASE_URL}/api/v1'
     session_id = f"test_complete_{int(asyncio.get_event_loop().time())}"
     
     try:
@@ -118,7 +118,7 @@ async def test_stream_content_display():
     print("测试 2: 流式内容显示")
     print("=" * 60)
     
-    api_base_url = "http://localhost:8000/api/v1"
+    api_base_url = '${import.meta.env.VITE_API_BASE_URL}/api/v1'
     session_id = f"test_stream_{int(asyncio.get_event_loop().time())}"
     
     try:

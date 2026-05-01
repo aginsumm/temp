@@ -406,6 +406,28 @@ class ChatRepository {
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   }
 
+  /** 用服务端返回的消息列表覆盖本会话本地消息（不触发远端同步队列） */
+  async replaceSessionMessages(sessionId: string, messages: Message[]): Promise<void> {
+    const existing = await this.getMessagesBySession(sessionId);
+    for (const m of existing) {
+      await localDatabase.delete(STORES.MESSAGES, m.id);
+    }
+    for (const m of messages) {
+      await localDatabase.put(STORES.MESSAGES, messageToDb(m));
+    }
+    await this.updateSessionMessageCount(sessionId);
+  }
+
+  /** 将本地消息主键从流式占位 id 换为服务端 id（不触发远端同步队列） */
+  async rekeyMessage(oldId: string, newId: string): Promise<void> {
+    if (oldId === newId) return;
+    const existing = await localDatabase.get<ChatMessage>(STORES.MESSAGES, oldId);
+    if (!existing) return;
+    await localDatabase.delete(STORES.MESSAGES, oldId);
+    await localDatabase.put(STORES.MESSAGES, { ...existing, id: newId });
+    await this.updateSessionMessageCount(existing.session_id);
+  }
+
   async getAllMessages(): Promise<Message[]> {
     const messages = await localDatabase.getAll<ChatMessage>(STORES.MESSAGES);
     return messages.map(dbToMessage);
@@ -548,7 +570,7 @@ class ChatRepository {
   ): Promise<() => void> {
     let isAborted = false;
     const controller = new AbortController();
-    const STREAM_TIMEOUT = 120000; // 120 秒超时（给实体提取留足时间）
+    const STREAM_TIMEOUT = 180000; // 等到响应头返回即可（读到 body 后不依赖此项）
     const MAX_RETRIES = 1; // 网络错误时重试 1 次
     let retryCount = 0;
 
@@ -561,7 +583,10 @@ class ChatRepository {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+        const apiBaseUrl =
+          import.meta.env.VITE_API_BASE_URL ||
+          import.meta.env.VITE_API_URL ||
+          'http://127.0.0.1:8000/api/v1';
 
         statusCallback?.('connecting');
 
@@ -613,23 +638,17 @@ class ChatRepository {
         let lastActivityTime = Date.now();
         let receivedComplete = false;
         let incompleteJson = ''; // ✅ 优化 5：累积不完整的 JSON
-        const ACTIVITY_TIMEOUT = 10000;
-        const READ_TIMEOUT = 5000;
+        // 正文结束后服务端可能 1–2 分钟无 content_chunk（实体/关键词/关系/入库），仅收 enrichment 与 complete
+        const ACTIVITY_TIMEOUT = 180000;
 
         if (reader) {
           while (!isAborted && !receivedComplete) {
-            // 检查活动超时
             if (Date.now() - lastActivityTime > ACTIVITY_TIMEOUT) {
-              throw new Error('[STREAM_TIMEOUT] 流式响应超时，10 秒无数据');
+              throw new Error('[STREAM_TIMEOUT] 流式响应长时间无数据');
             }
 
             try {
-              const { done, value } = await Promise.race([
-                reader.read(),
-                new Promise<never>((_, reject) =>
-                  setTimeout(() => reject(new Error('[READ_TIMEOUT] 读取超时')), READ_TIMEOUT)
-                ),
-              ]);
+              const { done, value } = await reader.read();
 
               if (done) break;
 
@@ -694,6 +713,8 @@ class ChatRepository {
                     // 收到 complete 事件，标记完成并退出循环
                     receivedComplete = true;
                     break;
+                  } else if (data.type === 'enrichment') {
+                    // 占位心跳，服务端用于拉长无 content_chunk 的阶段
                   } else if (data.type === 'error') {
                     const errorMessage = data.message || '流式响应错误';
                     const recoverable = data.recoverable !== false;
@@ -756,6 +777,8 @@ class ChatRepository {
                         };
                         receivedComplete = true;
                         break;
+                      } else if (data.type === 'enrichment') {
+                        // 占位心跳
                       } else if (data.type === 'error') {
                         const errorMessage = data.message || '流式响应错误';
                         const recoverable = data.recoverable !== false;
@@ -786,10 +809,6 @@ class ChatRepository {
                 }
               }
             } catch (readError: unknown) {
-              if (readError instanceof Error && readError.message.includes('READ_TIMEOUT')) {
-                console.warn('⚠️ 读取超时，继续等待...');
-                continue;
-              }
               throw readError;
             }
           }
@@ -896,7 +915,7 @@ class ChatRepository {
   ): Promise<() => void> {
     let isAborted = false;
     const controller = new AbortController();
-    const STREAM_TIMEOUT = 60000;
+    const STREAM_TIMEOUT = 180000;
     const MAX_RETRIES = 1;
     let retryCount = 0;
 
@@ -909,7 +928,10 @@ class ChatRepository {
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+        const apiBaseUrl =
+          import.meta.env.VITE_API_BASE_URL ||
+          import.meta.env.VITE_API_URL ||
+          'http://127.0.0.1:8000/api/v1';
 
         statusCallback?.('connecting');
 
@@ -951,22 +973,18 @@ class ChatRepository {
         let fullContent = '';
         let sseBuffer = '';
         let lastActivityTime = Date.now();
-        let receivedComplete = false; // 标记是否收到 complete 事件
-        const ACTIVITY_TIMEOUT = 30000;
+        let receivedComplete = false;
+        let streamCompleteHandled = false;
+        const ACTIVITY_TIMEOUT = 180000;
 
         if (reader) {
           while (!isAborted && !receivedComplete) {
             if (Date.now() - lastActivityTime > ACTIVITY_TIMEOUT) {
-              throw new Error('[STREAM_TIMEOUT] 流式响应超时，30 秒无数据');
+              throw new Error('[STREAM_TIMEOUT] 流式响应长时间无数据');
             }
 
             try {
-              const { done, value } = await Promise.race([
-                reader.read(),
-                new Promise<never>((_, reject) =>
-                  setTimeout(() => reject(new Error('[READ_TIMEOUT] 读取超时')), 10000)
-                ),
-              ]);
+              const { done, value } = await reader.read();
 
               if (done) break;
 
@@ -982,54 +1000,82 @@ class ChatRepository {
                   .filter((line) => line.startsWith('data:'))
                   .map((line) => line.replace(/^data:\s?/, ''));
 
-                for (const dataStr of dataLines) {
-                  try {
-                    const data = JSON.parse(dataStr);
+                if (dataLines.length === 0) continue;
+                const payload = dataLines.join('\n');
+                if (payload === '[DONE]') {
+                  receivedComplete = true;
+                  break;
+                }
 
-                    if (data.type === 'content_chunk') {
-                      fullContent += data.content;
-                      onChunk(data.content);
-                    } else if (data.type === 'entities') {
-                      latestEntities = data.entities || [];
-                    } else if (data.type === 'keywords') {
-                      latestKeywords = data.keywords || [];
-                    } else if (data.type === 'relations') {
-                      latestRelations = data.relations || [];
-                    } else if (data.type === 'complete') {
-                      const regeneratedMessage: Message = {
-                        id: messageId,
-                        session_id: '',
-                        role: 'assistant',
-                        content: fullContent,
-                        created_at: new Date().toISOString(),
-                        entities: latestEntities,
-                        keywords: latestKeywords,
-                        relations: latestRelations,
-                        sources: [],
-                      };
-                      onComplete(regeneratedMessage);
-                      statusCallback?.('complete');
-                      receivedComplete = true;
-                      break;
-                    } else if (data.type === 'error') {
-                      throw new Error(data.message || '重新生成失败');
+                try {
+                  const data = JSON.parse(payload);
+
+                  if (data.type === 'content_chunk' || data.type === 'content') {
+                    const chunkText = String(data.content || '');
+                    if (chunkText) {
+                      fullContent += chunkText;
+                      onChunk(chunkText);
                     }
-                  } catch (parseError) {
-                    console.warn('Failed to parse SSE event:', dataStr, parseError);
+                  } else if (data.type === 'entities') {
+                    latestEntities = Array.isArray(data.entities) ? data.entities : [];
+                  } else if (data.type === 'keywords') {
+                    latestKeywords = Array.isArray(data.keywords) ? data.keywords : [];
+                  } else if (data.type === 'relations') {
+                    latestRelations = Array.isArray(data.relations) ? data.relations : [];
+                  } else if (data.type === 'complete') {
+                    // 与 send_message_stream 一致：图谱字段在 complete 里，不再依赖单独的 entities 事件
+                    const content = (typeof data.content === 'string' && data.content) || fullContent;
+                    const mergedEntities =
+                      Array.isArray(data.entities) && data.entities.length > 0
+                        ? data.entities
+                        : latestEntities;
+                    const mergedKeywords =
+                      Array.isArray(data.keywords) && data.keywords.length > 0
+                        ? data.keywords
+                        : latestKeywords;
+                    const mergedRelations =
+                      Array.isArray(data.relations) && data.relations.length > 0
+                        ? data.relations
+                        : latestRelations;
+                    const mergedSources = Array.isArray(data.sources) ? data.sources : [];
+                    const regeneratedMessage: Message = {
+                      id: (typeof data.message_id === 'string' && data.message_id) || messageId,
+                      session_id: '',
+                      role: 'assistant',
+                      content,
+                      created_at:
+                        (typeof data.created_at === 'string' && data.created_at) ||
+                        new Date().toISOString(),
+                      entities: mergedEntities,
+                      keywords: mergedKeywords,
+                      relations: mergedRelations,
+                      sources: mergedSources,
+                    };
+                    onComplete(regeneratedMessage);
+                    statusCallback?.('complete');
+                    streamCompleteHandled = true;
+                    receivedComplete = true;
+                    break;
+                  } else if (data.type === 'enrichment') {
+                    // 占位心跳
+                  } else if (data.type === 'error') {
+                    throw new Error(data.message || '重新生成失败');
                   }
+                } catch (parseError) {
+                  if (parseError instanceof SyntaxError) {
+                    console.warn('SSE parse error (regenerate):', payload.slice(0, 160));
+                    continue;
+                  }
+                  throw parseError;
                 }
               }
             } catch (readError) {
-              const error = readError as Error & { message?: string };
-              if (error.message?.includes('READ_TIMEOUT')) {
-                continue;
-              }
               throw readError;
             }
           }
         }
 
-        if (!isAborted && fullContent) {
+        if (!isAborted && !streamCompleteHandled && fullContent.trim()) {
           const regeneratedMessage: Message = {
             id: messageId,
             session_id: '',

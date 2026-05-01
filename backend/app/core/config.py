@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     DASHSCOPE_API_KEY: Optional[str] = None
+    # 文本对话请使用 qwen-plus / qwen-turbo 等；qvq 等多为流式/多模态专用，易在 text-generation 接口返回 400
+    DASHSCOPE_CHAT_MODEL: str = "qwen-plus"
     OPENAI_API_KEY: Optional[str] = None
     
     CORS_ORIGINS: list[str] = [
@@ -34,6 +36,9 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3001",
         "http://127.0.0.1:3002",
         "http://127.0.0.1:5173"
+        "http://182.92.76.74:3000",
+        "http://182.92.76.74:8000"
+        "http://26.14.142.136:3000"
     ]
     
     class Config:

@@ -40,17 +40,17 @@ export const authApi = {
   },
 
   getCurrentUser: async (): Promise<UserResponse> => {
-    const response = await apiClient.get<UserResponse>('/api/v1/auth/me');
+    const response = await apiClient.get<UserResponse>('/auth/me');
     return response;
   },
 
   updateProfile: async (data: {avatar?: string }): Promise<UserResponse> => {
-    const response = await apiClient.put<UserResponse>('/api/v1/auth/me', data);
+    const response = await apiClient.put<UserResponse>('/auth/me', data);
     return response;
   },
 
   logout: async (): Promise<void> => {
-    await apiClient.post('/api/v1/auth/logout');
+    await apiClient.post('/auth/logout');
   },
 };
 

@@ -2,11 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
+import itertools
 import json
 import logging
+import re
 import sys
+import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from app.core.database import get_db
 from app.core.auth import get_current_user, get_current_or_guest
@@ -24,6 +27,7 @@ from app.schemas.chat import (
     RecommendedQuestion,
     Source,
     Entity,
+    EntityType,
     Relation,
     RelationType,
     RecommendationRequest,
@@ -39,6 +43,11 @@ from app.models.chat import MessageRole
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 logger = logging.getLogger(__name__)
 
+
+def _sse_enrichment_pulse(stage: str) -> str:
+    """后端在正文流结束后仍有长时间离线计算；发轻量 SSE 避免前端误判读超时断开。"""
+    return f"data: {json.dumps({'type': 'enrichment', 'stage': stage}, ensure_ascii=False)}\n\n"
+
 # 常量定义
 MAX_ENTITIES = 5
 MAX_KEYWORDS = 5
@@ -52,6 +61,460 @@ def generate_entity_id(name: str, entity_type: str) -> str:
     key = f"{name.lower().strip()}_{entity_type}"
     hash_value = hashlib.md5(key.encode()).hexdigest()[:12]
     return f"ent_{hash_value}"
+
+
+def dedupe_chat_entities(entities: list) -> list:
+    """实体去重：过滤统称、合并传承人尊称变体（见 entity_quality.refine_chat_entities）。"""
+    if not entities:
+        return []
+    from app.services.entity_quality import refine_chat_entities
+
+    return refine_chat_entities(entities)
+
+
+def dedupe_chat_relations(relations: list) -> list:
+    """关系去重：基于 source-target-type 合并相同关系"""
+    if not relations:
+        return []
+    seen: dict = {}
+    for relation in relations:
+        if getattr(relation, "bidirectional", False):
+            source_target = tuple(sorted([relation.source, relation.target]))
+            key = f"{source_target[0]}_{source_target[1]}_{relation.type}"
+        else:
+            key = f"{relation.source}_{relation.target}_{relation.type}"
+        if key not in seen:
+            seen[key] = relation
+        else:
+            existing = seen[key]
+            if relation.confidence and (
+                not existing.confidence or relation.confidence > existing.confidence
+            ):
+                existing.confidence = relation.confidence
+    return list(seen.values())
+
+
+REL_PRIORITY_ORDER = [
+    "inherits",
+    "creates",
+    "origin",
+    "located_in",
+    "uses_material",
+    "has_pattern",
+    "flourished_in",
+    "influenced_by",
+    "contains",
+    "related_to",
+]
+
+
+def _relation_type_str(rel: Any) -> str:
+    t = getattr(rel, "type", None)
+    if t is None:
+        return "related_to"
+    return t.value if hasattr(t, "value") else str(t)
+
+
+def _relation_priority(rel: Any) -> int:
+    s = _relation_type_str(rel)
+    try:
+        return REL_PRIORITY_ORDER.index(s)
+    except ValueError:
+        return len(REL_PRIORITY_ORDER)
+
+
+def _pick_better_relation(a: Any, b: Any) -> Any:
+    pa, pb = _relation_priority(a), _relation_priority(b)
+    if pa != pb:
+        return a if pa < pb else b
+    ca, cb = (getattr(a, "confidence", None) or 0.0), (getattr(b, "confidence", None) or 0.0)
+    return a if ca >= cb else b
+
+
+def collapse_relations_one_per_pair(relations: list) -> list:
+    """同一对节点（无序）只保留一条关系：优先语义更具体的类型，其次置信度更高。"""
+    if not relations:
+        return []
+    groups: dict[tuple[str, str], list] = {}
+    for rel in relations:
+        s, t = getattr(rel, "source", ""), getattr(rel, "target", "")
+        if not s or not t or s == t:
+            continue
+        key = tuple(sorted([str(s), str(t)]))
+        groups.setdefault(key, []).append(rel)
+    out: list = []
+    for _key, rels in groups.items():
+        best = rels[0]
+        for r in rels[1:]:
+            best = _pick_better_relation(best, r)
+        out.append(best)
+    return out
+
+
+# 时期 / 传承人 / 地域 / 材料 / 技艺 / 纹样：与「另一非作品」连成边时须经过作品轴心（与 llm_service 关系抽取说明一致）
+_WORK_ANCHOR_TYPES: frozenset[str] = frozenset(
+    {
+        EntityType.period.value,
+        EntityType.inheritor.value,
+        EntityType.region.value,
+        EntityType.material.value,
+        EntityType.technique.value,
+        EntityType.pattern.value,
+    }
+)
+
+
+def _repair_relation_orientations_to_match_llm_rules(entities: list, relations: list) -> list:
+    """
+    对齐 llm_service 中「作品轴心」边方向：
+    flourished_in/located_in/uses_material/has_pattern → 作品(source) → 属性实体(target)
+    creates → 技艺或传承人(source) → 作品(target)
+    related_to → 至少一端为作品，否则丢弃。
+    """
+    if not relations:
+        return []
+
+    tmap = _entity_id_to_type(entities)
+    w = EntityType.work.value
+    pv, rv, mv, patv = (
+        EntityType.period.value,
+        EntityType.region.value,
+        EntityType.material.value,
+        EntityType.pattern.value,
+    )
+    tech, inher = EntityType.technique.value, EntityType.inheritor.value
+
+    def etype(eid: object) -> Optional[str]:
+        return tmap.get(str(eid)) if eid is not None else None
+
+    def _rel_copy(rel: Relation, source: str, target: str) -> Relation:
+        return Relation(
+            id=rel.id,
+            source=source,
+            target=target,
+            type=rel.type,
+            confidence=getattr(rel, "confidence", None),
+            evidence=getattr(rel, "evidence", None),
+            bidirectional=bool(getattr(rel, "bidirectional", False)),
+        )
+
+    repaired: list = []
+    for rel in relations:
+        s_raw, t_raw = str(rel.source), str(rel.target)
+        st, tt = etype(s_raw), etype(t_raw)
+        rts = _relation_type_str(rel)
+
+        if rts == "related_to":
+            if st != w and tt != w:
+                continue
+            repaired.append(rel)
+            continue
+
+        if rts == "flourished_in":
+            if st == w and tt == pv:
+                repaired.append(rel)
+            elif st == pv and tt == w:
+                repaired.append(_rel_copy(rel, t_raw, s_raw))
+            else:
+                continue
+            continue
+
+        if rts == "located_in":
+            if st == w and tt == rv:
+                repaired.append(rel)
+            elif st == rv and tt == w:
+                repaired.append(_rel_copy(rel, t_raw, s_raw))
+            else:
+                continue
+            continue
+
+        if rts == "uses_material":
+            if st == w and tt == mv:
+                repaired.append(rel)
+            elif st == mv and tt == w:
+                repaired.append(_rel_copy(rel, t_raw, s_raw))
+            else:
+                continue
+            continue
+
+        if rts == "has_pattern":
+            if st == w and tt == patv:
+                repaired.append(rel)
+            elif st == patv and tt == w:
+                repaired.append(_rel_copy(rel, t_raw, s_raw))
+            else:
+                continue
+            continue
+
+        if rts == "creates":
+            if (st == tech or st == inher) and tt == w:
+                repaired.append(rel)
+            elif (tt == tech or tt == inher) and st == w:
+                repaired.append(_rel_copy(rel, t_raw, s_raw))
+            else:
+                continue
+            continue
+
+        repaired.append(rel)
+
+    return repaired
+
+
+def _entity_id_to_type(entities: list) -> dict[str, str]:
+    m: dict[str, str] = {}
+    for e in entities or []:
+        eid = getattr(e, "id", None)
+        if not eid:
+            continue
+        t = getattr(e, "type", None)
+        m[str(eid)] = t.value if hasattr(t, "value") else str(t or "")
+    return m
+
+
+def _mention_start_index(haystack: str, entity: Any) -> int:
+    """实体名在片段中首次出现的大致字符位置；找不到则置后以便排序淘汰。"""
+    name = (getattr(entity, "name", None) or "").strip()
+    if not name or not haystack:
+        return 10**6
+    if name in haystack:
+        return haystack.index(name)
+    inner = name.strip("《》").strip()
+    if inner and inner != name and inner in haystack:
+        return haystack.index(inner)
+    compact_n = re.sub(r"[\s\u3000《》「」『』]", "", name)
+    compact_h = re.sub(r"[\s\u3000《》「」『』]", "", haystack)
+    if len(compact_n) >= 2 and compact_n in compact_h:
+        return compact_h.index(compact_n)
+    return 10**6
+
+
+def entity_name_appears_in_text(name: str, text: str) -> bool:
+    """判断实体名是否在全文中有提及（支持书名号、去空白紧凑匹配）。"""
+    n = (name or "").strip()
+    if not n or len(n) < 2:
+        return False
+    if not text:
+        return False
+    if n in text:
+        return True
+    inner = n.strip("《》").strip()
+    if inner and inner != n and inner in text:
+        return True
+    compact_n = re.sub(r"[\s\u3000《》「」『』]", "", n)
+    compact_t = re.sub(r"[\s\u3000《》「」『』]", "", text)
+    if len(compact_n) >= 2 and compact_n in compact_t:
+        return True
+    return False
+
+
+def filter_relations_anchor_only_with_work(entities: list, relations: list) -> list:
+    """去掉「时期/传承人/地域/材料/技艺」与非作品之间的边；端点不在实体表中的边也丢弃。
+
+    若当前实体列表中没有任何 work：模型常把代表作标成 technique 等，轴心规则会把边删光；
+    此时只做端点有效性校验，保留 LLM 边（仍有 collapse/dedupe）。"""
+    if not relations:
+        return []
+    tmap = _entity_id_to_type(entities)
+    work_val = EntityType.work.value
+    valid_ids = frozenset(tmap.keys())
+    has_work = any(v == work_val for v in tmap.values())
+
+    out: list = []
+    for rel in relations:
+        s = str(getattr(rel, "source", "") or "")
+        t = str(getattr(rel, "target", "") or "")
+        if not s or not t or s == t:
+            continue
+        if s not in valid_ids or t not in valid_ids:
+            continue
+        if not has_work:
+            out.append(rel)
+            continue
+        st = tmap.get(s)
+        tt = tmap.get(t)
+        if st is None or tt is None:
+            continue
+        if st in _WORK_ANCHOR_TYPES and tt != work_val:
+            continue
+        if tt in _WORK_ANCHOR_TYPES and st != work_val:
+            continue
+        out.append(rel)
+    return out
+
+
+def enrich_relations_for_chat(
+    text: str,
+    entities: list,
+    relations: list,
+    *,
+    max_new_edges: int = 120,
+) -> list:
+    """
+    仅在「同一子句」内、按与作品的**文字距离最近**补类型边，避免一篇里所有时期/技法都与同一作品互连：
+    - 每个子句内：每个作品至多 1 条时期、1 条地域、1 条材料、1 条纹样；
+    - 每个子句内：每个作品至多接 1 条「技艺→作品 creates」、1 条「传承人→作品 creates」。
+    不补 related_to。不增加 LLM 调用。
+    """
+    text_full = str(text or "").strip()
+    if len(text_full) < 2 or len(entities) < 2 or max_new_edges <= 0:
+        return list(relations) if relations else []
+
+    out: list = list(relations or [])
+
+    def pair_key(a_id: str, b_id: str) -> tuple[str, str]:
+        return tuple(sorted([str(a_id), str(b_id)]))
+
+    seen = {
+        pair_key(r.source, r.target)
+        for r in out
+        if getattr(r, "source", None) and getattr(r, "target", None)
+    }
+
+    def etype_val(e: Any) -> str:
+        t = getattr(e, "type", None)
+        return t.value if hasattr(t, "value") else str(t or "technique")
+
+    def try_append(rel: Relation) -> bool:
+        nonlocal max_new_edges
+        if max_new_edges <= 0:
+            return False
+        pk = pair_key(rel.source, rel.target)
+        if pk in seen:
+            return False
+        out.append(rel)
+        seen.add(pk)
+        max_new_edges -= 1
+        return True
+
+    wv = EntityType.work.value
+    ordered = sorted(
+        entities,
+        key=lambda e: len((getattr(e, "name", None) or "").strip()),
+        reverse=True,
+    )
+
+    chunks = [c.strip() for c in re.split(r"[。！？;；]+|\n+", text_full) if len(c.strip()) >= 4]
+
+    for sent in chunks:
+        present: list = []
+        seen_ids: set[str] = set()
+        for e in ordered:
+            name = (getattr(e, "name", None) or "").strip()
+            eid = getattr(e, "id", None)
+            if not name or not eid or len(name) < 2:
+                continue
+            if not entity_name_appears_in_text(name, sent):
+                continue
+            sid = str(eid)
+            if sid in seen_ids:
+                continue
+            seen_ids.add(sid)
+            present.append(e)
+        if len(present) < 2:
+            continue
+        present = present[:18]
+
+        works = [e for e in present if etype_val(e) == wv]
+        if not works:
+            continue
+
+        def _greedy_work_attr(attr_type: str, rtype: RelationType) -> None:
+            attrs = [e for e in present if etype_val(e) == attr_type]
+            if not attrs:
+                return
+            for w in works:
+                if max_new_edges <= 0:
+                    return
+                iw = _mention_start_index(sent, w)
+                best_a = None
+                best_d = 10**9
+                for a in attrs:
+                    ia = _mention_start_index(sent, a)
+                    d = abs(iw - ia)
+                    if d < best_d:
+                        best_d = d
+                        best_a = a
+                if best_a is None:
+                    continue
+                aid = str(getattr(best_a, "id", ""))
+                wid = str(getattr(w, "id", ""))
+                rel = Relation(
+                    id=f"rel_ty_{uuid.uuid4().hex[:16]}",
+                    source=wid,
+                    target=aid,
+                    type=rtype,
+                    confidence=0.58,
+                    evidence="type-rule+nearest-in-sentence",
+                )
+                try_append(rel)
+
+        _greedy_work_attr(EntityType.period.value, RelationType.flourished_in)
+        _greedy_work_attr(EntityType.region.value, RelationType.located_in)
+        _greedy_work_attr(EntityType.material.value, RelationType.uses_material)
+        _greedy_work_attr(EntityType.pattern.value, RelationType.has_pattern)
+
+        techs = [e for e in present if etype_val(e) == EntityType.technique.value]
+        inheritors = [e for e in present if etype_val(e) == EntityType.inheritor.value]
+
+        for w in works:
+            if max_new_edges <= 0:
+                break
+            iw = _mention_start_index(sent, w)
+            wid = str(getattr(w, "id", ""))
+
+            best_t = None
+            best_td = 10**9
+            for t in techs:
+                it = _mention_start_index(sent, t)
+                d = abs(iw - it)
+                if d < best_td:
+                    best_td = d
+                    best_t = t
+            if best_t is not None:
+                tid = str(getattr(best_t, "id", ""))
+                rel = Relation(
+                    id=f"rel_ty_{uuid.uuid4().hex[:16]}",
+                    source=tid,
+                    target=wid,
+                    type=RelationType.creates,
+                    confidence=0.58,
+                    evidence="type-rule+nearest-in-sentence",
+                )
+                try_append(rel)
+
+            best_i = None
+            best_id = 10**9
+            for inh in inheritors:
+                ii = _mention_start_index(sent, inh)
+                d = abs(iw - ii)
+                if d < best_id:
+                    best_id = d
+                    best_i = inh
+            if best_i is not None:
+                iid = str(getattr(best_i, "id", ""))
+                rel = Relation(
+                    id=f"rel_ty_{uuid.uuid4().hex[:16]}",
+                    source=iid,
+                    target=wid,
+                    type=RelationType.creates,
+                    confidence=0.58,
+                    evidence="type-rule+nearest-in-sentence",
+                )
+                try_append(rel)
+
+    return out
+
+
+def finalize_chat_relations_for_message(text: str, entities: list, relations: list) -> list:
+    """LLM 关系 → 去重 → 按作品轴心纠正方向 → 同句最近邻补边 → 再去重 → 每对一条边 → 强轴心过滤。"""
+    relations = dedupe_chat_relations(relations or [])
+    relations = _repair_relation_orientations_to_match_llm_rules(entities, relations)
+    relations = enrich_relations_for_chat(text, entities, relations)
+    relations = dedupe_chat_relations(relations)
+    relations = collapse_relations_one_per_pair(relations)
+    relations = filter_relations_anchor_only_with_work(entities, relations)
+    return relations
+
 
 MOCK_SOURCES = [
     {
@@ -220,7 +683,9 @@ async def send_message(
         ai_response = await llm_service.chat(user_content)
         entities = await llm_service.extract_entities(ai_response)
         keywords = await llm_service.extract_keywords(ai_response)
+        entities = dedupe_chat_entities(entities)
         relations = await llm_service.extract_relations(ai_response, entities)
+        relations = finalize_chat_relations_for_message(ai_response, entities, relations)
 
         # 动态检索相关来源，替换硬编码的 MOCK_SOURCES
         sources = await retrieve_sources_from_knowledge(db, request.content, entities)
@@ -305,60 +770,15 @@ async def send_message_stream(
                 content=user_content,
                 role=MessageRole.user,
             )
+
+        # 流式正文 + 实体/关系提取可达数十秒：若不先提交，SQLite 会话事务会一直占写锁，
+        # 并发创建会话等请求会 database is locked；其它库也可受益（尽早缩短事务）。
+        await db.commit()
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error creating user message: {e}")
         raise HTTPException(status_code=500, detail=f"创建消息失败: {str(e)}")
-
-    def deduplicate_entities(entities: list) -> list:
-        """实体去重：基于名称和类型合并相同实体，保留更详细的信息"""
-        if not entities:
-            return []
-        
-        seen = {}
-        for entity in entities:
-            key = f"{entity.name.lower().strip()}_{entity.type}"
-            if key not in seen:
-                # 使用一致的 ID 生成逻辑
-                entity.id = generate_entity_id(entity.name, entity.type.value if hasattr(entity.type, 'value') else entity.type)
-                seen[key] = entity
-            else:
-                existing = seen[key]
-                # 保留更详细的描述
-                if entity.description and (not existing.description or len(entity.description) > len(existing.description)):
-                    existing.description = entity.description
-                # 保留更高的相关性分数
-                if entity.relevance and (not existing.relevance or entity.relevance > existing.relevance):
-                    existing.relevance = entity.relevance
-                # 保留更高的重要性分数
-                if entity.importance and (not existing.importance or entity.importance > existing.importance):
-                    existing.importance = entity.importance
-        
-        return list(seen.values())
-
-    def deduplicate_relations(relations: list) -> list:
-        """关系去重：基于 source-target-type 合并相同关系，处理双向关系"""
-        if not relations:
-            return []
-        
-        seen = {}
-        for relation in relations:
-            # 对于双向关系，规范化 key 的顺序
-            if getattr(relation, 'bidirectional', False):
-                source_target = tuple(sorted([relation.source, relation.target]))
-                key = f"{source_target[0]}_{source_target[1]}_{relation.type}"
-            else:
-                key = f"{relation.source}_{relation.target}_{relation.type}"
-            
-            if key not in seen:
-                seen[key] = relation
-            else:
-                existing = seen[key]
-                if relation.confidence and (not existing.confidence or relation.confidence > existing.confidence):
-                    existing.confidence = relation.confidence
-        
-        return list(seen.values())
 
     async def generate():
         full_content = ""
@@ -423,70 +843,47 @@ async def send_message_stream(
                     sys.stdout.flush()
                     last_progress_sent = accumulated_length
 
-            # ✅ 关键修复：立即发送 complete 和 [DONE]，让前端知道文字输出完成
-            # 实体提取、数据库保存等操作在后台异步执行，不阻塞用户看到完整的回答
-            
-            # 生成临时 message_id
-            temp_message_id = f"msg_{datetime.now(timezone.utc).timestamp()}"
-            
-            # 立即发送 complete 事件（仅包含文字内容）
-            complete_data = json.dumps(
-                {
-                    "type": "complete",
-                    "message_id": temp_message_id,
-                    "content": full_content,
-                    "sources": [],
-                    "entities": [],
-                    "keywords": [],
-                    "relations": [],
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                    "role": "assistant",
-                    "saved_to_db": False,
-                    "is_fallback_id": True,
-                },
-                ensure_ascii=False,
-            )
-            yield f"data: {complete_data}\n\n"
+            # 正文流式结束后：先完成实体/关键词/关系提取与入库，再发送 complete（含真实 message_id 与图谱字段），
+            # 否则前端在 [DONE] 后断开，无法收到后台才写入的关键词与图谱数据。
+            yield _sse_enrichment_pulse("reply_stream_done")
             sys.stdout.flush()
-            
-            # ✅ 关键修复：立即发送 [DONE] 标记，让前端关闭连接
-            yield "data: [DONE]\n\n"
-            sys.stdout.flush()
-            
-            # 现在在后台异步执行实体提取、来源检索和数据库保存
-            # 这些操作不再阻塞用户看到完整的回答
+            entities: list = []
+            keywords: List[str] = []
+            relations: list = []
+            sources: list = []
+            message_id: Optional[str] = None
+            save_success = False
+
             try:
-                # 提取实体、关键词、关系
+                yield _sse_enrichment_pulse("extract_entities")
+                sys.stdout.flush()
                 entities = await llm_service.extract_entities(full_content)
+                yield _sse_enrichment_pulse("extract_keywords")
+                sys.stdout.flush()
                 keywords = await llm_service.extract_keywords(full_content)
+                entities = dedupe_chat_entities(entities)
+                yield _sse_enrichment_pulse("extract_relations")
+                sys.stdout.flush()
                 relations = await llm_service.extract_relations(full_content, entities)
-
-                # 实体和关系去重
-                entities = deduplicate_entities(entities)
-                relations = deduplicate_relations(relations)
-
-                # 动态检索相关来源，替换硬编码的 MOCK_SOURCES
+                relations = finalize_chat_relations_for_message(full_content, entities, relations)
+                yield _sse_enrichment_pulse("retrieve_sources")
+                sys.stdout.flush()
                 sources = await retrieve_sources_from_knowledge(db, request.content, entities)
 
-                # ✅ 优化 6：评估回答质量
                 question_type = classify_question(request.content)
                 quality_score = response_quality_evaluator.evaluate(
                     response=full_content,
                     question=request.content,
                     question_type=question_type,
-                    entities=entities
+                    entities=entities,
                 )
                 logger.info(f"📊 回答质量评分: {quality_score['total_score']} ({quality_score['level']})")
-
-                # 如果质量评分过低，记录警告
-                if quality_score['total_score'] < 0.6:
+                if quality_score["total_score"] < 0.6:
                     logger.warning(f"⚠️ 回答质量较低，建议改进: {quality_score['suggestions']}")
 
-                # 消息保存重试机制（最多重试 3 次）
-                message_id = None
-                save_success = False
+                yield _sse_enrichment_pulse("persist_message")
+                sys.stdout.flush()
                 max_save_retries = 3
-                
                 for attempt in range(max_save_retries):
                     try:
                         ai_message = await message_service.create_message(
@@ -502,22 +899,44 @@ async def send_message_stream(
                         save_success = True
                         break
                     except Exception as db_error:
-                        logger.error(f"Error saving AI message (attempt {attempt + 1}/{max_save_retries}): {db_error}", exc_info=True)
+                        logger.error(
+                            f"Error saving AI message (attempt {attempt + 1}/{max_save_retries}): {db_error}",
+                            exc_info=True,
+                        )
                         if attempt < max_save_retries - 1:
-                            await asyncio.sleep(0.5 * (attempt + 1))  # 指数退避
+                            await asyncio.sleep(0.5 * (attempt + 1))
                         else:
                             logger.error(f"Failed to save message after {max_save_retries} attempts")
-                
+
                 if not save_success:
-                    # 所有重试都失败，使用降级方案
-                    logger.critical(f"Message persistence failed, using fallback")
-                    logger.warning(f"Message saved with fallback ID")
+                    logger.critical("Message persistence failed after stream")
                 else:
                     logger.info(f"Message saved successfully with ID: {message_id}")
-                
             except Exception as enrichment_error:
-                logger.error(f"Background enrichment failed: {enrichment_error}", exc_info=True)
-                # 后台 enrichment 失败不影响已经发送的响应
+                logger.error(f"Stream enrichment failed: {enrichment_error}", exc_info=True)
+
+            def _dump_model(obj: Any) -> dict:
+                if hasattr(obj, "model_dump"):
+                    return obj.model_dump(mode="json")
+                return {}
+
+            complete_payload = {
+                "type": "complete",
+                "message_id": message_id or f"msg_{datetime.now(timezone.utc).timestamp()}",
+                "content": full_content,
+                "sources": [_dump_model(s) for s in sources] if sources else [],
+                "entities": [_dump_model(e) for e in entities] if entities else [],
+                "keywords": [k for k in keywords if isinstance(k, str)],
+                "relations": [_dump_model(r) for r in relations] if relations else [],
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "role": "assistant",
+                "saved_to_db": save_success,
+                "is_fallback_id": not save_success,
+            }
+            yield f"data: {json.dumps(complete_payload, ensure_ascii=False)}\n\n"
+            sys.stdout.flush()
+            yield "data: [DONE]\n\n"
+            sys.stdout.flush()
 
         except Exception as e:
             logger.error(f"Stream error: {e}", exc_info=True)
@@ -697,7 +1116,7 @@ async def create_session(
     try:
         session_service = SessionService(db)
         session = await session_service.create_session(user_id, data)
-        return SessionSchema.model_validate(session)
+        return SessionSchema(**parse_session_tags(session))
     except Exception as e:
         logger.error(f"Error creating session: {e}")
         raise HTTPException(status_code=500, detail=f"创建会话失败: {str(e)}")
@@ -907,7 +1326,9 @@ async def regenerate_message(
         ai_response = await llm_service.chat(user_message.content)
         entities = await llm_service.extract_entities(ai_response)
         keywords = await llm_service.extract_keywords(ai_response)
+        entities = dedupe_chat_entities(entities)
         relations = await llm_service.extract_relations(ai_response, entities)
+        relations = finalize_chat_relations_for_message(ai_response, entities, relations)
         sources = await retrieve_sources_from_knowledge(db, user_message.content, entities)
 
         # 更新原消息内容
@@ -1000,47 +1421,29 @@ async def regenerate_message_stream(
                 yield f"data: {data}\n\n"
                 sys.stdout.flush()
 
-            # ✅ 关键修复：立即发送 complete 和 [DONE]，让前端知道文字输出完成
-            # 实体提取、数据库更新等操作在后台异步执行
-            
-            # 立即发送 complete 事件（仅包含文字内容）
-            yield f"data: {json.dumps({
-                'type': 'complete',
-                'message_id': message_id,
-                'content': full_content,
-                'sources': [],
-                'entities': [],
-                'keywords': [],
-                'relations': [],
-                'created_at': datetime.now(timezone.utc).isoformat(),
-                'role': 'assistant',
-            }, ensure_ascii=False)}\n\n"
-            
-            # ✅ 关键修复：立即发送 [DONE] 标记，让前端关闭连接
-            yield "data: [DONE]\n\n"
-            
-            # ✅ 关键修复：刷新缓冲区
+            yield _sse_enrichment_pulse("reply_stream_done")
             sys.stdout.flush()
-            
-            # 现在在后台异步执行实体提取、来源检索和数据库更新
+            entities: list = []
+            keywords: List[str] = []
+            relations: list = []
+            sources: list = []
             try:
+                yield _sse_enrichment_pulse("extract_entities")
+                sys.stdout.flush()
                 entities = await llm_service.extract_entities(full_content)
+                yield _sse_enrichment_pulse("extract_keywords")
+                sys.stdout.flush()
                 keywords = await llm_service.extract_keywords(full_content)
+                entities = dedupe_chat_entities(entities)
+                yield _sse_enrichment_pulse("extract_relations")
+                sys.stdout.flush()
                 relations = await llm_service.extract_relations(full_content, entities)
+                relations = finalize_chat_relations_for_message(full_content, entities, relations)
+                yield _sse_enrichment_pulse("retrieve_sources")
+                sys.stdout.flush()
                 sources = await retrieve_sources_from_knowledge(db, user_message.content, entities)
-
-                if entities:
-                    yield f"data: {json.dumps({'type': 'entities', 'entities': [e.model_dump() for e in entities]}, ensure_ascii=False)}\n\n"
-                    sys.stdout.flush()
-
-                if keywords:
-                    yield f"data: {json.dumps({'type': 'keywords', 'keywords': keywords}, ensure_ascii=False)}\n\n"
-                    sys.stdout.flush()
-
-                if relations:
-                    yield f"data: {json.dumps({'type': 'relations', 'relations': [r.model_dump() for r in relations]}, ensure_ascii=False)}\n\n"
-                    sys.stdout.flush()
-
+                yield _sse_enrichment_pulse("persist_message")
+                sys.stdout.flush()
                 await message_service.update_message(
                     message_id=message_id,
                     content=full_content,
@@ -1049,14 +1452,32 @@ async def regenerate_message_stream(
                     keywords=keywords,
                     relations=relations,
                 )
-                
-                logger.info(f"Message {message_id} updated successfully")
-                
+                logger.info(f"Message {message_id} updated successfully (stream regen)")
             except Exception as enrichment_error:
-                logger.error(f"Background enrichment failed: {enrichment_error}", exc_info=True)
-            
-            # ✅ 修复：显式返回，结束生成器
-            return
+                logger.error(f"Stream regeneration enrichment failed: {enrichment_error}", exc_info=True)
+
+            def _dump_model(obj: Any) -> dict:
+                if hasattr(obj, "model_dump"):
+                    return obj.model_dump(mode="json")
+                return {}
+
+            complete_payload = {
+                "type": "complete",
+                "message_id": message_id,
+                "content": full_content,
+                "sources": [_dump_model(s) for s in sources] if sources else [],
+                "entities": [_dump_model(e) for e in entities] if entities else [],
+                "keywords": [k for k in keywords if isinstance(k, str)],
+                "relations": [_dump_model(r) for r in relations] if relations else [],
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "role": "assistant",
+                "saved_to_db": True,
+                "is_fallback_id": False,
+            }
+            yield f"data: {json.dumps(complete_payload, ensure_ascii=False)}\n\n"
+            sys.stdout.flush()
+            yield "data: [DONE]\n\n"
+            sys.stdout.flush()
 
         except Exception as e:
             logger.error(f"Stream regeneration error: {e}")
