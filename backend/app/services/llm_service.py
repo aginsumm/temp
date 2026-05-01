@@ -1,4 +1,4 @@
-from typing import Optional, AsyncGenerator, List
+from typing import Optional, AsyncGenerator, List, Dict
 import httpx
 import json
 import re
@@ -8,7 +8,7 @@ import hashlib
 from datetime import datetime, timezone
 from enum import Enum
 from app.core.config import settings
-from app.schemas.chat import Entity, EntityType, Relation
+from app.schemas.chat import Entity, EntityType, Relation, RelationType
 from app.services.dynamic_prompt import classify_question, classify_multiple_questions, generate_dynamic_system_prompt, build_enhanced_user_prompt, analyze_user_emotion, calculate_confidence_score, check_content_safety
 
 
@@ -62,9 +62,9 @@ ENTITY_EXTRACTION_SYSTEM_PROMPT = """你是一位专业的非遗知识图谱构�
    - 示例：省份、城市、县镇、具体村落
    - 特征：行政区划名称或地理标识
 
-6. period（时期）：历史年代或时间段
-   - 示例：朝代、年份、世纪、历史时期
-   - 特征：时间相关词汇
+6. period（时期）：历史朝代、阶段或**可对应断代史**的年代称谓
+   - 示例：唐代、明清、民国、二十世纪八十年代
+   - 不要标为 period：「超过2300年」「长达八百年」「两千余年历史」等**历时长度/统计**；「2024年」等裸公元年若仅作纪年叙述且非断代主题也可不提取
 
 7. material（材料）：制作原料或材质
    - 示例：丝绸、竹子、木材、泥土、金属
@@ -84,6 +84,12 @@ ENTITY_EXTRACTION_SYSTEM_PROMPT = """你是一位专业的非遗知识图谱构�
 - 没有具体指代的代词
 - 与非遗无关的现代商业品牌
 - 重复出现的同一实体（合并为一个）
+
+【名称质量（极其重要）】
+1. 传承人：同一人只输出一条；姓名用「本名或最常用名」，不要同时输出「李某某老师」与「李某某大师」两种节点。
+2. 技艺：不要单独把「技法」「针法」「工艺」「手艺」等统称列为实体；必须是可区分的具体技艺名（如「乱针绣」「双面绣」「浮雕」）。
+3. 作品：必须是可指代的具体作品名（可有书名号）；不要把「作品」「代表作」「精品」等笼统词当作作品实体。
+4. 时期：只提取朝代、历史阶段等；**禁止**把「超过/长达…N年」「N余年」「N多年历史」等时长统计当作时期实体。
 
 【相关性评分标准】
 - 0.90-1.00：核心实体，直接描述主题
@@ -172,14 +178,14 @@ RELATION_EXTRACTION_FEW_SHOT = """
 
 文本："武汉木雕是湖北地区的传统工艺，起源于明代，代表性传承人有张三。他们擅长浮雕技法，代表作品有黄鹤楼木雕。"
 
-正确输出：
+正确输出（时期/地域/技艺/传承人只与作品相连；creates 表示技艺或传承人→作品）：
 {
   "relations": [
-    {"source": "张三", "target": "武汉木雕", "type": "inherits", "confidence": 0.95},
-    {"source": "武汉木雕", "target": "湖北", "type": "origin", "confidence": 0.92},
-    {"source": "武汉木雕", "target": "明代", "type": "flourished_in", "confidence": 0.88},
-    {"source": "张三", "target": "浮雕", "type": "inherits", "confidence": 0.85},
-    {"source": "武汉木雕", "target": "黄鹤楼木雕", "type": "creates", "confidence": 0.90}
+    {"source": "黄鹤楼木雕", "target": "湖北", "type": "located_in", "confidence": 0.92},
+    {"source": "黄鹤楼木雕", "target": "明代", "type": "flourished_in", "confidence": 0.86},
+    {"source": "武汉木雕", "target": "黄鹤楼木雕", "type": "creates", "confidence": 0.90},
+    {"source": "张三", "target": "黄鹤楼木雕", "type": "creates", "confidence": 0.82},
+    {"source": "浮雕", "target": "黄鹤楼木雕", "type": "creates", "confidence": 0.80}
   ]
 }
 
@@ -210,6 +216,45 @@ def generate_fallback_response(content: str) -> str:
         return "该技艺的制作工艺十分讲究，需要经过多道工序，每一步都需要精心操作。传统工艺强调慢工出细活，体现了匠人精神。"
     
     return random.choice(HERITAGE_FALLBACK_RESPONSES)
+
+
+def _extract_dashscope_stream_text_piece(data: dict) -> str:
+    """从 DashScope text-generation SSE 的 JSON 中取一段增量文本（兼容 message / delta / 多模态 content 数组）。"""
+    parts: list[str] = []
+
+    output = data.get("output")
+    if isinstance(output, dict):
+        choices = output.get("choices") or []
+        if choices and isinstance(choices[0], dict):
+            c0 = choices[0]
+            msg = c0.get("message") or {}
+            content = msg.get("content")
+            if isinstance(content, str) and content:
+                parts.append(content)
+            elif isinstance(content, list):
+                for el in content:
+                    if isinstance(el, dict):
+                        t = el.get("text")
+                        if isinstance(t, str) and t:
+                            parts.append(t)
+            reasoning = msg.get("reasoning_content")
+            if isinstance(reasoning, str) and reasoning:
+                parts.append(reasoning)
+            delta = c0.get("delta") or {}
+            if isinstance(delta, dict):
+                d = delta.get("content")
+                if isinstance(d, str) and d:
+                    parts.append(d)
+
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        delta = (choices[0].get("delta") or {})
+        if isinstance(delta, dict):
+            d = delta.get("content")
+            if isinstance(d, str) and d:
+                parts.append(d)
+
+    return "".join(parts)
 
 
 def optimize_text_for_extraction(text: str, max_length: int = 3000) -> str:
@@ -295,9 +340,12 @@ class LLMService:
         self.timeout_seconds = 60.0
         self.fallback_enabled = True
         
-        # 备用模型
-        self.primary_model = "qvq-max-2025-03-25"
-        self.fallback_models = ["qvq-max-2025-03-25", "qwen-plus-2025-07-28"]
+        # 主模型与降级链（均须适配 text-generation 同步/流式接口）
+        self.fallback_models = [
+            settings.DASHSCOPE_CHAT_MODEL,
+            "qwen-turbo",
+            "qwen-plus",
+        ]
         self.current_model_index = 0
         
         # 错误统计
@@ -782,15 +830,35 @@ class LLMService:
                     headers=headers,
                     json=payload,
                 ) as response:
+                    response.raise_for_status()
+                    streamed_any = False
                     async for line in response.aiter_lines():
-                        if line.startswith("data:"):
-                            data = json.loads(line[5:])
-                            if "output" in data and "choices" in data["output"]:
-                                content = data["output"]["choices"][0].get("message", {}).get("content", "")
-                                if content:
-                                    self._record_success()
-                                    yield content
-                                    sys.stdout.flush()
+                        raw = (line or "").strip()
+                        if not raw.startswith("data:"):
+                            continue
+                        payload = raw[5:].lstrip()
+                        if payload == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(payload)
+                        except json.JSONDecodeError:
+                            continue
+                        piece = _extract_dashscope_stream_text_piece(data)
+                        if piece:
+                            self._record_success()
+                            yield piece
+                            streamed_any = True
+                            sys.stdout.flush()
+                    if not streamed_any:
+                        print(
+                            "⚠️ 流式响应未解析到任何文本，使用本地降级回复",
+                            file=sys.stderr,
+                        )
+                        fallback = generate_fallback_response(message)
+                        chunk_size = 50
+                        for i in range(0, len(fallback), chunk_size):
+                            yield fallback[i : i + chunk_size]
+                            await asyncio.sleep(0.05)
         except Exception as e:
             error_type = type(e).__name__
             print(f"LLM streaming error ({error_type}): {e}", file=sys.stderr)
@@ -815,39 +883,64 @@ class LLMService:
             local_entities = local_ner.extract(text)
             print(f"✅ 本地 NER 提取到 {len(local_entities)} 个实体")
 
-            # 如果本地提取结果足够，直接返回
-            if len(local_entities) >= 5:
-                return local_entities
+            # 无 AI 密钥时本地结果充分则直接返回（带 refine）；有关键词时仍需走 AI 才能产出符合提示词的简述
+            if len(local_entities) >= 5 and not self.api_key:
+                from app.services.entity_quality import refine_chat_entities
 
-            # 否则，尝试 AI 增强（但不阻塞）
+                return refine_chat_entities(local_entities)
+
             if not self.api_key:
                 print("⚠️ API Key 未配置，仅使用本地 NER 结果")
                 return local_entities
 
-            # AI 增强（有超时保护）
+            # AI 增强：超时须与对话流一致（原为 5s，极易在模型尚未返回前就取消，看起来像「没调 API」）
+            import sys
+
+            ai_timeout = max(30.0, float(self.timeout_seconds))
             try:
+                print(
+                    f"🧩 实体提取：请求 DashScope text-generation（超时 {ai_timeout:.0f}s）…",
+                    file=sys.stderr,
+                )
+                sys.stderr.flush()
                 ai_entities = await asyncio.wait_for(
                     self._extract_entities_with_ai(text),
-                    timeout=5.0  # 5 秒超时
+                    timeout=ai_timeout,
                 )
+                print(
+                    f"🧩 实体提取：API 返回 {len(ai_entities)} 条实体",
+                    file=sys.stderr,
+                )
+                sys.stderr.flush()
 
                 # 合并本地和 AI 结果（去重）
                 merged = self._merge_entities(local_entities, ai_entities)
                 print(f"✅ 合并后共 {len(merged)} 个实体")
                 return merged
             except asyncio.TimeoutError:
-                print("⚠️ AI 实体提取超时，使用本地 NER 结果")
-                return local_entities
+                print(
+                    f"⚠️ AI 实体提取在 {ai_timeout:.0f}s 内未完成，已回退本地 NER（请检查密钥/网络或服务延迟）",
+                    file=sys.stderr,
+                )
+                from app.services.entity_quality import refine_chat_entities
+
+                return refine_chat_entities(local_entities)
             except Exception as e:
-                print(f"⚠️ AI 实体提取失败: {e}，使用本地 NER 结果")
-                return local_entities
+                print(f"⚠️ AI 实体提取失败: {e}，使用本地 NER 结果", file=sys.stderr)
+                from app.services.entity_quality import refine_chat_entities
+
+                return refine_chat_entities(local_entities)
 
         except Exception as e:
             print(f"⚠️ 本地 NER 失败: {e}，使用 Mock 实体")
-            return self._mock_entities(text)
+            from app.services.entity_quality import refine_chat_entities
+
+            return refine_chat_entities(self._mock_entities(text))
 
     async def _extract_entities_with_ai(self, text: str) -> List[Entity]:
         """使用 AI 提取实体（内部方法）"""
+        import sys
+
         optimized_text = optimize_text_for_extraction(text, max_length=3000)
 
         messages = [
@@ -866,8 +959,12 @@ class LLMService:
             "Content-Type": "application/json",
         }
 
+        model = self._get_current_model()
+        if not model or model == "mock":
+            model = settings.DASHSCOPE_CHAT_MODEL or "qwen-plus"
+
         payload = {
-            "model": "qwen-turbo",
+            "model": model,
             "input": {"messages": messages},
             "parameters": {
                 "result_format": "message",
@@ -875,15 +972,33 @@ class LLMService:
             },
         }
 
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        timeout = max(30.0, float(self.timeout_seconds))
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 self.base_url,
                 headers=headers,
                 json=payload,
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                body = ""
+                try:
+                    body = (exc.response.text or "")[:800]
+                except Exception:
+                    pass
+                print(
+                    f"⚠️ 实体提取 HTTP {exc.response.status_code}: {body}",
+                    file=sys.stderr,
+                )
+                raise
+
             data = response.json()
-            content = data["output"]["choices"][0]["message"]["content"]
+            try:
+                content = data["output"]["choices"][0]["message"]["content"]
+            except (KeyError, IndexError, TypeError) as exc:
+                print(f"⚠️ 实体提取响应结构异常: {exc} raw_keys={list(data.keys())}", file=sys.stderr)
+                return []
 
             json_match = re.search(r'\{[\s\S]*\}', content)
             if json_match:
@@ -907,32 +1022,36 @@ class LLMService:
                         description=e.get("description"),
                         relevance=e.get("relevance", 0.8),
                     ))
-                return entities
+                from app.services.entity_quality import refine_chat_entities
+
+                return refine_chat_entities(entities)
             else:
+                preview = (content or "")[:200]
+                print(f"⚠️ 实体提取响应中未找到 JSON 对象，content 预览: {preview!r}", file=sys.stderr)
                 return []
 
     def _merge_entities(self, local_entities: List[Entity], ai_entities: List[Entity]) -> List[Entity]:
-        """合并本地和 AI 提取的实体（去重）"""
+        """合并本地和 AI 提取的实体（去重）。先保留 AI 的简述，本地仅补模型未覆盖的节点。"""
         seen_names = {}
         merged = []
 
-        # 优先保留本地实体（更快更准确）
-        for entity in local_entities:
-            key = f"{entity.name.lower()}_{entity.type.value}"
-            if key not in seen_names:
-                seen_names[key] = entity
-                merged.append(entity)
-
-        # 补充 AI 实体
         for entity in ai_entities:
             key = f"{entity.name.lower()}_{entity.type.value}"
             if key not in seen_names:
                 seen_names[key] = entity
                 merged.append(entity)
 
-        # 按相关性排序
+        for entity in local_entities:
+            key = f"{entity.name.lower()}_{entity.type.value}"
+            if key not in seen_names:
+                seen_names[key] = entity
+                merged.append(entity)
+
+        # 按相关性排序后交给 refine（过滤统称、合并传承人尊称）
         merged.sort(key=lambda e: e.relevance or 0.0, reverse=True)
-        return merged[:20]  # 最多返回 20 个
+        from app.services.entity_quality import refine_chat_entities
+
+        return refine_chat_entities(merged)
 
     async def extract_keywords(self, text: str) -> List[str]:
         if not self.api_key:
@@ -1056,72 +1175,30 @@ class LLMService:
 【任务目标】
 分析给定实体之间的关系，构建准确的非遗知识图谱。
 
-【关系类型定义】
-1. inherits（传承）：传承人 → 技艺
-   - 含义：传承人学习、掌握并传承某项技艺
-   - 示例：张三 inherits 苏绣
-   - 置信度：高（0.85-0.95）当明确提到师徒关系或传承关系
+【硬约束：作品轴心】
+以下类型若出现在一条边的任一端，另一端必须是「作品(work)」：时期(period)、传承人(inheritor)、地域(region)、材料(material)、技艺(technique)。
+禁止输出上述五类之间的边（例如 传承人→技艺、地域→技艺、技艺→材料、技艺→时期）。
+不要用 related_to 把两个非作品实体连在一起。
 
-2. origin（发源地）：地区 → 技艺
-   - 含义：某地区是某项技艺的发源地或主要流行地
-   - 示例：苏州 origin 苏绣
-   - 置信度：高（0.90-0.95）当明确提及发源地
+【关系类型与允许方向】
+1. flourished_in：作品 → 时期（作品所关联的历史阶段）
+2. located_in：作品 → 地域
+3. uses_material：作品 → 材料
+4. has_pattern：作品 → 纹样
+5. creates：技艺 → 作品，或 传承人 → 作品（创作/制作主体在 source，作品在 target）
+6. related_to：仅当至少一端为作品且文本有依据；不得用于两类非作品实体
+7. inherits / origin / influenced_by / contains：若与实体类型冲突，不要输出违反「作品轴心」的边
 
-3. creates（制作）：技艺 → 作品
-   - 含义：某项技艺用于制作某件作品
-   - 示例：苏绣 creates 《猫》
-   - 置信度：中-高（0.80-0.90）当作品明确由该技艺制作
+【抽取规则】
+✅ 只输出文本明确支持、且满足轴心与方向的边
+❌ 禁止推测、自环、重复（同 source+target+type）
 
-4. flourished_in（兴盛于）：技艺 → 时期
-   - 含义：某项技艺在某个历史时期达到鼎盛
-   - 示例：苏绣 flourished_in 明清时期
-   - 置信度：中（0.75-0.85）基于历史记载
+【共现与粒度】
+- 一条边两端实体须在原文**同一句或紧邻一两句**内能读出直接关联；不要把开篇泛泛朝代与文末才出现的作品硬连。
+- 同一作品只连**一个**最贴切的时期/地域/材料/纹样（若文中出现多个候选，只取原文明确绑定该作品的那一个）。
+- 技艺→作品：只连**明确用于制作或描述该作品**的技艺，不要把文中提到的所有技艺名都与同一作品相连。
 
-5. located_in（位于）：地区 → 地区 或 作品 → 地区
-   - 含义：地理位置的包含关系
-   - 示例：苏州 located_in 江苏
-   - 置信度：高（0.90-0.95）基于行政区划
-
-6. uses_material（使用材料）：技艺 → 材料
-   - 含义：某项技艺使用特定材料
-   - 示例：苏绣 uses_material 丝绸
-   - 置信度：中（0.75-0.85）当明确提及材料
-
-7. has_pattern（包含纹样）：作品 → 纹样
-   - 含义：某件作品包含特定纹样
-   - 示例：《龙凤呈祥》 has_pattern 龙凤纹
-   - 置信度：中（0.75-0.85）当明确描述纹样
-
-8. related_to（相关）：任意 → 任意
-   - 含义：两者存在关联但关系不明确
-   - 示例：苏绣 related_to 湘绣
-   - 置信度：低-中（0.60-0.75）用于弱关联
-
-【关系抽取规则】
-✅ 必须抽取：
-- 明确的传承关系（师徒、家族传承）
-- 明确的发源地关系
-- 明确的制作关系（技艺→作品）
-- 明确的历史时期关联
-
-❌ 禁止抽取：
-- 推测性关系（无文本支持）
-- 过于宽泛的关联
-- 实体与自身的循环关系
-- 重复关系（相同source+target+type只保留一个）
-
-【置信度评分标准】
-- 0.90-1.00：文本明确陈述，无歧义
-- 0.80-0.89：文本强烈暗示，可合理推断
-- 0.70-0.79：文本提及，需要一定推断
-- 0.60-0.69：弱关联，仅作参考
-- <0.60：不抽取
-
-【复杂关系处理】
-1. 多跳关系：A→B→C 拆分为 A→B 和 B→C
-2. 双向关系：如"交流"拆分为两个单向 related_to
-3. 层级关系：优先抽取直接关系，避免过度推断
-4. 模糊关系：当不确定时使用 related_to 并降低置信度
+【置信度】0.90+ 明确；0.80-0.89 强暗示；0.70-0.79 轻推断；<0.70 可不输出
 
 【输出格式】
 {
@@ -1129,18 +1206,17 @@ class LLMService:
     {
       "source": "源实体名称（必须在实体列表中）",
       "target": "目标实体名称（必须在实体列表中）",
-      "type": "关系类型（8种之一）",
+      "type": "关系类型",
       "confidence": 0.00-1.00
     }
   ]
 }
 
-【质量检查清单】
-□ source和target是否都在实体列表中
-□ 关系类型是否符合定义
-□ 置信度是否合理反映文本支持程度
-□ 是否避免重复关系
-□ 是否排除推测性关系"""
+【质量检查】
+□ source/target 均在实体列表中
+□ 每条边满足作品轴心与方向
+□ 置信度与文本支持程度匹配
+□ 无重复与无违规轴外边"""
                 },
                 {
                     "role": "user",
@@ -1184,8 +1260,67 @@ class LLMService:
                 if json_match:
                     result = json.loads(json_match.group())
                     relations = []
-                    entity_map = {e.name: e.id for e in entities}
-                    
+
+                    def _build_entity_name_map(ents: List[Entity]) -> Dict[str, str]:
+                        from app.services.entity_quality import (
+                            strip_inheritor_honorifics,
+                            iter_title_aliases_for_graph,
+                        )
+
+                        m: Dict[str, str] = {}
+                        for e in ents:
+                            raw = (e.name or "").strip()
+                            if not raw:
+                                continue
+                            m[raw] = e.id
+                            compact = re.sub(r"[\s\u3000]+", "", raw)
+                            if compact and compact not in m:
+                                m[compact] = e.id
+                            etv = e.type.value if hasattr(e.type, "value") else str(e.type or "")
+                            if etv in ("work", "pattern"):
+                                for alias in iter_title_aliases_for_graph(raw, etv):
+                                    m.setdefault(alias, e.id)
+                            if e.type == EntityType.inheritor:
+                                base = strip_inheritor_honorifics(raw)
+                                if base and base != raw and len(base) >= 2:
+                                    if base not in m:
+                                        m[base] = e.id
+                                    bc = re.sub(r"[\s\u3000]+", "", base)
+                                    if bc and bc not in m:
+                                        m[bc] = e.id
+                        return m
+
+                    def _resolve_id_by_name(name: object, m: Dict[str, str]) -> Optional[str]:
+                        from app.services.entity_quality import strip_inheritor_honorifics, canonical_title_surface
+
+                        n = (name or "").strip() if isinstance(name, str) else str(name or "").strip()
+                        if not n:
+                            return None
+                        if n in m:
+                            return m[n]
+                        c = re.sub(r"[\s\u3000]+", "", n)
+                        rid = m.get(c)
+                        if rid:
+                            return rid
+                        core = canonical_title_surface(n)
+                        if len(core) >= 2 and core != n:
+                            rid2 = m.get(core)
+                            if rid2:
+                                return rid2
+                            c2 = re.sub(r"[\s\u3000]+", "", core)
+                            rid3 = m.get(c2)
+                            if rid3:
+                                return rid3
+                        base = strip_inheritor_honorifics(n)
+                        if base and base != n:
+                            if base in m:
+                                return m[base]
+                            bc = re.sub(r"[\s\u3000]+", "", base)
+                            return m.get(bc)
+                        return None
+
+                    entity_map = _build_entity_name_map(entities)
+
                     print(f"\n=== AI 返回的关系数据 ===")
                     print(f"实体列表：{[(e.name, e.id) for e in entities]}")
                     print(f"AI 返回的关系：{result.get('relations', [])}")
@@ -1194,22 +1329,29 @@ class LLMService:
                         source_name = r.get("source", "")
                         target_name = r.get("target", "")
                         
-                        source_id = entity_map.get(source_name)
-                        target_id = entity_map.get(target_name)
+                        source_id = _resolve_id_by_name(source_name, entity_map)
+                        target_id = _resolve_id_by_name(target_name, entity_map)
                         
                         if source_id and target_id:
                             relation_type_str = r.get("type", "related_to")
                             
                             valid_types = [
-                                "inherits", "origin", "creates", "flourished_in",
-                                "located_in", "uses_material", "has_pattern", "related_to"
+                                "inherits",
+                                "origin",
+                                "creates",
+                                "flourished_in",
+                                "located_in",
+                                "uses_material",
+                                "has_pattern",
+                                "related_to",
+                                "influenced_by",
+                                "contains",
                             ]
                             if relation_type_str not in valid_types:
                                 relation_type_str = "related_to"
                             
-                            from app.schemas.chat import RelationType
                             relations.append(Relation(
-                                id=f"relation_{i}_{hash(source_id + target_id)}",
+                                id=f"relation_{i}_{abs(hash(str(source_id) + str(target_id))) % (10**12)}",
                                 source=source_id,
                                 target=target_id,
                                 type=RelationType(relation_type_str),
@@ -1296,9 +1438,8 @@ class LLMService:
         relations = []
         
         mock_relation_data = [
-            ("武汉木雕", "武汉", "origin", 0.9),
-            ("黄鹤楼", "武汉", "located_in", 0.8),
-            ("黄鹤楼", "浮雕技法", "creates", 0.75),
+            ("黄鹤楼", "武汉", "located_in", 0.9),
+            ("浮雕技法", "黄鹤楼", "creates", 0.85),
         ]
         
         for i, (source_name, target_name, rel_type, confidence) in enumerate(mock_relation_data):

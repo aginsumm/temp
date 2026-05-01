@@ -178,7 +178,10 @@ class GraphSyncService {
     }
 
     const currentState = useGraphStore.getState();
-    const hasExistingData = currentState.entities.length > 0 || currentState.relations.length > 0;
+    const hasExistingData =
+      currentState.entities.length > 0 ||
+      currentState.relations.length > 0 ||
+      currentState.keywords.length > 0;
 
     if (hasExistingData) {
       useGraphStore.getState().mergeGraphData(entities, relations, keywords);
@@ -194,12 +197,13 @@ class GraphSyncService {
   }
 
   /**
-   * 从 Knowledge 模块更新图谱数据
+   * 从 Knowledge 模块更新图谱数据（始终增量合并）。
+   * 若用 updateGraphData 全量写入 relations，在「先有聊天关系再拉后端边」时会整表替换，
+   * 清空聊天侧的连线。
    */
   updateFromKnowledge(entities: Entity[], relations: Relation[], keywords: string[]): void {
-    useGraphStore
-      .getState()
-      .updateGraphData(entities, relations, keywords, undefined, undefined, 'knowledge');
+    useGraphStore.getState().mergeGraphData(entities || [], relations || [], keywords || []);
+    useGraphStore.setState({ source: 'knowledge' });
   }
 
   /**

@@ -17,9 +17,25 @@ import { snapshotService } from '../../../api/snapshot';
 import { useToast } from '../../common/Toast';
 import { useThemeStore } from '../../../stores/themeStore';
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '../../../constants/categories';
-import type { Entity, Relation, GraphNode, EntityType } from '../../../types/graph';
+import type { Entity, Relation, GraphNode, GraphEdge, EntityType } from '../../../types/graph';
 
 const ENTITY_LABELS: Record<EntityType, string> = CATEGORY_LABELS;
+
+const EMPTY_GRAPH_STATS = {
+  nodeCount: 0,
+  edgeCount: 0,
+  avgConnections: 0,
+  density: 0,
+  typeDistribution: {
+    inheritor: 0,
+    technique: 0,
+    work: 0,
+    pattern: 0,
+    region: 0,
+    period: 0,
+    material: 0,
+  } as Record<EntityType, number>,
+};
 
 const getExactHexColor = (categoryName: string | undefined) => {
   const cat = String(categoryName || 'unknown').toLowerCase();
@@ -36,13 +52,24 @@ const getExactHexColor = (categoryName: string | undefined) => {
   return (orig && !orig.includes('var')) ? orig : '#8b5cf6'; 
 };
 
-function escapeHtml(unsafe: string): string {
-  return unsafe
+function escapeHtml(unsafe: unknown): string {
+  if (unsafe == null) return '';
+  const s = typeof unsafe === 'string' ? unsafe : String(unsafe);
+  return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+/** ECharts Canvas 无法可靠解析 CSS var()，用实色避免 setOption 抛错 */
+function solidEdgeLineColor(edge: { lineStyle?: { color?: string } }, isDark: boolean): string {
+  const c = edge.lineStyle?.color;
+  if (typeof c === 'string' && c.trim() && !c.trim().startsWith('var(')) {
+    return c.trim();
+  }
+  return isDark ? '#64748b' : '#94a3b8';
 }
 
 interface DynamicGraphPanelProps {
@@ -89,14 +116,28 @@ export default function DynamicGraphPanel({
     if (entities.length === 0) {
       return { nodes: [], edges: [] };
     }
-    return graphService.entitiesToGraphData(entities, relations, {
-      maxNodes: 50,
-      minRelevance: 0.3,
-    });
+    try {
+      return graphService.entitiesToGraphData(entities, relations, {
+        maxNodes: 50,
+        minRelevance: 0.3,
+      });
+    } catch (e) {
+      console.error('[DynamicGraphPanel] entitiesToGraphData failed:', e);
+      return { nodes: [], edges: [] };
+    }
   }, [entities, relations]);
 
   const stats = useMemo(() => {
-    return graphService.calculateGraphStats(graphData);
+    try {
+      return graphService.calculateGraphStats(graphData);
+    } catch (e) {
+      console.error('[DynamicGraphPanel] calculateGraphStats failed:', e);
+      return {
+        ...EMPTY_GRAPH_STATS,
+        nodeCount: graphData.nodes.length,
+        edgeCount: graphData.edges.length,
+      };
+    }
   }, [graphData]);
 
   const renderGraph = useCallback(() => {
@@ -127,9 +168,25 @@ export default function DynamicGraphPanel({
             const data = param.data as Record<string, unknown>;
             const category = data.category as EntityType;
             const color = getExactHexColor(category);
-            const value = (data.value as number) ?? 0.5;
+            const value = Number.isFinite(Number(data.value)) ? Number(data.value) : 0.5;
             const name = escapeHtml(String(data.name || ''));
-            const description = data.description as string | undefined;
+            const rawTd = data.description;
+            let description: string | undefined =
+              typeof rawTd === 'string'
+                ? rawTd
+                : rawTd != null && typeof rawTd !== 'object'
+                  ? String(rawTd)
+                  : undefined;
+            if (!String(description ?? '').trim() && data.id != null) {
+              const ttEnt = entities.find((e) => e.id === String(data.id));
+              if (ttEnt?.description != null) {
+                const td = ttEnt.description;
+                description = typeof td === 'string' ? td : String(td);
+              }
+            }
+            if (description !== undefined && !String(description).trim()) {
+              description = undefined;
+            }
             // 【修改】：给 tooltip 加上 max-width 和 white-space 保证文字自动换行
             return `
               <div style="padding: 12px; min-width: 200px; max-width: 320px; white-space: normal; word-wrap: break-word;">
@@ -144,7 +201,7 @@ export default function DynamicGraphPanel({
                   <span style="color: var(--color-text-secondary);">重要性:</span>
                   <span style="color: var(--color-warning); font-weight: bold;">${(value * 100).toFixed(0)}%</span>
                 </div>
-                ${description ? `<div style="color: var(--color-text-secondary); font-size: 13px; margin-top: 8px; line-height: 1.5; border-top: 1px solid var(--color-border); padding-top: 8px;">${escapeHtml(description)}</div>` : ''}
+                ${description != null && String(description).trim() ? `<div style="color: var(--color-text-secondary); font-size: 13px; margin-top: 8px; line-height: 1.5; border-top: 1px solid var(--color-border); padding-top: 8px;">${escapeHtml(description)}</div>` : ''}
               </div>
             `;
           }
@@ -174,15 +231,24 @@ export default function DynamicGraphPanel({
           data: graphData.nodes.map((node) => {
             const isSelected = selectedNode?.id === node.id;
             const color = getExactHexColor(node.category);
-
-            return {
-              ...node,
-              symbolSize: node.symbolSize || 30,
+            const rawDesc = node.description;
+            const safeDescription =
+              typeof rawDesc === 'string'
+                ? rawDesc
+                : rawDesc != null && typeof rawDesc !== 'object'
+                  ? String(rawDesc)
+                  : undefined;
+            const sym = Number(node.symbolSize);
+            const val = Number(node.value);
+            const base: Record<string, unknown> = {
+              id: String(node.id ?? ''),
+              name: String(node.name ?? ''),
+              category: node.category,
+              symbolSize: Number.isFinite(sym) ? Math.min(80, Math.max(12, sym)) : 30,
+              value: Number.isFinite(val) ? Math.min(1, Math.max(0, val)) : 0.5,
               itemStyle: {
-                ...node.itemStyle,
-                color: color,
-                // 【修复】：去除常驻黑边，选中时才显示高亮圆环
-                borderColor: isSelected ? 'var(--color-warning)' : 'transparent',
+                color,
+                borderColor: isSelected ? '#f59e0b' : 'transparent',
                 borderWidth: isSelected ? 3 : 0,
                 shadowBlur: 15,
                 shadowColor: color,
@@ -201,12 +267,18 @@ export default function DynamicGraphPanel({
                 textShadowBlur: 6,
               },
             };
+            if (safeDescription !== undefined && safeDescription.length > 0) {
+              base.description = safeDescription;
+            }
+            return base;
           }),
-          links: graphData.edges.map((edge) => ({
-            source: edge.source,
-            target: edge.target,
+          links: graphData.edges.map((edge: GraphEdge) => ({
+            source: String(edge.source),
+            target: String(edge.target),
+            relationType: edge.relationType ?? 'related_to',
+            value: edge.value ?? 0.5,
             lineStyle: {
-              color: edge.lineStyle?.color || 'var(--color-border)',
+              color: solidEdgeLineColor(edge, isDark),
               width: edge.lineStyle?.width || 2,
               curveness: 0.3,
               opacity: 0.5,
@@ -226,11 +298,11 @@ export default function DynamicGraphPanel({
             focus: 'adjacency',
             lineStyle: {
               width: 5,
-              color: 'var(--color-primary)',
+              color: '#6366f1',
             },
             itemStyle: {
               shadowBlur: 40,
-              shadowColor: 'var(--color-shadow-glow)',
+              shadowColor: 'rgba(99, 102, 241, 0.45)',
             },
             label: {
               fontSize: 16,
@@ -246,7 +318,7 @@ export default function DynamicGraphPanel({
             },
           },
           lineStyle: {
-            color: 'var(--color-border)',
+            color: isDark ? '#475569' : '#cbd5e1',
             curveness: 0.3,
             opacity: 0.5,
           },
@@ -254,7 +326,11 @@ export default function DynamicGraphPanel({
       ],
     };
 
-    chartInstance.current.setOption(option, true);
+    try {
+      chartInstance.current.setOption(option, true);
+    } catch (err) {
+      console.error('ECharts setOption failed:', err);
+    }
 
     chartInstance.current.off('click');
     chartInstance.current.on('click', (params: Record<string, unknown>) => {
@@ -264,12 +340,26 @@ export default function DynamicGraphPanel({
         if (entity && onNodeClick) {
           onNodeClick(entity);
         }
+        const rawDesc = data.description;
+        let description: string | undefined =
+          typeof rawDesc === 'string'
+            ? rawDesc
+            : rawDesc != null && typeof rawDesc !== 'object'
+              ? String(rawDesc)
+              : undefined;
+        if (!String(description ?? '').trim() && entity?.description != null) {
+          const ed = entity.description;
+          description = typeof ed === 'string' ? ed : String(ed);
+        }
+        if (description !== undefined && !String(description).trim()) {
+          description = undefined;
+        }
         setSelectedNode({
           id: String(data.id || ''),
           name: String(data.name || ''),
           category: (data.category as EntityType) || 'entity',
           value: Number(data.value || 0.5),
-          description: data.description as string | undefined,
+          description,
         });
       }
     });
@@ -279,12 +369,27 @@ export default function DynamicGraphPanel({
       if (params.dataType === 'node') {
         const data = params.data as Record<string, unknown> | undefined;
         if (data) {
+          const hoverEntity = entities.find((e) => e.id === data.id);
+          const rawDescH = data.description;
+          let descH: string | undefined =
+            typeof rawDescH === 'string'
+              ? rawDescH
+              : rawDescH != null && typeof rawDescH !== 'object'
+                ? String(rawDescH)
+                : undefined;
+          if (!String(descH ?? '').trim() && hoverEntity?.description != null) {
+            const hed = hoverEntity.description;
+            descH = typeof hed === 'string' ? hed : String(hed);
+          }
+          if (descH !== undefined && !String(descH).trim()) {
+            descH = undefined;
+          }
           setHoveredNode({
             id: String(data.id || ''),
             name: String(data.name || ''),
             category: (data.category as EntityType) || 'entity',
             value: Number(data.value || 0.5),
-            description: data.description as string | undefined,
+            description: descH,
           });
         } else {
           setHoveredNode(null);
@@ -301,21 +406,67 @@ export default function DynamicGraphPanel({
   const renderGraphRef = useRef(renderGraph);
   renderGraphRef.current = renderGraph;
 
+  // 不在 graphData 的 cleanup 里 dispose；侧栏初次有数据时容器常为 0 宽高，需等布局后再 init，否则 ECharts 易抛错触发 ErrorBoundary
   useEffect(() => {
-    if (chartRef.current && graphData.nodes.length > 0) {
-      if (!chartInstance.current) {
-        chartInstance.current = echarts.init(chartRef.current);
+    if (graphData.nodes.length === 0) {
+      if (chartInstance.current) {
+        try {
+          chartInstance.current.dispose();
+        } catch {
+          /* ignore */
+        }
+        chartInstance.current = null;
       }
-      renderGraphRef.current();
+      return;
     }
 
+    let cancelled = false;
+    let raf = 0;
+    let attempts = 0;
+
+    const run = () => {
+      if (cancelled) return;
+      const el = chartRef.current;
+      if (!el) return;
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w < 8 || h < 8) {
+        attempts += 1;
+        if (attempts < 50) {
+          raf = requestAnimationFrame(run);
+        }
+        return;
+      }
+      try {
+        if (!chartInstance.current) {
+          chartInstance.current = echarts.init(el);
+        }
+        renderGraphRef.current();
+      } catch (err) {
+        console.error('DynamicGraphPanel chart init/update failed:', err);
+      }
+    };
+
+    raf = requestAnimationFrame(run);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [graphData, resolvedMode]);
+
+  useEffect(() => {
     return () => {
       if (chartInstance.current) {
-        chartInstance.current.dispose();
+        try {
+          chartInstance.current.dispose();
+        } catch {
+          /* ignore */
+        }
         chartInstance.current = null;
       }
     };
-  }, [graphData]);
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -337,18 +488,7 @@ export default function DynamicGraphPanel({
     };
   }, [renderGraph]);
 
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      renderGraph();
-    });
-
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    });
-
-    return () => observer.disconnect();
-  }, [renderGraph]);
+  // 主题切换改由 resolvedMode 触发上面的 chart effect 重绘；不再监听 document class，避免与 dispose/init 竞态
 
   const handleZoomIn = () => {
     if (chartInstance.current) {
@@ -605,7 +745,7 @@ export default function DynamicGraphPanel({
                   </span>
                 </div>
                 <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                  {ENTITY_LABELS[selectedNode.category]}
+                  {ENTITY_LABELS[selectedNode.category] ?? String(selectedNode.category ?? '')}
                 </p>
                 {selectedNode.description && (
                   <p

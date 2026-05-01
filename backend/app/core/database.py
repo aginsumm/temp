@@ -8,11 +8,12 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = settings.DATABASE_URL
 
 try:
-    engine = create_async_engine(
-        DATABASE_URL,
-        echo=settings.DEBUG,
-        future=True,
-    )
+    _engine_kw: dict = {"echo": settings.DEBUG, "future": True}
+    if DATABASE_URL.startswith("sqlite"):
+        # 流式对话长时间未提交时，其它请求写库会锁等待；busy_timeout 减少 OperationalError
+        _engine_kw["connect_args"] = {"timeout": 30.0}
+
+    engine = create_async_engine(DATABASE_URL, **_engine_kw)
     logger.info(f"数据库连接成功: {DATABASE_URL.split('://')[0]}")
 except Exception as e:
     logger.error(f"数据库连接失败: {e}")

@@ -6,10 +6,28 @@ import { chatRepository } from '../data/repositories/chatRepository';
 import { dataInitializer } from '../data/dataInitializer';
 import { apiAdapterManager } from '../data/apiAdapter';
 import { syncManager } from '../data/syncManager';
+import { chatApi } from '../api/chat';
 
 const MAX_SESSIONS = 100;
 const MAX_MESSAGES_PER_SESSION = 500;
 const MAX_MESSAGE_VERSIONS = 10;
+
+/** 流式占位 assistant（空内容）仅存在本地，不应 POST /chat/message（会触发 422） */
+function shouldQueueCreateMessageToRemote(message: Message): boolean {
+  if (
+    message.role === 'assistant' &&
+    message.isStreaming === true &&
+    !(message.content || '').trim()
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** 客户端临时 id 不应 PUT /chat/message/:id（会 404） */
+function shouldQueueUpdateMessageToRemote(messageId: string): boolean {
+  return !messageId.includes('_assistant_streaming');
+}
 
 interface ChatState {
   sessions: Session[];
@@ -43,6 +61,7 @@ interface ChatState {
 
   addMessage: (message: Message) => Promise<void>;
   updateMessage: (id: string, updates: Partial<Message>) => Promise<void>;
+  rekeyMessageInSession: (sessionId: string, oldId: string, newId: string) => Promise<void>;
   deleteMessage: (id: string) => Promise<void>;
   clearMessages: () => void;
   clearCurrentSessionMessages: () => void;
@@ -225,7 +244,19 @@ export const useChatStore = create<ChatState>()(
 
       loadMessagesFromDB: async (sessionId: string) => {
         try {
-          const messages = await chatRepository.getMessagesBySession(sessionId);
+          let messages: Message[];
+          if (apiAdapterManager.shouldUseRemote()) {
+            try {
+              const res = await chatApi.getMessages(sessionId, 1, 100);
+              messages = res.messages as Message[];
+              await chatRepository.replaceSessionMessages(sessionId, messages);
+            } catch (err) {
+              console.warn('Remote message load failed, falling back to local cache:', err);
+              messages = await chatRepository.getMessagesBySession(sessionId);
+            }
+          } else {
+            messages = await chatRepository.getMessagesBySession(sessionId);
+          }
           set((state) => ({
             messagesBySession: {
               ...state.messagesBySession,
@@ -343,10 +374,7 @@ export const useChatStore = create<ChatState>()(
 
       switchSession: async (id) => {
         set({ currentSessionId: id });
-
-        if (!get().messagesBySession[id]) {
-          await get().loadMessagesFromDB(id);
-        }
+        await get().loadMessagesFromDB(id);
       },
 
       updateSessionTitle: async (id, title) => {
@@ -458,7 +486,7 @@ export const useChatStore = create<ChatState>()(
       addMessage: async (message) => {
         await chatRepository.saveMessage(message);
 
-        if (apiAdapterManager.shouldUseRemote()) {
+        if (apiAdapterManager.shouldUseRemote() && shouldQueueCreateMessageToRemote(message)) {
           syncManager
             .addOperation('create_message', message as unknown as Record<string, unknown>)
             .catch((err) => {
@@ -518,7 +546,7 @@ export const useChatStore = create<ChatState>()(
 
         await chatRepository.updateMessage(id, updates);
 
-        if (apiAdapterManager.shouldUseRemote()) {
+        if (apiAdapterManager.shouldUseRemote() && shouldQueueUpdateMessageToRemote(id)) {
           syncManager.addOperation('update_message', { id, ...updates }).catch((err) => {
             console.error('Failed to sync update_message:', err);
           });
@@ -567,6 +595,21 @@ export const useChatStore = create<ChatState>()(
             messagesBySession: {
               ...state.messagesBySession,
               [targetSessionId]: updatedMessages,
+            },
+          };
+        });
+      },
+
+      rekeyMessageInSession: async (sessionId, oldId, newId) => {
+        if (oldId === newId) return;
+        await chatRepository.rekeyMessage(oldId, newId);
+        set((state) => {
+          const list = state.messagesBySession[sessionId] || [];
+          const next = list.map((m) => (m.id === oldId ? { ...m, id: newId } : m));
+          return {
+            messagesBySession: {
+              ...state.messagesBySession,
+              [sessionId]: next,
             },
           };
         });

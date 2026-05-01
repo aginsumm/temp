@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     DASHSCOPE_API_KEY: Optional[str] = None
+    # 文本对话请使用 qwen-plus / qwen-turbo 等；qvq 等多为流式/多模态专用，易在 text-generation 接口返回 400
+    DASHSCOPE_CHAT_MODEL: str = "qwen-plus"
     OPENAI_API_KEY: Optional[str] = None
     
     CORS_ORIGINS: list[str] = [

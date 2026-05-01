@@ -315,7 +315,12 @@ class GraphService {
       material: 0,
     };
     data.nodes.forEach((node) => {
-      typeDistribution[node.category]++;
+      const c = node.category;
+      if (c && Object.prototype.hasOwnProperty.call(typeDistribution, c)) {
+        typeDistribution[c as EntityType]++;
+      } else {
+        typeDistribution.technique++;
+      }
     });
 
     return {

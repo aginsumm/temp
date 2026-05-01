@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Network, List, Download, Bookmark, FolderOpen, X, SlidersHorizontal } from 'lucide-react';
 import useKnowledgeGraphStore from '../../stores/knowledgeGraphStore';
 import { knowledgeApi, Entity } from '../../api/knowledge';
-import { useGraphStore } from '../../stores/graphStore';
+import { useGraphStore, waitUntilGraphStoreRehydrated } from '../../stores/graphStore';
 import { snapshotService } from '../../api/snapshot';
 import type { GraphSnapshot } from '../../types/chat';
 import { graphSyncService } from '../../services/graphSyncService';
@@ -50,11 +50,13 @@ export default function KnowledgePage() {
   ];
 
   const loadEntities = useCallback(async () => {
+    await waitUntilGraphStoreRehydrated();
+    const ents = useGraphStore.getState().entities;
+    if (ents.length > 0) {
+      return;
+    }
     try {
       setLoading(true);
-      if (graphStoreEntities.length > 0) {
-        return;
-      }
       const response = await knowledgeApi.search({});
       const mappedEntities = response.results.map((e) => ({
         ...(e as unknown as Entity),
@@ -66,11 +68,11 @@ export default function KnowledgePage() {
     } finally {
       setLoading(false);
     }
-  }, [graphStoreEntities.length]);
+  }, []);
 
   useEffect(() => {
-    loadEntities();
-  }, [loadEntities]);
+    void loadEntities();
+  }, [graphStoreEntities.length, loadEntities]);
 
   const handleEntityClick = (entityId: string) => {
     setSelectedNode(entityId);
@@ -134,23 +136,32 @@ export default function KnowledgePage() {
   );
 
   useEffect(() => {
-    // 确保列表与图谱共享同一关系数据（首次从搜索加载时没有关系）
-    if (graphStoreEntities.length > 0 && graphStoreRelations.length === 0) {
-      knowledgeApi
-        .getGraphData()
-        .then((data) => {
-          const relationData = (data.edges || []).map((edge, index) => ({
-            id: `knowledge_edge_${index}`,
-            source: String(edge.source),
-            target: String(edge.target),
-            type: (edge.relationType || 'related_to') as 'related_to',
-            confidence: Number(edge.value ?? edge.weight ?? 0.5),
-          }));
-          graphSyncService.updateFromKnowledge(graphStoreEntities, relationData, []);
-        })
-        .catch(() => {});
-    }
-  }, [graphStoreEntities, graphStoreRelations.length]);
+    let cancelled = false;
+    void (async () => {
+      await waitUntilGraphStoreRehydrated();
+      if (cancelled) return;
+      const { entities: ents, relations: rels } = useGraphStore.getState();
+      if (ents.length > 0 && rels.length === 0) {
+        knowledgeApi
+          .getGraphData()
+          .then((data) => {
+            if (cancelled) return;
+            const relationData = (data.edges || []).map((edge, index) => ({
+              id: `knowledge_edge_${index}`,
+              source: String(edge.source),
+              target: String(edge.target),
+              type: (edge.relationType || 'related_to') as 'related_to',
+              confidence: Number(edge.value ?? edge.weight ?? 0.5),
+            }));
+            graphSyncService.updateFromKnowledge(ents, relationData, []);
+          })
+          .catch(() => {});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [graphStoreEntities.length, graphStoreRelations.length]);
 
   useEffect(() => {
     if (showSnapshots) {

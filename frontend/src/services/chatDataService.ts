@@ -58,7 +58,8 @@ interface UnifiedChatService {
   getFavoriteMessages: (page?: number, pageSize?: number) => Promise<Message[]>;
 }
 
-const STREAM_TIMEOUT = 60000;
+// 含：首包、长回答、SSE enrichment、DashScope 实体/关系抽取与落库 — 不得低于 180s（否则 UI 会先失败并清空态）
+const STREAM_TIMEOUT = 360000;
 const MAX_RETRY_COUNT = 3;
 const RETRY_DELAY_BASE = 1000;
 

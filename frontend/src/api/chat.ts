@@ -13,7 +13,8 @@ import type {
   Relation,
 } from '../types/chat';
 
-const STREAM_TIMEOUT = 60000;
+// 正文结束后服务端仍要做实体/关键词/关系提取与入库（可达 1–2 分钟无 content_chunk），勿过短以免收不到 complete → 图谱空白
+const STREAM_TIMEOUT = 180000;
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -432,7 +433,10 @@ export const chatApi = {
         ),
       };
     } catch (error) {
-      console.warn('API unavailable for messages, using local');
+      console.warn('API unavailable for messages:', error);
+      if (apiAdapterManager.shouldUseRemote()) {
+        throw error;
+      }
       const messages = await mockChatService.getMessages(sessionId);
       return {
         messages,

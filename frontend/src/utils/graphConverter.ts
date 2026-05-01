@@ -14,6 +14,58 @@ import type {
 } from '../types/graph';
 import { CATEGORY_COLORS } from '../constants/categories';
 
+const VALID_ENTITY_TYPES: readonly EntityType[] = [
+  'inheritor',
+  'technique',
+  'work',
+  'pattern',
+  'region',
+  'period',
+  'material',
+];
+
+/** 与关系抽取里「实体名称」对齐：去空白、书名号，便于和列表中的 name 匹配 */
+function normalizeNameKey(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s\u3000]+/g, '')
+    .replace(/[《》「」『』"'“”‘’]/g, '');
+}
+
+function normalizeEntityType(t: unknown): EntityType {
+  if (typeof t !== 'string') return 'technique';
+  let s = t.trim().toLowerCase();
+  if (s.startsWith('entitytype.')) s = s.slice('entitytype.'.length);
+  return VALID_ENTITY_TYPES.includes(s as EntityType) ? (s as EntityType) : 'technique';
+}
+
+function stableFallbackEntityId(name: string, type: string, index: number): string {
+  const s = `${name}\0${type}\0${index}`;
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  return `ent_${Math.abs(h).toString(36)}`;
+}
+
+/** 丢弃无效项并补齐 id/type，避免 dedupe / ECharts 因缺字段抛错 */
+function sanitizeEntitiesForGraph(entities: Entity[]): Entity[] {
+  const raw = Array.isArray(entities) ? entities : [];
+  return raw
+    .map((e, index) => {
+      if (!e || typeof e !== 'object') return null;
+      const name =
+        typeof e.name === 'string' ? e.name.trim() : String((e as { name?: unknown }).name ?? '').trim();
+      if (!name) return null;
+      const idRaw = typeof e.id === 'string' ? e.id.trim() : '';
+      const id = idRaw || stableFallbackEntityId(name, String((e as Entity).type ?? ''), index);
+      const type = normalizeEntityType((e as Entity).type);
+      return { ...e, id, name, type } as Entity;
+    })
+    .filter((e): e is Entity => e !== null);
+}
+
 /**
  * 获取实体颜色（统一使用 CSS 变量）
  */
@@ -55,6 +107,9 @@ function deduplicateEntities(entities: Entity[]): Entity[] {
   const entityMap = new Map<string, Entity>();
 
   entities.forEach((entity) => {
+    if (!entity || typeof entity.name !== 'string' || !entity.name.trim()) {
+      return;
+    }
     const key = `${entity.name.toLowerCase().trim()}_${entity.type}`;
     const existing = entityMap.get(key);
 
@@ -89,11 +144,24 @@ function deduplicateRelations(relations: Relation[]): Relation[] {
   const relationMap = new Map<string, Relation>();
 
   relations.forEach((relation) => {
-    const key = `${relation.source}_${relation.target}_${relation.type}`;
+    if (!relation || typeof relation !== 'object') {
+      return;
+    }
+    const srcRaw = (relation as { source?: unknown }).source;
+    const tgtRaw = (relation as { target?: unknown }).target;
+    const source = srcRaw != null ? String(srcRaw).trim() : '';
+    const target = tgtRaw != null ? String(tgtRaw).trim() : '';
+    if (!source || !target) {
+      return;
+    }
+    const relType =
+      typeof relation.type === 'string' && relation.type.trim() ? relation.type : 'related_to';
+    const key = `${source}_${target}_${relType}`;
     const existing = relationMap.get(key);
 
+    const normalized = { ...relation, source, target } as Relation;
     if (!existing) {
-      relationMap.set(key, relation);
+      relationMap.set(key, normalized);
     } else {
       // 合并：保留更高的 confidence
       if (
@@ -120,74 +188,130 @@ export function entitiesToGraphData(
     minRelevance?: number;
   }
 ): GraphData {
-  // 先去重
-  const uniqueEntities = deduplicateEntities(entities);
-  const uniqueRelations = deduplicateRelations(relations);
+  const safeEntities = sanitizeEntitiesForGraph(entities);
+  const safeRelations = Array.isArray(relations) ? relations : [];
 
-  // 过滤实体
-  let filteredEntities = uniqueEntities;
+  // 先去重
+  const uniqueEntities = deduplicateEntities(safeEntities);
+  const uniqueRelations = deduplicateRelations(safeRelations);
+
+  // 过滤实体（相关性）；maxNodes 只决定「种子」节点，边上涉及的端点会并进来，避免截断后解析不到 id 导致连线全丢
+  let relevanceFiltered = uniqueEntities;
 
   if (options?.minRelevance) {
-    filteredEntities = uniqueEntities.filter((e) => (e.relevance || 1) >= options.minRelevance!);
+    relevanceFiltered = uniqueEntities.filter((e) => (e.relevance || 1) >= options.minRelevance!);
   }
 
-  if (options?.maxNodes && filteredEntities.length > options.maxNodes) {
-    filteredEntities = filteredEntities
+  let seedEntities = relevanceFiltered;
+  if (options?.maxNodes && relevanceFiltered.length > options.maxNodes) {
+    seedEntities = [...relevanceFiltered]
       .sort((a, b) => (b.relevance || 0) - (a.relevance || 0))
       .slice(0, options.maxNodes);
   }
 
-  // 转换节点
-  const nodes: GraphNode[] = filteredEntities.map((entity) => {
-    // 优先使用 importance 字段（Knowledge 模块），否则使用 relevance（Chat 模块）
-    const relevance = entity.importance ?? entity.relevance ?? 0.5;
-    const node: GraphNode = {
-      id: entity.id,
-      name: entity.name,
-      category: entity.type,
-      symbolSize: calculateNodeSize(relevance),
-      value: relevance,
-      description: entity.description,
-      metadata: entity.metadata,
-      itemStyle: {
-        color: getEntityColor(entity.type),
-        borderColor: 'var(--color-border)',
-        borderWidth: 2,
-      },
-    };
+  // 转换节点（先占位，下面根据边补全 displayEntities 后再生成）
+  const buildNodes = (displayEntities: Entity[]): GraphNode[] =>
+    displayEntities.map((entity) => {
+      // 优先使用 importance 字段（Knowledge 模块），否则使用 relevance（Chat 模块）
+      const relevance = entity.importance ?? entity.relevance ?? 0.5;
+      const descRaw = entity.description;
+      const description =
+        typeof descRaw === 'string'
+          ? descRaw
+          : descRaw != null && typeof descRaw !== 'object'
+            ? String(descRaw)
+            : undefined;
 
-    // 合并 Knowledge 模块的额外字段到 metadata
-    const metadataUpdates: Record<string, unknown> = {};
-    if (entity.region) {
-      metadataUpdates.region = entity.region;
-    }
-    if (entity.period) {
-      metadataUpdates.period = entity.period;
-    }
-    if (entity.coordinates) {
-      metadataUpdates.coordinates = entity.coordinates;
-    }
-    if (Object.keys(metadataUpdates).length > 0) {
-      node.metadata = { ...node.metadata, ...metadataUpdates };
-    }
+      const node: GraphNode = {
+        id: entity.id,
+        name: entity.name,
+        category: entity.type,
+        symbolSize: calculateNodeSize(relevance),
+        value: relevance,
+        description,
+        metadata: entity.metadata,
+        itemStyle: {
+          color: getEntityColor(entity.type),
+          borderColor: 'var(--color-border)',
+          borderWidth: 2,
+        },
+      };
 
-    return node;
+      // 合并 Knowledge 模块的额外字段到 metadata
+      const metadataUpdates: Record<string, unknown> = {};
+      if (entity.region) {
+        metadataUpdates.region = entity.region;
+      }
+      if (entity.period) {
+        metadataUpdates.period = entity.period;
+      }
+      if (entity.coordinates) {
+        metadataUpdates.coordinates = entity.coordinates;
+      }
+      if (Object.keys(metadataUpdates).length > 0) {
+        node.metadata = { ...node.metadata, ...metadataUpdates };
+      }
+
+      return node;
+    });
+
+  // 转换关系（source/target 既可能是实体 id，也可能是与实体 name 一致的引用）
+  const edges: GraphEdge[] = [];
+  const entityIds = new Set(relevanceFiltered.map((e) => e.id));
+  const nameToId = new Map<string, string>();
+  relevanceFiltered.forEach((e) => {
+    const k = normalizeNameKey(e.name);
+    if (k && !nameToId.has(k)) {
+      nameToId.set(k, e.id);
+    }
+    const loose = e.name.trim().toLowerCase();
+    if (loose && !nameToId.has(loose)) {
+      nameToId.set(loose, e.id);
+    }
   });
 
-  // 转换关系
-  const edges: GraphEdge[] = [];
-  const entityIds = new Set(filteredEntities.map((e) => e.id));
+  const resolveRelationEndpoint = (ref: string): string | null => {
+    const trimmed = ref?.trim() ?? '';
+    if (!trimmed) return null;
+    if (entityIds.has(trimmed)) return trimmed;
+
+    const nk = normalizeNameKey(trimmed);
+    const byNorm = nk ? nameToId.get(nk) : undefined;
+    if (byNorm) return byNorm;
+
+    const loose = trimmed.toLowerCase();
+    const byLoose = nameToId.get(loose);
+    if (byLoose) return byLoose;
+
+    // 弱匹配：LLM 端点名略长/略短时仍尽量挂边（避免「很多点只有一条线」全是解析丢边）
+    if (nk.length >= 2) {
+      for (const e of relevanceFiltered) {
+        const ek = normalizeNameKey(e.name);
+        if (!ek) continue;
+        if (ek.includes(nk) || nk.includes(ek)) {
+          const ratio = Math.min(ek.length, nk.length) / Math.max(ek.length, nk.length);
+          if (ratio >= 0.45) return e.id;
+        }
+      }
+    }
+
+    return null;
+  };
 
   uniqueRelations.forEach((relation, index) => {
-    if (entityIds.has(relation.source) && entityIds.has(relation.target)) {
+    const src = resolveRelationEndpoint(String(relation.source ?? ''));
+    const tgt = resolveRelationEndpoint(String(relation.target ?? ''));
+    if (src && tgt) {
+      const relTypeStr =
+        typeof relation.type === 'string' && relation.type.trim() ? relation.type : 'related_to';
       edges.push({
         id: relation.id || `edge_${index}`,
-        source: relation.source,
-        target: relation.target,
-        relationType: relation.type,
+        source: src,
+        target: tgt,
+        relationType: relTypeStr,
         value: relation.confidence || 0.5,
         lineStyle: {
-          color: getRelationColor(relation.type),
+          color: getRelationColor(relTypeStr),
           width: Math.max(1, (relation.confidence || 0.5) * 3),
           curveness: 0.3,
           opacity: 0.6,
@@ -196,8 +320,16 @@ export function entitiesToGraphData(
     }
   });
 
+  const displayIds = new Set(seedEntities.map((e) => e.id));
+  for (const ed of edges) {
+    displayIds.add(String(ed.source));
+    displayIds.add(String(ed.target));
+  }
+  const displayEntities = relevanceFiltered.filter((e) => displayIds.has(e.id));
+  const nodes = buildNodes(displayEntities);
+
   // 生成分类
-  const categories = getCategories(filteredEntities);
+  const categories = getCategories(displayEntities);
 
   return { nodes, edges, categories };
 }
